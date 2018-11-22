@@ -1,0 +1,11 @@
+include version.py
+include src/common/*.hpp
+include src/common/*.h
+include src/dispatch/*.hpp
+include common/base/*.hpp
+include common/eglstate/*.hpp
+recursive-include thirdparty/jsoncpp *.h *.inl
+include thirdparty/snappy/*.h
+recursive-include thirdparty/egl-registry/api *.h
+recursive-include thirdparty/opengl-registry/api *.h
+recursive-include thirdparty/opencl-headers *.h

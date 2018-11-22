@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>IDESourceControlProjectFavoriteDictionaryKey</key>
+	<false/>
+	<key>IDESourceControlProjectIdentifier</key>
+	<string>D3E92195-9F9E-48B6-9DAB-71D86B733800</string>
+	<key>IDESourceControlProjectName</key>
+	<string>retrace</string>
+	<key>IDESourceControlProjectOriginsDictionary</key>
+	<dict>
+		<key>CE4334D8-0DD0-437F-A7CD-EB646D3FE9D9</key>
+		<string>http://trd-svn1.trondheim.arm.com/svn/mpd/graphics/benchmarking/content_capturing</string>
+		<key>F590301D96AC75EF62917A112FABDA1C18A2367A</key>
+		<string>ssh://mpd-gerrit.cambridge.arm.com:29418/pat/patrace</string>
+	</dict>
+	<key>IDESourceControlProjectPath</key>
+	<string>patrace/project/iOS/retrace.xcworkspace</string>
+	<key>IDESourceControlProjectRelativeInstallPathDictionary</key>
+	<dict>
+		<key>CE4334D8-0DD0-437F-A7CD-EB646D3FE9D9</key>
+		<string>../../../../../content_capturing</string>
+		<key>F590301D96AC75EF62917A112FABDA1C18A2367A</key>
+		<string>../../../..</string>
+	</dict>
+	<key>IDESourceControlProjectRepositoryRootDictionary</key>
+	<dict>
+		<key>CE4334D8-0DD0-437F-A7CD-EB646D3FE9D9</key>
+		<string>http://trd-svn1.trondheim.arm.com/svn/mpd/graphics</string>
+	</dict>
+	<key>IDESourceControlProjectURL</key>
+	<string>ssh://mpd-gerrit.cambridge.arm.com:29418/pat/patrace</string>
+	<key>IDESourceControlProjectVersion</key>
+	<integer>111</integer>
+	<key>IDESourceControlProjectWCCIdentifier</key>
+	<string>F590301D96AC75EF62917A112FABDA1C18A2367A</string>
+	<key>IDESourceControlProjectWCConfigurations</key>
+	<array>
+		<dict>
+			<key>IDESourceControlRepositoryExtensionIdentifierKey</key>
+			<string>public.vcs.subversion</string>
+			<key>IDESourceControlWCCIdentifierKey</key>
+			<string>CE4334D8-0DD0-437F-A7CD-EB646D3FE9D9</string>
+			<key>IDESourceControlWCCName</key>
+			<string>content_capturing</string>
+		</dict>
+		<dict>
+			<key>IDESourceControlRepositoryExtensionIdentifierKey</key>
+			<string>public.vcs.git</string>
+			<key>IDESourceControlWCCIdentifierKey</key>
+			<string>F590301D96AC75EF62917A112FABDA1C18A2367A</string>
+			<key>IDESourceControlWCCName</key>
+			<string>patrace</string>
+		</dict>
+	</array>
+</dict>
+</plist>

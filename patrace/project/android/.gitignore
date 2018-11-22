@@ -1,0 +1,15 @@
+*.class
+*.dex
+*.dex.d
+*.apk
+*.apk.d
+*.d
+*.cache
+*.prop
+*.json
+*.txt
+libs
+R.java
+BuildConfig.java
+*.jar
+*.ap_

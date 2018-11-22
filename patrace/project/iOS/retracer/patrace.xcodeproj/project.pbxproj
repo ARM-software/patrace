@@ -1,0 +1,543 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		99046C751941DD77008F8D74 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99046C741941DD77008F8D74 /* Foundation.framework */; };
+		99046C941941DDC1008F8D74 /* gl_extension_supported.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 99046C821941DDC1008F8D74 /* gl_extension_supported.cpp */; };
+		99046C951941DDC1008F8D74 /* glstate_images.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 99046C841941DDC1008F8D74 /* glstate_images.cpp */; };
+		99046C961941DDC1008F8D74 /* glws_egl_iOS.mm in Sources */ = {isa = PBXBuildFile; fileRef = 99046C861941DDC1008F8D74 /* glws_egl_iOS.mm */; };
+		99046C971941DDC1008F8D74 /* glws.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 99046C871941DDC1008F8D74 /* glws.cpp */; };
+		99046C981941DDC1008F8D74 /* retrace_api.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 99046C891941DDC1008F8D74 /* retrace_api.cpp */; };
+		99046C991941DDC1008F8D74 /* retrace_egl.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 99046C8B1941DDC1008F8D74 /* retrace_egl.cpp */; };
+		99046C9B1941DDC1008F8D74 /* retracer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 99046C8E1941DDC1008F8D74 /* retracer.cpp */; };
+		99046C9C1941DDC1008F8D74 /* state.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 99046C901941DDC1008F8D74 /* state.cpp */; };
+		99046C9D1941DDC1008F8D74 /* trace_executor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 99046C921941DDC1008F8D74 /* trace_executor.cpp */; };
+		991B8AAE197D255600FCE164 /* Client.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 991B8A92197D255600FCE164 /* Client.cpp */; };
+		991B8AAF197D255600FCE164 /* FileDownloader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 991B8A97197D255600FCE164 /* FileDownloader.cpp */; };
+		991B8AB0197D255600FCE164 /* FileUploader.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 991B8A99197D255600FCE164 /* FileUploader.cpp */; };
+		991B8AB1197D255600FCE164 /* FileUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 991B8A9B197D255600FCE164 /* FileUtil.cpp */; };
+		991B8AB2197D255600FCE164 /* HTTPClient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 991B8A9D197D255600FCE164 /* HTTPClient.cpp */; };
+		991B8AB4197D255600FCE164 /* Main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 991B8AA1197D255600FCE164 /* Main.cpp */; };
+		991B8AB5197D255600FCE164 /* PingThread.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 991B8AA2197D255600FCE164 /* PingThread.cpp */; };
+		991B8AB6197D255600FCE164 /* PluginInterface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 991B8AA4197D255600FCE164 /* PluginInterface.cpp */; };
+		991B8AB7197D255600FCE164 /* PluginManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 991B8AA6197D255600FCE164 /* PluginManager.cpp */; };
+		991B8AB8197D255600FCE164 /* TaskExecutor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 991B8AA9197D255600FCE164 /* TaskExecutor.cpp */; };
+		991B8AB9197D255600FCE164 /* URLs.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 991B8AAB197D255600FCE164 /* URLs.cpp */; };
+		9921A5381949CD5D00AB8430 /* iOSPaRetracePlugin.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9921A51D1949CD5D00AB8430 /* iOSPaRetracePlugin.mm */; };
+		9921A5571949E56200AB8430 /* collector_factory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9921A5551949E56200AB8430 /* collector_factory.cpp */; };
+		9947D92E1A6D065000F961F2 /* eglconfiginfo.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9947D92C1A6D065000F961F2 /* eglconfiginfo.cpp */; };
+		9974A5FD194740F5007E020D /* eglproc_auto.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9974A5F8194740F5007E020D /* eglproc_auto.cpp */; };
+		9974A5FE194740F5007E020D /* eglproc_retrace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9974A5FA194740F5007E020D /* eglproc_retrace.cpp */; };
+		9974A5FF194740F5007E020D /* eglproc_trace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9974A5FC194740F5007E020D /* eglproc_trace.cpp */; };
+		9974A60119474136007E020D /* retrace_gles_auto.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9974A60019474136007E020D /* retrace_gles_auto.cpp */; };
+		9974A60C1947421A007E020D /* shadermod.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9974A6081947421A007E020D /* shadermod.cpp */; };
+		9974A60D1947421A007E020D /* states.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9974A60A1947421A007E020D /* states.cpp */; };
+		9974A679194746DC007E020D /* offscrmgr.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9974A675194746DC007E020D /* offscrmgr.cpp */; };
+		9974A67A194746DC007E020D /* quad.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9974A677194746DC007E020D /* quad.cpp */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		99046C6F1941DD77008F8D74 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "include/${PRODUCT_NAME}";
+			dstSubfolderSpec = 16;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		99046C711941DD77008F8D74 /* libpatrace.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libpatrace.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		99046C741941DD77008F8D74 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		99046C781941DD77008F8D74 /* patrace-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "patrace-Prefix.pch"; sourceTree = "<group>"; };
+		99046C821941DDC1008F8D74 /* gl_extension_supported.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = gl_extension_supported.cpp; path = ../../../../src/common/gl_extension_supported.cpp; sourceTree = "<group>"; };
+		99046C831941DDC1008F8D74 /* gl_extension_supported.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = gl_extension_supported.hpp; path = ../../../../src/common/gl_extension_supported.hpp; sourceTree = "<group>"; };
+		99046C841941DDC1008F8D74 /* glstate_images.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = glstate_images.cpp; path = ../../../../src/retracer/glstate_images.cpp; sourceTree = "<group>"; };
+		99046C851941DDC1008F8D74 /* glstate.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = glstate.hpp; path = ../../../../src/retracer/glstate.hpp; sourceTree = "<group>"; };
+		99046C861941DDC1008F8D74 /* glws_egl_iOS.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = glws_egl_iOS.mm; path = ../../../../src/retracer/glws_egl_iOS.mm; sourceTree = "<group>"; };
+		99046C871941DDC1008F8D74 /* glws.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = glws.cpp; path = ../../../../src/retracer/glws.cpp; sourceTree = "<group>"; };
+		99046C881941DDC1008F8D74 /* glws.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = glws.hpp; path = ../../../../src/retracer/glws.hpp; sourceTree = "<group>"; };
+		99046C891941DDC1008F8D74 /* retrace_api.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = retrace_api.cpp; path = ../../../../src/retracer/retrace_api.cpp; sourceTree = "<group>"; };
+		99046C8A1941DDC1008F8D74 /* retrace_api.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = retrace_api.hpp; path = ../../../../src/retracer/retrace_api.hpp; sourceTree = "<group>"; };
+		99046C8B1941DDC1008F8D74 /* retrace_egl.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = retrace_egl.cpp; path = ../../../../src/retracer/retrace_egl.cpp; sourceTree = "<group>"; };
+		99046C8D1941DDC1008F8D74 /* retrace_options.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = retrace_options.hpp; path = ../../../../src/retracer/retrace_options.hpp; sourceTree = "<group>"; };
+		99046C8E1941DDC1008F8D74 /* retracer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = retracer.cpp; path = ../../../../src/retracer/retracer.cpp; sourceTree = "<group>"; };
+		99046C8F1941DDC1008F8D74 /* retracer.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = retracer.hpp; path = ../../../../src/retracer/retracer.hpp; sourceTree = "<group>"; };
+		99046C901941DDC1008F8D74 /* state.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = state.cpp; path = ../../../../src/retracer/state.cpp; sourceTree = "<group>"; };
+		99046C911941DDC1008F8D74 /* state.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = state.hpp; path = ../../../../src/retracer/state.hpp; sourceTree = "<group>"; };
+		99046C921941DDC1008F8D74 /* trace_executor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = trace_executor.cpp; path = ../../../../src/retracer/trace_executor.cpp; sourceTree = "<group>"; };
+		99046C931941DDC1008F8D74 /* trace_executor.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = trace_executor.hpp; path = ../../../../src/retracer/trace_executor.hpp; sourceTree = "<group>"; };
+		991B8A92197D255600FCE164 /* Client.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Client.cpp; sourceTree = "<group>"; };
+		991B8A93197D255600FCE164 /* Client.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Client.h; sourceTree = "<group>"; };
+		991B8A94197D255600FCE164 /* config.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = config.hpp; sourceTree = "<group>"; };
+		991B8A95197D255600FCE164 /* config.hpp.in */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = config.hpp.in; sourceTree = "<group>"; };
+		991B8A96197D255600FCE164 /* DeviceInterface.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DeviceInterface.h; sourceTree = "<group>"; };
+		991B8A97197D255600FCE164 /* FileDownloader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileDownloader.cpp; sourceTree = "<group>"; };
+		991B8A98197D255600FCE164 /* FileDownloader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FileDownloader.h; sourceTree = "<group>"; };
+		991B8A99197D255600FCE164 /* FileUploader.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileUploader.cpp; sourceTree = "<group>"; };
+		991B8A9A197D255600FCE164 /* FileUploader.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FileUploader.h; sourceTree = "<group>"; };
+		991B8A9B197D255600FCE164 /* FileUtil.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = FileUtil.cpp; sourceTree = "<group>"; };
+		991B8A9C197D255600FCE164 /* FileUtil.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = FileUtil.h; sourceTree = "<group>"; };
+		991B8A9D197D255600FCE164 /* HTTPClient.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HTTPClient.cpp; sourceTree = "<group>"; };
+		991B8A9E197D255600FCE164 /* HTTPClient.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HTTPClient.h; sourceTree = "<group>"; };
+		991B8AA1197D255600FCE164 /* Main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Main.cpp; sourceTree = "<group>"; };
+		991B8AA2197D255600FCE164 /* PingThread.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PingThread.cpp; sourceTree = "<group>"; };
+		991B8AA3197D255600FCE164 /* PingThread.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PingThread.h; sourceTree = "<group>"; };
+		991B8AA4197D255600FCE164 /* PluginInterface.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PluginInterface.cpp; sourceTree = "<group>"; };
+		991B8AA5197D255600FCE164 /* PluginInterface.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PluginInterface.h; sourceTree = "<group>"; };
+		991B8AA6197D255600FCE164 /* PluginManager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PluginManager.cpp; sourceTree = "<group>"; };
+		991B8AA7197D255600FCE164 /* PluginManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PluginManager.h; sourceTree = "<group>"; };
+		991B8AA8197D255600FCE164 /* ResultFile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ResultFile.h; sourceTree = "<group>"; };
+		991B8AA9197D255600FCE164 /* TaskExecutor.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TaskExecutor.cpp; sourceTree = "<group>"; };
+		991B8AAA197D255600FCE164 /* TaskExecutor.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TaskExecutor.h; sourceTree = "<group>"; };
+		991B8AAB197D255600FCE164 /* URLs.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = URLs.cpp; sourceTree = "<group>"; };
+		991B8AAC197D255600FCE164 /* URLs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = URLs.h; sourceTree = "<group>"; };
+		991B8AAD197D255600FCE164 /* Util.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Util.h; sourceTree = "<group>"; };
+		9921A51C1949CD5D00AB8430 /* iOSPaRetracePlugin.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = iOSPaRetracePlugin.h; sourceTree = "<group>"; };
+		9921A51D1949CD5D00AB8430 /* iOSPaRetracePlugin.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = iOSPaRetracePlugin.mm; sourceTree = "<group>"; };
+		9921A5251949CD5D00AB8430 /* README.cmdlistplugin */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = README.cmdlistplugin; sourceTree = "<group>"; };
+		9921A5551949E56200AB8430 /* collector_factory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = collector_factory.cpp; path = ../../../../src/retracer/collector_factory.cpp; sourceTree = "<group>"; };
+		9921A5561949E56200AB8430 /* collector_factory.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = collector_factory.hpp; path = ../../../../src/retracer/collector_factory.hpp; sourceTree = "<group>"; };
+		9947D92C1A6D065000F961F2 /* eglconfiginfo.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = eglconfiginfo.cpp; path = ../../../../src/retracer/eglconfiginfo.cpp; sourceTree = "<group>"; };
+		9947D92D1A6D065000F961F2 /* eglconfiginfo.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = eglconfiginfo.hpp; path = ../../../../src/retracer/eglconfiginfo.hpp; sourceTree = "<group>"; };
+		9974A5EF19473C12007E020D /* RetracerConfig.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = RetracerConfig.xcconfig; sourceTree = "<group>"; };
+		9974A5F7194740F5007E020D /* eglimports.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = eglimports.hpp; path = ../../../src/dispatch/eglimports.hpp; sourceTree = "<group>"; };
+		9974A5F8194740F5007E020D /* eglproc_auto.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = eglproc_auto.cpp; path = ../../../src/dispatch/eglproc_auto.cpp; sourceTree = "<group>"; };
+		9974A5F9194740F5007E020D /* eglproc_auto.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = eglproc_auto.hpp; path = ../../../src/dispatch/eglproc_auto.hpp; sourceTree = "<group>"; };
+		9974A5FA194740F5007E020D /* eglproc_retrace.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = eglproc_retrace.cpp; path = ../../../src/dispatch/eglproc_retrace.cpp; sourceTree = "<group>"; };
+		9974A5FB194740F5007E020D /* eglproc_retrace.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = eglproc_retrace.hpp; path = ../../../src/dispatch/eglproc_retrace.hpp; sourceTree = "<group>"; };
+		9974A5FC194740F5007E020D /* eglproc_trace.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = eglproc_trace.cpp; path = ../../../src/dispatch/eglproc_trace.cpp; sourceTree = "<group>"; };
+		9974A60019474136007E020D /* retrace_gles_auto.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = retrace_gles_auto.cpp; path = ../../../../src/retracer/retrace_gles_auto.cpp; sourceTree = "<group>"; };
+		9974A6061947421A007E020D /* eglsize.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = eglsize.hpp; path = ../../../src/helper/eglsize.hpp; sourceTree = "<group>"; };
+		9974A6071947421A007E020D /* eglstring.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = eglstring.hpp; path = ../../../src/helper/eglstring.hpp; sourceTree = "<group>"; };
+		9974A6081947421A007E020D /* shadermod.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = shadermod.cpp; path = ../../../src/helper/shadermod.cpp; sourceTree = "<group>"; };
+		9974A6091947421A007E020D /* shadermod.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = shadermod.hpp; path = ../../../src/helper/shadermod.hpp; sourceTree = "<group>"; };
+		9974A60A1947421A007E020D /* states.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = states.cpp; path = ../../../src/helper/states.cpp; sourceTree = "<group>"; };
+		9974A60B1947421A007E020D /* states.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = states.h; path = ../../../src/helper/states.h; sourceTree = "<group>"; };
+		9974A675194746DC007E020D /* offscrmgr.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = offscrmgr.cpp; sourceTree = "<group>"; };
+		9974A676194746DC007E020D /* offscrmgr.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = offscrmgr.h; sourceTree = "<group>"; };
+		9974A677194746DC007E020D /* quad.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = quad.cpp; sourceTree = "<group>"; };
+		9974A678194746DC007E020D /* quad.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = quad.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		99046C6E1941DD77008F8D74 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				99046C751941DD77008F8D74 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		99046C681941DD77008F8D74 = {
+			isa = PBXGroup;
+			children = (
+				9974A5EF19473C12007E020D /* RetracerConfig.xcconfig */,
+				9921A5011949CD5D00AB8430 /* gateway_client */,
+				9974A6051947420A007E020D /* helper */,
+				9974A5F6194740C6007E020D /* dispatch */,
+				99046C761941DD77008F8D74 /* retracer */,
+				99046C731941DD77008F8D74 /* Frameworks */,
+				99046C721941DD77008F8D74 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		99046C721941DD77008F8D74 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				99046C711941DD77008F8D74 /* libpatrace.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		99046C731941DD77008F8D74 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				99046C741941DD77008F8D74 /* Foundation.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		99046C761941DD77008F8D74 /* retracer */ = {
+			isa = PBXGroup;
+			children = (
+				9947D92C1A6D065000F961F2 /* eglconfiginfo.cpp */,
+				9947D92D1A6D065000F961F2 /* eglconfiginfo.hpp */,
+				9921A5551949E56200AB8430 /* collector_factory.cpp */,
+				9921A5561949E56200AB8430 /* collector_factory.hpp */,
+				9974A674194746DC007E020D /* forceoffscreen */,
+				9974A60019474136007E020D /* retrace_gles_auto.cpp */,
+				99046C821941DDC1008F8D74 /* gl_extension_supported.cpp */,
+				99046C831941DDC1008F8D74 /* gl_extension_supported.hpp */,
+				99046C841941DDC1008F8D74 /* glstate_images.cpp */,
+				99046C851941DDC1008F8D74 /* glstate.hpp */,
+				99046C861941DDC1008F8D74 /* glws_egl_iOS.mm */,
+				99046C871941DDC1008F8D74 /* glws.cpp */,
+				99046C881941DDC1008F8D74 /* glws.hpp */,
+				99046C891941DDC1008F8D74 /* retrace_api.cpp */,
+				99046C8A1941DDC1008F8D74 /* retrace_api.hpp */,
+				99046C8B1941DDC1008F8D74 /* retrace_egl.cpp */,
+				99046C8D1941DDC1008F8D74 /* retrace_options.hpp */,
+				99046C8E1941DDC1008F8D74 /* retracer.cpp */,
+				99046C8F1941DDC1008F8D74 /* retracer.hpp */,
+				99046C901941DDC1008F8D74 /* state.cpp */,
+				99046C911941DDC1008F8D74 /* state.hpp */,
+				99046C921941DDC1008F8D74 /* trace_executor.cpp */,
+				99046C931941DDC1008F8D74 /* trace_executor.hpp */,
+				99046C771941DD77008F8D74 /* Supporting Files */,
+			);
+			path = retracer;
+			sourceTree = "<group>";
+		};
+		99046C771941DD77008F8D74 /* Supporting Files */ = {
+			isa = PBXGroup;
+			children = (
+				99046C781941DD77008F8D74 /* patrace-Prefix.pch */,
+			);
+			name = "Supporting Files";
+			sourceTree = "<group>";
+		};
+		9921A5011949CD5D00AB8430 /* gateway_client */ = {
+			isa = PBXGroup;
+			children = (
+				991B8A92197D255600FCE164 /* Client.cpp */,
+				991B8A93197D255600FCE164 /* Client.h */,
+				991B8A94197D255600FCE164 /* config.hpp */,
+				991B8A95197D255600FCE164 /* config.hpp.in */,
+				991B8A96197D255600FCE164 /* DeviceInterface.h */,
+				991B8A97197D255600FCE164 /* FileDownloader.cpp */,
+				991B8A98197D255600FCE164 /* FileDownloader.h */,
+				991B8A99197D255600FCE164 /* FileUploader.cpp */,
+				991B8A9A197D255600FCE164 /* FileUploader.h */,
+				991B8A9B197D255600FCE164 /* FileUtil.cpp */,
+				991B8A9C197D255600FCE164 /* FileUtil.h */,
+				991B8A9D197D255600FCE164 /* HTTPClient.cpp */,
+				991B8A9E197D255600FCE164 /* HTTPClient.h */,
+				991B8AA1197D255600FCE164 /* Main.cpp */,
+				991B8AA2197D255600FCE164 /* PingThread.cpp */,
+				991B8AA3197D255600FCE164 /* PingThread.h */,
+				991B8AA4197D255600FCE164 /* PluginInterface.cpp */,
+				991B8AA5197D255600FCE164 /* PluginInterface.h */,
+				991B8AA6197D255600FCE164 /* PluginManager.cpp */,
+				991B8AA7197D255600FCE164 /* PluginManager.h */,
+				991B8AA8197D255600FCE164 /* ResultFile.h */,
+				991B8AA9197D255600FCE164 /* TaskExecutor.cpp */,
+				991B8AAA197D255600FCE164 /* TaskExecutor.h */,
+				991B8AAB197D255600FCE164 /* URLs.cpp */,
+				991B8AAC197D255600FCE164 /* URLs.h */,
+				991B8AAD197D255600FCE164 /* Util.h */,
+				9921A5121949CD5D00AB8430 /* plugins */,
+			);
+			name = gateway_client;
+			path = ../../../src/gateway_client;
+			sourceTree = "<group>";
+		};
+		9921A5121949CD5D00AB8430 /* plugins */ = {
+			isa = PBXGroup;
+			children = (
+				9921A51B1949CD5D00AB8430 /* ios */,
+				9921A5251949CD5D00AB8430 /* README.cmdlistplugin */,
+			);
+			path = plugins;
+			sourceTree = "<group>";
+		};
+		9921A51B1949CD5D00AB8430 /* ios */ = {
+			isa = PBXGroup;
+			children = (
+				9921A51C1949CD5D00AB8430 /* iOSPaRetracePlugin.h */,
+				9921A51D1949CD5D00AB8430 /* iOSPaRetracePlugin.mm */,
+			);
+			path = ios;
+			sourceTree = "<group>";
+		};
+		9974A5F6194740C6007E020D /* dispatch */ = {
+			isa = PBXGroup;
+			children = (
+				9974A5F7194740F5007E020D /* eglimports.hpp */,
+				9974A5F8194740F5007E020D /* eglproc_auto.cpp */,
+				9974A5F9194740F5007E020D /* eglproc_auto.hpp */,
+				9974A5FA194740F5007E020D /* eglproc_retrace.cpp */,
+				9974A5FB194740F5007E020D /* eglproc_retrace.hpp */,
+				9974A5FC194740F5007E020D /* eglproc_trace.cpp */,
+			);
+			name = dispatch;
+			sourceTree = "<group>";
+		};
+		9974A6051947420A007E020D /* helper */ = {
+			isa = PBXGroup;
+			children = (
+				9974A6061947421A007E020D /* eglsize.hpp */,
+				9974A6071947421A007E020D /* eglstring.hpp */,
+				9974A6081947421A007E020D /* shadermod.cpp */,
+				9974A6091947421A007E020D /* shadermod.hpp */,
+				9974A60A1947421A007E020D /* states.cpp */,
+				9974A60B1947421A007E020D /* states.h */,
+			);
+			name = helper;
+			sourceTree = "<group>";
+		};
+		9974A674194746DC007E020D /* forceoffscreen */ = {
+			isa = PBXGroup;
+			children = (
+				9974A675194746DC007E020D /* offscrmgr.cpp */,
+				9974A676194746DC007E020D /* offscrmgr.h */,
+				9974A677194746DC007E020D /* quad.cpp */,
+				9974A678194746DC007E020D /* quad.h */,
+			);
+			name = forceoffscreen;
+			path = ../../../../src/retracer/forceoffscreen;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		99046C701941DD77008F8D74 /* patrace */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 99046C7F1941DD77008F8D74 /* Build configuration list for PBXNativeTarget "patrace" */;
+			buildPhases = (
+				99EAC53119864F380091FD54 /* ShellScript */,
+				99E347DD198FAFE400645962 /* ShellScript */,
+				99046C6D1941DD77008F8D74 /* Sources */,
+				99046C6E1941DD77008F8D74 /* Frameworks */,
+				99046C6F1941DD77008F8D74 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = patrace;
+			productName = retracer;
+			productReference = 99046C711941DD77008F8D74 /* libpatrace.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		99046C691941DD77008F8D74 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0460;
+				ORGANIZATIONNAME = PATeam;
+			};
+			buildConfigurationList = 99046C6C1941DD77008F8D74 /* Build configuration list for PBXProject "patrace" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = 99046C681941DD77008F8D74;
+			productRefGroup = 99046C721941DD77008F8D74 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				99046C701941DD77008F8D74 /* patrace */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		99E347DD198FAFE400645962 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "${PROJECT_DIR}/../gen_version_info.sh";
+		};
+		99EAC53119864F380091FD54 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "${PROJECT_DIR}/../gen_source.sh";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		99046C6D1941DD77008F8D74 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				991B8AB8197D255600FCE164 /* TaskExecutor.cpp in Sources */,
+				991B8AB4197D255600FCE164 /* Main.cpp in Sources */,
+				991B8AB5197D255600FCE164 /* PingThread.cpp in Sources */,
+				99046C941941DDC1008F8D74 /* gl_extension_supported.cpp in Sources */,
+				99046C951941DDC1008F8D74 /* glstate_images.cpp in Sources */,
+				991B8AAF197D255600FCE164 /* FileDownloader.cpp in Sources */,
+				99046C961941DDC1008F8D74 /* glws_egl_iOS.mm in Sources */,
+				99046C971941DDC1008F8D74 /* glws.cpp in Sources */,
+				9921A5571949E56200AB8430 /* collector_factory.cpp in Sources */,
+				991B8AB2197D255600FCE164 /* HTTPClient.cpp in Sources */,
+				991B8AB6197D255600FCE164 /* PluginInterface.cpp in Sources */,
+				991B8AAE197D255600FCE164 /* Client.cpp in Sources */,
+				99046C981941DDC1008F8D74 /* retrace_api.cpp in Sources */,
+				99046C991941DDC1008F8D74 /* retrace_egl.cpp in Sources */,
+				9921A5381949CD5D00AB8430 /* iOSPaRetracePlugin.mm in Sources */,
+				991B8AB7197D255600FCE164 /* PluginManager.cpp in Sources */,
+				99046C9B1941DDC1008F8D74 /* retracer.cpp in Sources */,
+				99046C9C1941DDC1008F8D74 /* state.cpp in Sources */,
+				99046C9D1941DDC1008F8D74 /* trace_executor.cpp in Sources */,
+				9974A5FD194740F5007E020D /* eglproc_auto.cpp in Sources */,
+				9974A5FE194740F5007E020D /* eglproc_retrace.cpp in Sources */,
+				9974A5FF194740F5007E020D /* eglproc_trace.cpp in Sources */,
+				9974A60119474136007E020D /* retrace_gles_auto.cpp in Sources */,
+				9974A60C1947421A007E020D /* shadermod.cpp in Sources */,
+				991B8AB1197D255600FCE164 /* FileUtil.cpp in Sources */,
+				991B8AB0197D255600FCE164 /* FileUploader.cpp in Sources */,
+				9974A60D1947421A007E020D /* states.cpp in Sources */,
+				9947D92E1A6D065000F961F2 /* eglconfiginfo.cpp in Sources */,
+				9974A679194746DC007E020D /* offscrmgr.cpp in Sources */,
+				9974A67A194746DC007E020D /* quad.cpp in Sources */,
+				991B8AB9197D255600FCE164 /* URLs.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		99046C7D1941DD77008F8D74 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9974A5EF19473C12007E020D /* RetracerConfig.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"GLES_CALLCONVENTION=",
+					RETRACE,
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					../../../../thirdparty/opengl-registry/api,
+					../../../../patrace/src,
+					../../../../patrace/src/common,
+					../../../../thirdparty/,
+					../../../../thirdparty/snappy,
+					../../../../patrace/project/iOS/retracer_application/retracer_application/,
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 6.1;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		99046C7E1941DD77008F8D74 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9974A5EF19473C12007E020D /* RetracerConfig.xcconfig */;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"GLES_CALLCONVENTION=",
+					RETRACE,
+				);
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = (
+					../../../../thirdparty/opengl-registry/api,
+					../../../../patrace/src,
+					../../../../patrace/src/common,
+					../../../../thirdparty/,
+					../../../../thirdparty/snappy,
+					../../../../patrace/project/iOS/retracer_application/retracer_application/,
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 6.1;
+				SDKROOT = iphoneos;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		99046C801941DD77008F8D74 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9974A5EF19473C12007E020D /* RetracerConfig.xcconfig */;
+			buildSettings = {
+				DSTROOT = /tmp/retracer.dst;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "retracer/patrace-Prefix.pch";
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = patrace;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		99046C811941DD77008F8D74 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9974A5EF19473C12007E020D /* RetracerConfig.xcconfig */;
+			buildSettings = {
+				DSTROOT = /tmp/retracer.dst;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "retracer/patrace-Prefix.pch";
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = patrace;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		99046C6C1941DD77008F8D74 /* Build configuration list for PBXProject "patrace" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				99046C7D1941DD77008F8D74 /* Debug */,
+				99046C7E1941DD77008F8D74 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		99046C7F1941DD77008F8D74 /* Build configuration list for PBXNativeTarget "patrace" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				99046C801941DD77008F8D74 /* Debug */,
+				99046C811941DD77008F8D74 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 99046C691941DD77008F8D74 /* Project object */;
+}

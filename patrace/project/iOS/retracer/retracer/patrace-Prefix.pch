@@ -1,0 +1,7 @@
+//
+// Prefix header for all source files of the 'retracer' target in the 'retracer' project
+//
+
+#ifdef __OBJC__
+    #import <Foundation/Foundation.h>
+#endif

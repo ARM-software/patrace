@@ -1,0 +1,1034 @@
+#include "tool/trace_looper.hpp"
+
+
+void TraceLooper::print_args_info() {
+    ILOG(
+        "Creates a new trace from a source trace that loops a selected frame or call range a given number of times.\n"
+        "Run example: trace_looper -t trace.pat -f 100 -n 240 # This will create a new trace that loops frame 100 240 times, \n"
+        "all work before frame 100 will be included in the new trace but swap commands are skipped to make replaying easier.\n"
+        "\n\nUsage:\n"
+        "    -h --help                          Print this message, then quit\n"
+        "    -t --trace-file <path>             Set path to input trace file\n"
+        "    -f --target-frame <frame_number>   Target frame to loop\n"
+        "    -s --range-loop-start <call_index> Target call to start looping at\n"
+        "    -e --range-loop-end <call_index>   Target call to stop looping at, must be less than --range-loop-start\n"
+        "    -n --num-loops <num_loops>         Number of times to loop the target frame\n"
+        "    -i --include-tail                  If this is set, all work after the target frame will be included in the output trace.\n"
+        "    -r --reset-loop-state              If this is set, the trace_looper will try to reset the gl state between each looped frame.\n"
+        " Improves correctness (in some cases) but increases CPU load. dont use this unless you know it is necessary (there are rendering errors in the resulting trace)\n"
+        "    -c --clean-calls                   If this is set, the trace_looper will drop all API calls between the last draw call and the swap call in the target frame when looping.\n"
+        " Improves correctness (in some cases) but reduces CPU load. dont use this unless you know it is necessary (there are rendering errors in the resulting trace)\n"
+        "    -o --output-data-folder            The folder to put the results in. This must already exist (defaults to run folder if not set)\n");
+}
+
+
+TraceLooper::TraceLooper(int argc, char* argv[]) {
+    set_arg_defaults();
+    parse_args(argc, argv);
+
+    if (args_are_valid()) {
+        load();
+    } else {
+        print_args_info();
+        exit(1);
+    }
+}
+
+
+TraceLooper::~TraceLooper() {
+    for (auto call_ptr : calls) {
+        if (call_ptr) {
+            delete call_ptr;
+        }
+    }
+}
+
+
+void TraceLooper::load() {
+    ILOG("Loading trace: " + str_args["trace_file"]);
+    common::TraceFileTM trace_file(str_args["trace_file"].c_str(), false);
+
+    frame_ranges.push_back(std::pair<int, int>(0, 0));
+
+    header = trace_file.mpInFileRA->getJSONHeaderAsString();
+
+    Json::Value json_header = trace_file.mpInFileRA->getJSONHeader();
+
+    main_thread_ID = json_header.get("defaultTid", -1).asInt();
+
+    if (main_thread_ID < 0) {
+        ELOG("Failed to get main thread ID");
+        exit(1);
+    }
+
+    ILOG("Main thread ID set to: " + std::to_string(main_thread_ID));
+
+    common::CallTM* current_call = trace_file.NextCall();
+    int call_index = 0;
+
+    while (current_call) {
+        add_call(current_call);
+
+        if (call_is_swap(current_call) && ((long)current_call->mTid == main_thread_ID)) {
+            frame_ranges[frame_ranges.size() - 1].second = call_index;
+            frame_ranges.push_back(std::pair<int, int>(call_index + 1, 0));
+        }
+
+        current_call = trace_file.NextCall();
+        call_index += 1;
+    }
+
+    frame_ranges[frame_ranges.size() - 1].second = call_index;
+
+    trace_file.Close();
+
+    ILOG("Num frames in trace: " + std::to_string(frame_ranges.size()));
+
+    ILOG("Num calls in trace: " + std::to_string(calls.size()));
+}
+
+
+void TraceLooper::process() {
+    ILOG("Processing trace: " + str_args["trace_file"]);
+
+    if (bool_args["reset_loop_state"]) {
+        extract_pre_frame_state_calls();
+    }
+
+    if (bool_args["loop_frame_selected"]) {
+        add_frame_loop_calls(
+            int_args["target_frame"],
+            int_args["num_loops"],
+            bool_args["reset_loop_state"]);
+    }
+
+    if (bool_args["loop_range_selected"]) {
+        add_range_loop_calls(
+            int_args["start_call_index"],
+            int_args["end_call_index"],
+            int_args["num_loops"]);
+    }
+
+    print_trace_info();
+}
+
+
+void TraceLooper::get_frame_loop_header(std::string& out_string, const std::string& md5_string) {
+    common::TraceFileTM trace_file(str_args["trace_file"].c_str(), false);
+    Json::Value json_header = trace_file.mpInFileRA->getJSONHeader();
+
+    json_header["callCnt"] = static_cast<unsigned int>(frame_loop_call_writelist.size());
+    json_header["frameCnt"] = int_args["num_loops"];
+
+    if (!(json_header.isMember("conversions") && json_header["conversions"].isArray())) {
+        json_header["conversions"] = Json::Value(Json::arrayValue);
+    }
+
+    Json::Value new_conversion;
+    new_conversion["author"] = username;
+    new_conversion["info"] = Json::Value();
+    new_conversion["info"]["comment"] = "Trace generated by the trace looper tool, loops a single frame.";
+    new_conversion["info"]["generationCommand"] = full_cmd_line;
+    new_conversion["info"]["originalFrame"] = int_args["target_frame"];
+    new_conversion["info"]["versions"] = Json::Value();
+    new_conversion["info"]["versions"]["trace_looper"] = TRACE_LOOPER_VERSION;
+    new_conversion["info"]["versions"]["retracer"] = json_header["tracer"];
+
+    new_conversion["input"] = Json::Value();
+    new_conversion["input"]["file"] = str_args["trace_file"];
+    new_conversion["input"]["md5"] = md5_string;
+
+    new_conversion["timestamp"] = timestamp_string;
+    new_conversion["type"] = "frame_loop_trace";
+    new_conversion["tool"] = "trace_looper";
+
+    json_header["conversions"].append(new_conversion);
+
+    Json::FastWriter writer;
+    out_string = writer.write(json_header);
+}
+
+
+void TraceLooper::get_range_loop_header(std::string& out_string, const std::string& md5_string) {
+    common::TraceFileTM trace_file(str_args["trace_file"].c_str(), false);
+    Json::Value json_header = trace_file.mpInFileRA->getJSONHeader();
+
+    json_header["callCnt"] = static_cast<unsigned int>(range_loop_call_writelist.size());
+    json_header["frameCnt"] = 0;
+
+    if (!(json_header.isMember("conversions") && json_header["conversions"].isArray())) {
+        json_header["conversions"] = Json::Value(Json::arrayValue);
+    }
+
+    Json::Value new_conversion;
+    new_conversion["author"] = username;
+    new_conversion["info"] = Json::Value();
+    new_conversion["info"]["comment"] = "Trace generated by the trace looper tool, loops a call range.";
+    new_conversion["info"]["generationCommand"] = full_cmd_line;
+    new_conversion["info"]["callRangeStart"] = int_args["start_call_index"];
+    new_conversion["info"]["callRangeEnd"] = int_args["end_call_index"];
+    new_conversion["info"]["versions"] = Json::Value();
+    new_conversion["info"]["versions"]["trace_looper"] = TRACE_LOOPER_VERSION;
+    new_conversion["info"]["versions"]["retracer"] = json_header["tracer"];
+
+    new_conversion["input"] = Json::Value();
+    new_conversion["input"]["file"] = str_args["trace_file"];
+    new_conversion["input"]["md5"] = md5_string;
+
+    new_conversion["timestamp"] = timestamp_string;
+    new_conversion["type"] = "range_loop_trace";
+    new_conversion["tool"] = "trace_looper";
+
+    json_header["conversions"].append(new_conversion);
+
+    trace_file.Close();
+
+    Json::FastWriter writer;
+    out_string = writer.write(json_header);
+}
+
+
+std::string TraceLooper::calc_trace_md5() {
+    std::ifstream infile(str_args["trace_file"].c_str(), std::ios::binary | std::ios::ate);
+    std::streamsize size = infile.tellg();
+    infile.seekg(0, std::ios::beg);
+
+    std::vector<char> data(size);
+    if (infile.read(data.data(), size)) {
+        common::MD5Digest trace_mdh = common::MD5Digest(reinterpret_cast<void*>(data.data()), data.size());
+        return trace_mdh.text_lower();
+    }
+
+    return "(failed to generate MD5)";
+}
+
+
+void TraceLooper::save() {
+    std::string trace_md5 = calc_trace_md5();
+
+    if (frame_loop_call_writelist.size() > 0) {
+        build_output_file_path();
+
+        ILOG("Saving output frame looping trace as: " + str_args["output_filepath"]);
+
+        common::OutFile outfile(str_args["output_filepath"].c_str());
+
+        std::string string_header;
+        get_frame_loop_header(string_header, trace_md5);
+
+        outfile.WriteHeader(string_header.c_str(), string_header.size());
+
+        for (auto call : frame_loop_call_writelist) {
+            const unsigned int WRITE_BUF_LEN = 100 * 1024 * 1024;
+            static char buffer[WRITE_BUF_LEN];
+            char *dest = buffer;
+            dest = call->Serialize(dest);
+            outfile.Write(buffer, dest - buffer);
+        }
+
+        outfile.Close();
+
+        OKLOG("Frame looping trace saved as: " + str_args["output_filepath"]);
+    }
+
+    if (range_loop_call_writelist.size() > 0) {
+        build_output_file_path_range_trace();
+
+        ILOG("Saving output range looping trace as: " + str_args["output_filepath_range_trace"]);
+
+        common::OutFile range_outfile(str_args["output_filepath_range_trace"].c_str());
+
+        std::string string_header;
+        get_range_loop_header(string_header, trace_md5);
+
+        range_outfile.WriteHeader(string_header.c_str(), string_header.size());
+
+        for (auto call : range_loop_call_writelist) {
+            const unsigned int WRITE_BUF_LEN = 100 * 1024 * 1024;
+            static char buffer[WRITE_BUF_LEN];
+            char *dest = buffer;
+            dest = call->Serialize(dest);
+            range_outfile.Write(buffer, dest - buffer);
+        }
+
+        range_outfile.Close();
+
+        OKLOG("Range looping trace saved as: " + str_args["output_filepath_range_trace"]);
+    }
+}
+
+
+void TraceLooper::print_trace_info() {
+    if (bool_args["clean_calls"]) {
+        ILOG("Cleaned calls: ");
+        for (auto& cc : cleaned_calls) {
+            ILOG("  " + cc);
+        }
+    }
+
+    if (bool_args["reset_loop_state"]) {
+        ILOG("Pre state calls added: ");
+        for (auto& cc : pre_state_calls) {
+            ILOG("  " + cc);
+        }
+    }
+
+    if (bool_args["loop_frame_selected"]) {
+        ILOG("Generated frame looping trace");
+    }
+
+    if (bool_args["loop_range_selected"]) {
+        ILOG("Generated range looping trace");
+    }
+}
+
+
+void TraceLooper::add_call(const common::CallTM* incall) {
+    common::CallTM* outcall = new common::CallTM(incall->mCallName.c_str());
+
+    outcall->mReadPos = incall->mReadPos;
+    outcall->mCallNo = incall->mCallNo;
+    outcall->mTid = incall->mTid;
+    outcall->mCallId = incall->mCallId;
+    outcall->mCallErrNo = incall->mCallErrNo;
+    outcall->mRet = incall->mRet;
+    outcall->mBkColor = incall->mBkColor;
+    outcall->mTxtColor = incall->mTxtColor;
+
+    int num_args = incall->mArgs.size();
+    outcall->mArgs.resize(num_args);
+
+    for (int i = 0; i < num_args; ++i) {
+        outcall->mArgs[i] = new common::ValueTM;
+        *(outcall->mArgs[i]) = *(incall->mArgs[i]);
+    }
+
+    calls.push_back(outcall);
+}
+
+
+void TraceLooper::build_output_file_path() {
+    ILOG("Generating output path frame looping trace...");
+
+    std::vector<std::string> trace_path_tokens = split(str_args["trace_file"], '/');
+    std::string trace_file = trace_path_tokens[trace_path_tokens.size() - 1];
+
+    std::stringstream loop_token_ss;
+    loop_token_ss << "f" << int_args["target_frame"] << "x" << int_args["num_loops"];
+
+    std::vector<std::string> trace_tokens = split(trace_file, '.');
+
+    std::string postfix = trace_tokens[trace_tokens.size() - 1];
+
+    trace_tokens[trace_tokens.size() - 1] = loop_token_ss.str();
+
+    if (bool_args["reset_loop_state"]) {
+        trace_tokens.push_back("rstate");
+    }
+
+    if (bool_args["clean_trace"]) {
+        trace_tokens.push_back("clean");
+    }
+
+    if (bool_args["include_tail"]) {
+        trace_tokens.push_back("tail");
+    }
+
+    trace_tokens.push_back(postfix);
+
+    str_args["output_filepath"] = str_args["output_folder"] + join(trace_tokens, '.');
+}
+
+
+void TraceLooper::build_output_file_path_range_trace() {
+    ILOG("Generating output path for range looping trace...");
+
+    std::vector<std::string> trace_path_tokens = split(str_args["trace_file"], '/');
+    std::string trace_file = trace_path_tokens[trace_path_tokens.size() - 1];
+
+    std::stringstream loop_token_ss;
+    loop_token_ss << "f" << int_args["start_call_index"] << "_" << int_args["end_call_index"] << "x" << int_args["num_loops"];
+
+    std::vector<std::string> trace_tokens = split(trace_file, '.');
+
+    std::string postfix = trace_tokens[trace_tokens.size() - 1];
+
+    trace_tokens[trace_tokens.size() - 1] = loop_token_ss.str();
+
+    if (bool_args["include_tail"]) {
+        trace_tokens.push_back("tail");
+    }
+
+    trace_tokens.push_back(postfix);
+
+    str_args["output_filepath_range_trace"] = str_args["output_folder"] + join(trace_tokens, '.');
+}
+
+
+bool TraceLooper::call_is_state_changer(const common::CallTM* call) {
+    return EXCLUDED_PRE_FRAME_CALLS.count(call->Name()) > 0;
+}
+
+
+bool TraceLooper::call_is_swap(const common::CallTM* call) {
+    return SWAP_CALL_NAMES.count(call->Name()) > 0;
+}
+
+
+void TraceLooper::extract_pre_frame_state_calls() {
+    ILOG("Extracting preframe state...");
+
+    int frame_start_index = frame_ranges[int_args["target_frame"]].first;
+    int frame_end_index = frame_ranges[int_args["target_frame"]].second;
+
+    int curr_index = frame_start_index;
+
+    for (int i = frame_start_index; i <= frame_end_index; ++i) {
+        if (call_is_draw(calls[i])) {
+            curr_index = i + 1;
+            break;
+        }
+    }
+
+    if (curr_index == frame_end_index) {
+        WLOG("Selected frame has no draw calls");
+        return;
+    }
+
+    bool found_pre_frame_call = false;
+
+    for (int i = curr_index; i <= frame_end_index; ++i) {
+        if (!call_is_state_changer(calls[i])) {
+            continue;
+        }
+
+        for (int y = i - 1; y > 0; --y) {
+            if (!call_is_state_changer(calls[i])) {
+                continue;
+            } else if (calls[i]->Name() == calls[y]->Name()) {
+                if (y >= frame_start_index) {
+                    found_pre_frame_call = true;
+                    break;
+                } else {
+                    prestate_calls.push_back(calls[i]);
+                    pre_state_calls.push_back(calls[i]->Name());
+                    found_pre_frame_call = true;
+                    break;
+                }
+            }
+        }
+
+        if (!found_pre_frame_call) {
+            WLOG("Failed to find pre frame setup for state call: " + calls[i]->Name() \
+                + ", trace possibly relies on default state." \
+                + " Update the trace_looper to reflect this case!");
+        } else {
+            found_pre_frame_call = false;
+        }
+    }
+
+    ILOG("Extracted: " + std::to_string(prestate_calls.size()) + " pre state calls");
+}
+
+
+void TraceLooper::add_frame_loop_calls(int target_frame, int num_loops, bool reset_loop_state) {
+    ILOG("Adding frame loop calls...");
+
+    int start_call_index = frame_ranges[target_frame].first;
+    int end_call_index = frame_ranges[target_frame].second;
+
+    ILOG("Looping call range: " + std::to_string(start_call_index) + "-" + std::to_string(end_call_index) + " (frame number " + std::to_string(target_frame) + ")");
+
+    std::vector<common::CallTM*> pre_frame_calls;
+
+    if (target_frame > 0) {
+        pre_frame_calls.reserve(frame_ranges[target_frame - 1].second);
+
+        for (int i = 0; i < frame_ranges[target_frame - 1].second; ++i) {
+            if (!call_is_swap(calls[i])) {
+                pre_frame_calls.push_back(calls[i]);
+            }
+        }
+    }
+
+    ILOG("Number of pre frame calls: " + std::to_string(pre_frame_calls.size()));
+
+    std::vector<common::CallTM*> frame_calls;
+    frame_calls.reserve(end_call_index - start_call_index + 1);
+
+    for (int i = start_call_index; i <= end_call_index; ++i) {
+        frame_calls.push_back(calls[i]);
+    }
+
+    ILOG("Number of target frame calls: " + std::to_string(frame_calls.size()));
+
+    std::vector<common::CallTM*> cleaned_frame_calls;
+
+    if (bool_args["clean_trace"]) {
+        clean_loop_frame_calls(&frame_calls, &cleaned_frame_calls);
+    } else {
+        cleaned_frame_calls = frame_calls;
+    }
+
+    int total_calls = pre_frame_calls.size() + cleaned_frame_calls.size() * num_loops + frame_calls.size();
+
+    frame_loop_call_writelist.reserve(total_calls);
+
+    frame_loop_call_writelist.insert(
+        frame_loop_call_writelist.end(),
+        pre_frame_calls.begin(),
+        pre_frame_calls.end());
+
+    for (int i = 0; i < num_loops; ++i) {
+        if (bool_args["reset_loop_state"]) {
+            frame_loop_call_writelist.insert(
+                frame_loop_call_writelist.end(),
+                prestate_calls.begin(),
+                prestate_calls.end());
+        }
+
+        frame_loop_call_writelist.insert(
+            frame_loop_call_writelist.end(),
+            cleaned_frame_calls.begin(),
+            cleaned_frame_calls.end());
+    }
+
+    if (bool_args["reset_loop_state"]) {
+        frame_loop_call_writelist.insert(
+            frame_loop_call_writelist.end(),
+            prestate_calls.begin(),
+            prestate_calls.end());
+    }
+
+    frame_loop_call_writelist.insert(
+        frame_loop_call_writelist.end(),
+        frame_calls.begin(),
+        frame_calls.end());
+
+    if (bool_args["include_tail"]) {
+        ILOG("Adding trace tail...");
+
+        for (size_t i = end_call_index + 1; i < calls.size(); ++i) {
+            frame_loop_call_writelist.push_back(calls[i]);
+        }
+
+        ILOG("Tail calls added: " + std::to_string(frame_loop_call_writelist.size()));
+    }
+
+    ILOG("Total number of calls in frame looping trace queued for writeout: " + std::to_string(frame_loop_call_writelist.size()));
+}
+
+
+void TraceLooper::add_range_loop_calls(int start_call_index, int end_call_index, int num_loops) {
+    ILOG("Adding range loop calls...");
+    ILOG("Looping call range: " + std::to_string(start_call_index) + "-" + std::to_string(end_call_index));
+
+    std::vector<common::CallTM*> pre_range_calls;
+
+    if (start_call_index > 0) {
+        pre_range_calls.reserve(start_call_index);
+
+        for (int i = 0; i < start_call_index - 1; ++i) {
+            if (!call_is_swap(calls[i])) {
+                pre_range_calls.push_back(calls[i]);
+            }
+        }
+    }
+
+    ILOG("Number of pre range calls: " + std::to_string(pre_range_calls.size()));
+
+    std::vector<common::CallTM*> range_calls;
+    range_calls.reserve(end_call_index - start_call_index + 1);
+
+    for (int i = start_call_index; i <= end_call_index; ++i) {
+        range_calls.push_back(calls[i]);
+    }
+
+    ILOG("Number of target range calls: " + std::to_string(range_calls.size()));
+
+    int total_calls = pre_range_calls.size() + range_calls.size() * num_loops + range_calls.size();
+
+    range_loop_call_writelist.reserve(total_calls);
+
+    range_loop_call_writelist.insert(
+        range_loop_call_writelist.end(),
+        pre_range_calls.begin(),
+        pre_range_calls.end());
+
+    for (int i = 0; i < num_loops; ++i) {
+        range_loop_call_writelist.insert(
+            range_loop_call_writelist.end(),
+            range_calls.begin(),
+            range_calls.end());
+    }
+
+    range_loop_call_writelist.insert(
+        range_loop_call_writelist.end(),
+        range_calls.begin(),
+        range_calls.end());
+
+    if (bool_args["include_tail"]) {
+        ILOG("Adding trace tail...");
+
+        for (size_t i = end_call_index + 1; i < calls.size(); ++i) {
+            range_loop_call_writelist.push_back(calls[i]);
+        }
+
+        ILOG("Tail calls added: " + std::to_string(range_loop_call_writelist.size()));
+    }
+
+    ILOG("Total number of calls in range looping trace queued for writeout: " + std::to_string(range_loop_call_writelist.size()));
+}
+
+
+bool TraceLooper::call_is_draw(const common::CallTM* call) {
+    return GL_DRAW_CALL_NAMES.count(call->Name()) > 0;
+}
+
+
+void TraceLooper::clean_loop_frame_calls(
+    std::vector<common::CallTM*>* raw_calls,
+    std::vector<common::CallTM*>* clean_calls
+) {
+    int last_draw_index = -1;
+    int curr_index = 0;
+
+    ILOG("Num calls pre clean: " + std::to_string(raw_calls->size()));
+
+    for (auto raw_call : *raw_calls) {
+        if (call_is_draw(raw_call)) {
+            last_draw_index = curr_index;
+        }
+
+        curr_index += 1;
+    }
+
+    if (last_draw_index == -1) {
+        ELOG("No draws in frame, not cleaning");
+        clean_calls = raw_calls;
+        return;
+    }
+
+    clean_calls->reserve(last_draw_index + 1);
+
+    for (int i = 0; i <= last_draw_index; ++i) {
+        clean_calls->push_back((*raw_calls)[i]);
+    }
+
+    for (size_t i = last_draw_index + 1; i < raw_calls->size() - 1; ++i) {
+        cleaned_calls.push_back((*raw_calls)[i]->Name());
+    }
+
+    ILOG("Num calls after clean: " + std::to_string(clean_calls->size()));
+
+    clean_calls->push_back(raw_calls->back());
+}
+
+
+void TraceLooper::set_arg_defaults() {
+    ILOG("Setting default args...");
+    str_args["trace_file"] = "";
+    str_args["output_folder"] = ".";
+
+    int_args["target_frame"] = -1;
+    int_args["num_loops"] = 0;
+    int_args["start_call_index"] = -1;
+    int_args["end_call_index"] = -1;
+
+    bool_args["include_tail"] = false;
+    bool_args["reset_loop_state"] = false;
+    bool_args["clean_calls"] = false;
+    bool_args["loop_range_selected"] = false;
+    bool_args["loop_frame_selected"] = false;
+
+    char buffer_name[256];
+    if (getlogin_r(buffer_name, 256)) {
+        ELOG("Failed to get username, setting to default");
+        username = "root";
+    } else {
+        username = std::string(buffer_name);
+    }
+
+    ILOG("Username set to: " + username);
+
+    time_t rawtime;
+    struct tm* timeinfo;
+    char buffer[80];
+
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+
+    strftime(
+        buffer,
+        sizeof(buffer),
+        "%Y-%m-%dT%I:%M:%SZ",
+        timeinfo);
+
+    timestamp_string = std::string(buffer);
+}
+
+
+bool TraceLooper::args_are_valid() {
+    ILOG("Checking argument validity...");
+
+    if (str_args["output_folder"][str_args["output_folder"].size() - 1] != '/') {
+        str_args["output_folder"] += "/";
+    }
+
+    if (int_args["start_call_index"] > -1) {
+        if (int_args["end_call_index"] < 0) {
+            ELOG("--range-loop-start specified without setting --range-loop-end, skipping range looping");
+        } else if (int_args["start_call_index"] <= int_args["end_call_index"]) {
+            ILOG("Enabling range looping");
+            bool_args["loop_range_selected"] = true;
+        } else {
+            ELOG("--range-loop-end must be greater than or equal to --range-loop-start");
+            return false;
+        }
+    } else if (int_args["end_call_index"] > -1) {
+        ELOG("--range-loop-end specified without setting --range-loop-start, skipping range looping");
+    }
+
+    if (str_args["trace_file"] == "") {
+        ELOG("-t --trace-file argument is required.");
+        return false;
+    }
+
+    if (int_args["target_frame"] < 0) {
+        if (bool_args["loop_range_selected"]) {
+            ILOG("Disabling frame looping, using only range looping");
+        } else {
+            ELOG("No loop target selected, set either the target frame (-f) or the call range to loop (-s and -e)");
+            return false;
+        }
+    } else {
+        ILOG("Enabling frame looping");
+        bool_args["loop_frame_selected"] = true;
+    }
+
+    if (int_args["num_loops"] < 0) {
+        ELOG("-n --num-loops must be greater than or equal to 0.");
+        return false;
+    }
+
+    return true;
+}
+
+
+void TraceLooper::parse_args(
+    int argc,
+    char* argv[]
+) {
+    ILOG("Parsing arguments...");
+
+    for (int i = 0; i < argc; ++i) {
+        full_cmd_line += std::string(argv[i]) + " ";
+    }
+
+    ILOG("Full cmd line set to: " + full_cmd_line);
+
+    int parser_index = 1;
+
+    while (parser_index < argc) {
+        if (strncmp(argv[parser_index], "--trace-file", 12) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments!");
+                print_args_info();
+                exit(1);
+            }
+
+            str_args["trace_file"] = std::string(argv[parser_index + 1]);
+
+            parser_index += 2;
+        } else if (strncmp(argv[parser_index], "-t", 2) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments!");
+                print_args_info();
+                exit(1);
+            }
+
+            str_args["trace_file"] = std::string(argv[parser_index + 1]);
+
+            parser_index += 2;
+        } else if (strncmp(argv[parser_index], "--target-frame", 14) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments, specify the target frame!");
+                print_args_info();
+                exit(1);
+            }
+
+            if (!convert_string_to_int(std::string(argv[parser_index + 1]), &int_args["target_frame"])) {
+                ELOG("--target-frame argument must be an integer");
+                exit(1);
+            }
+
+            parser_index += 2;
+        } else if (strncmp(argv[parser_index], "-f", 2) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments, specify the target frame!");
+                print_args_info();
+                exit(1);
+            }
+
+            if (!convert_string_to_int(std::string(argv[parser_index + 1]), &int_args["target_frame"])) {
+                ELOG("-f argument must be an integer");
+                exit(1);
+            }
+
+            parser_index += 2;
+        } else if (strncmp(argv[parser_index], "--range-loop-start", 18) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments, specify the start call index!");
+                print_args_info();
+                exit(1);
+            }
+
+            if (!convert_string_to_int(std::string(argv[parser_index + 1]), &int_args["start_call_index"])) {
+                ELOG("--range-loop-start argument must be an integer");
+                exit(1);
+            }
+
+            parser_index += 2;
+        } else if (strncmp(argv[parser_index], "-s", 2) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments, specify start call index!");
+                print_args_info();
+                exit(1);
+            }
+
+            if (!convert_string_to_int(std::string(argv[parser_index + 1]), &int_args["start_call_index"])) {
+                ELOG("-s argument must be an integer");
+                exit(1);
+            }
+
+            parser_index += 2;
+        }else if (strncmp(argv[parser_index], "--range-loop-end", 16) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments, specify the end call index!");
+                print_args_info();
+                exit(1);
+            }
+
+            if (!convert_string_to_int(std::string(argv[parser_index + 1]), &int_args["end_call_index"])) {
+                ELOG("--range-loop-end argument must be an integer");
+                exit(1);
+            }
+
+            parser_index += 2;
+        } else if (strncmp(argv[parser_index], "-e", 2) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments, specify the end call index!");
+                print_args_info();
+                exit(1);
+            }
+
+            if (!convert_string_to_int(std::string(argv[parser_index + 1]), &int_args["end_call_index"])) {
+                ELOG("-e argument must be an integer");
+                exit(1);
+            }
+
+            parser_index += 2;
+        } else if (strncmp(argv[parser_index], "--num-loops", 11) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments, specify the number of times to loop!");
+                print_args_info();
+                exit(1);
+            }
+
+            if (!convert_string_to_int(std::string(argv[parser_index + 1]), &int_args["num_loops"])) {
+                ELOG("--num-loops argument must be an integer");
+                exit(1);
+            }
+
+            parser_index += 2;
+        } else if (strncmp(argv[parser_index], "-n", 2) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments, specify the number of times to loop!");
+                print_args_info();
+                exit(1);
+            }
+
+            if (!convert_string_to_int(std::string(argv[parser_index + 1]), &int_args["num_loops"])) {
+                ELOG("-n argument must be an integer");
+                exit(1);
+            }
+
+            parser_index += 2;
+        } else if (strncmp(argv[parser_index], "--output-folder", 15) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments, specify the output folder!");
+                print_args_info();
+                exit(1);
+            }
+
+            str_args["output_folder"] = std::string(argv[parser_index + 1]);
+
+            parser_index += 2;
+        } else if (strncmp(argv[parser_index], "-o", 2) == 0) {
+            if ((argc - parser_index) < 2) {
+                ELOG("Invalid number of arguments, specify the output folder!");
+                print_args_info();
+                exit(1);
+            }
+
+            str_args["output_folder"] = std::string(argv[parser_index + 1]);
+
+            parser_index += 2;
+        } else if (strncmp(argv[parser_index], "--include-tail", 14) == 0) {
+            bool_args["include_tail"] = true;
+            parser_index += 1;
+        } else if (strncmp(argv[parser_index], "-i", 2) == 0) {
+            bool_args["include_tail"] = true;
+            parser_index += 1;
+        } else if (strncmp(argv[parser_index], "--reset-loop-state", 18) == 0) {
+            bool_args["reset_loop_state"] = true;
+            parser_index += 1;
+        } else if (strncmp(argv[parser_index], "-r", 2) == 0) {
+            bool_args["reset_loop_state"] = true;
+            parser_index += 1;
+        } else if (strncmp(argv[parser_index], "--clean-calls", 13) == 0) {
+            bool_args["clean_calls"] = true;
+            parser_index += 1;
+        } else if (strncmp(argv[parser_index], "-c", 2) == 0) {
+            bool_args["clean_calls"] = true;
+            parser_index += 1;
+        } else if (strncmp(argv[parser_index], "--help", 6) == 0) {
+            print_args_info();
+            exit(0);
+        } else if (strncmp(argv[parser_index], "-h", 2) == 0) {
+            print_args_info();
+            exit(0);
+        } else {
+            print_args_info();
+            ELOG("Invalid argument: " + std::string(argv[parser_index]));
+            throw std::runtime_error(
+                "Invalid argument: " + std::string(argv[parser_index]));
+        }
+    }
+}
+
+
+void log_message(
+    const char* filename,
+    uint32_t linenr,
+    const std::string& level,
+    const std::string& message
+) {
+    std::cout << "FILE: " << filename << ", LINE: " << linenr << ", " << level << message << std::endl;
+}
+
+
+void log_error(
+    const char* filename,
+    uint32_t linenr,
+    const std::string& level,
+    const std::string& message
+) {
+    std::cerr << "FILE: " << filename << ", LINE: " << linenr << ", " << level << message << std::endl;
+}
+
+
+bool convert_string_to_int(const std::string& str, int* result) {
+    try {
+        int conv_result = std::stoi(str);
+        *result = conv_result;
+        return true;
+    } catch (const std::invalid_argument& err) {
+        std::cerr << "ERROR: No number in string: " << str << ", got error: " << err.what() << std::endl;
+        return false;
+    } catch (const std::out_of_range& err) {
+        std::cerr << "ERROR: Converted value out of range for string: " << str << ", got error: " << err.what() << std::endl;
+        return false;
+    }
+}
+
+
+const std::vector<std::string> split(const std::string& str, const char& delimiter) {
+    std::vector<std::string> tokens;
+    std::stringstream ss(str);
+    std::string item;
+
+    for (std::string item; std::getline(ss, item, delimiter); tokens.push_back(item));
+
+    return tokens;
+}
+
+
+const std::string join(const std::vector<std::string>& tokens, char joiner) {
+    if (tokens.size() == 0) {
+        return "";
+    } else if (tokens.size() == 1) {
+        return tokens[0];
+    }
+
+    std::string result = "";
+
+    for (auto token : tokens) {
+        result += token + joiner;
+    }
+
+    result.erase(result.end() - 1);
+
+    return result;
+}
+
+
+const std::unordered_set<std::string> TraceLooper::GL_DRAW_CALL_NAMES = {
+    "glDrawArrays",
+    "glDrawArraysInstanced",
+    "glDrawElements",
+    "glDrawElementsInstanced",
+    "glDrawElementsBaseVertex",
+    "glDrawElementsInstancedBaseVertex"
+    "glDrawRangeElements",
+    "glDrawRangeElementsBaseVertex",
+    "glDrawArraysIndirect",
+    "glDrawElementsIndirect",
+    "glMultiDrawArrays",
+    "glMultiDrawElements",
+    "glMultiDrawElementsBaseVertex",
+    "glMultiDrawArraysIndirect",
+    "glMultiDrawElementsIndirect"
+};
+
+
+// Add more calls here as needed
+const std::unordered_set<std::string> TraceLooper::EXCLUDED_PRE_FRAME_CALLS = {
+    "eglSwapBuffers",
+    "glGetError",
+    "eglGetError",
+    "glClear",
+    "glClearDepthf",
+    "glCreateClientSideBuffer",
+    "glGetIntegerv",
+    "glDrawArrays",
+    "glDrawArraysInstanced",
+    "glDrawElements",
+    "glDrawElementsInstanced",
+    "glDrawElementsBaseVertex",
+    "glDrawElementsInstancedBaseVertex"
+    "glDrawRangeElements",
+    "glDrawRangeElementsBaseVertex",
+    "glDrawArraysIndirect",
+    "glDrawElementsIndirect",
+    "glMultiDrawArrays",
+    "glMultiDrawElements",
+    "glMultiDrawElementsBaseVertex",
+    "glMultiDrawArraysIndirect",
+    "glMultiDrawElementsIndirect"
+};
+
+
+const std::unordered_set<std::string> TraceLooper::SWAP_CALL_NAMES = {
+    "eglSwapBuffers",
+    "eglSwapBuffersWithDamageKHR"
+};
+
+
+int main(int argc, char* argv[]) {
+    TraceLooper trace_file(argc, argv);
+    trace_file.process();
+    trace_file.save();
+
+    return 0;
+}

@@ -1,0 +1,245 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		99046BA71941C384008F8D74 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99046BA61941C384008F8D74 /* Foundation.framework */; };
+		99046BB61941C3BF008F8D74 /* md5.c in Sources */ = {isa = PBXBuildFile; fileRef = 99046BB41941C3BF008F8D74 /* md5.c */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		99046BA11941C384008F8D74 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "include/${PRODUCT_NAME}";
+			dstSubfolderSpec = 16;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		99046BA31941C384008F8D74 /* libmd5.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libmd5.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		99046BA61941C384008F8D74 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		99046BAA1941C384008F8D74 /* md5-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "md5-Prefix.pch"; sourceTree = "<group>"; };
+		99046BB41941C3BF008F8D74 /* md5.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = md5.c; path = ../../../../../thirdparty/md5/md5.c; sourceTree = "<group>"; };
+		99046BB51941C3BF008F8D74 /* md5.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = md5.h; path = ../../../../../thirdparty/md5/md5.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		99046BA01941C384008F8D74 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				99046BA71941C384008F8D74 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		99046B9A1941C384008F8D74 = {
+			isa = PBXGroup;
+			children = (
+				99046BA81941C384008F8D74 /* md5 */,
+				99046BA51941C384008F8D74 /* Frameworks */,
+				99046BA41941C384008F8D74 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		99046BA41941C384008F8D74 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				99046BA31941C384008F8D74 /* libmd5.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		99046BA51941C384008F8D74 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				99046BA61941C384008F8D74 /* Foundation.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		99046BA81941C384008F8D74 /* md5 */ = {
+			isa = PBXGroup;
+			children = (
+				99046BB41941C3BF008F8D74 /* md5.c */,
+				99046BB51941C3BF008F8D74 /* md5.h */,
+				99046BA91941C384008F8D74 /* Supporting Files */,
+			);
+			path = md5;
+			sourceTree = "<group>";
+		};
+		99046BA91941C384008F8D74 /* Supporting Files */ = {
+			isa = PBXGroup;
+			children = (
+				99046BAA1941C384008F8D74 /* md5-Prefix.pch */,
+			);
+			name = "Supporting Files";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		99046BA21941C384008F8D74 /* md5 */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 99046BB11941C384008F8D74 /* Build configuration list for PBXNativeTarget "md5" */;
+			buildPhases = (
+				99046B9F1941C384008F8D74 /* Sources */,
+				99046BA01941C384008F8D74 /* Frameworks */,
+				99046BA11941C384008F8D74 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = md5;
+			productName = md5;
+			productReference = 99046BA31941C384008F8D74 /* libmd5.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		99046B9B1941C384008F8D74 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0460;
+				ORGANIZATIONNAME = PATeam;
+			};
+			buildConfigurationList = 99046B9E1941C384008F8D74 /* Build configuration list for PBXProject "md5" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = 99046B9A1941C384008F8D74;
+			productRefGroup = 99046BA41941C384008F8D74 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				99046BA21941C384008F8D74 /* md5 */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		99046B9F1941C384008F8D74 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				99046BB61941C3BF008F8D74 /* md5.c in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		99046BAF1941C384008F8D74 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 6.1;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+			};
+			name = Debug;
+		};
+		99046BB01941C384008F8D74 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 6.1;
+				SDKROOT = iphoneos;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		99046BB21941C384008F8D74 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DSTROOT = /tmp/md5.dst;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "md5/md5-Prefix.pch";
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		99046BB31941C384008F8D74 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DSTROOT = /tmp/md5.dst;
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "md5/md5-Prefix.pch";
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		99046B9E1941C384008F8D74 /* Build configuration list for PBXProject "md5" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				99046BAF1941C384008F8D74 /* Debug */,
+				99046BB01941C384008F8D74 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		99046BB11941C384008F8D74 /* Build configuration list for PBXNativeTarget "md5" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				99046BB21941C384008F8D74 /* Debug */,
+				99046BB31941C384008F8D74 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 99046B9B1941C384008F8D74 /* Project object */;
+}

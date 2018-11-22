@@ -1,0 +1,7 @@
+//
+// Prefix header for all source files of the 'png' target in the 'png' project
+//
+
+#ifdef __OBJC__
+    #import <Foundation/Foundation.h>
+#endif

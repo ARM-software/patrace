@@ -1,0 +1,328 @@
+---------------------------
+Running the Retracer on iOS
+---------------------------
+
+Getting the retracer and related toolflow to run on iOS is relatively
+straightforward, but there are some limitations and "gotcha"s to be aware of.
+
+1) The retracer and gateway client are combined to run as a single process.
+This has consequences for the reliability of the system, as a crash in the
+retracer also brings down the gateway client. The reason why this is done is
+because cross-application sharing of data, and control of other OS processs,
+is more difficult on iOS than on less sandboxed OSes. This would not be as big
+of a problem if automatic restart of crashed apps were easily doable, but this
+does not appear to be the case. (Update 5Aug14: enabling Guided Access mode on the
+device restarts the running app if it crashes. See section below.) As a
+result, the iOS device might need some degree of "babysitting" where the
+gateway client is manually restarted should a fatal crash occur. Two common
+reason for such crashes are the app being killed for using too much memory,
+and when a trace using a non-supported extension is attempted retraced.
+Another consequence of this is that since there is no separate
+retracer-process, any memory leaks during retracing will accumulate until the
+app is restarted. Additionally, since the retracer is implemented as a global
+statically-allocated object, state from previous retraces will persist between
+runs. It is therefore important things are cleaned up correctly between
+retraces.
+
+2) iOS appears to have somewhat strict limits on application memory usage.
+Once an application is deemed to be too heavyweight, it receives a warning
+from the OS (didReceiveMemoryWarning). For reliability, these can be detected
+and heeded (by aborting in-progress retracing) -- but this puts a limit on the
+types of content that can successfully be retraced (as many traces need a
+large amount of memory, almost guaranteeing a warning will be issued even
+though the retrace is likely to finish without issues). And even when this is
+done, iOS seems to kill an application after a certain number of warnings
+anyway, so even heeding the warnings are not necessarily a perfect solution.
+As of this writing, memory warnings are therefore simple ignored as this is
+necessary for traces like Manhattan to successfully retrace. This means a
+retrace might be randomly killed once the OS has "had enough" though, so it is
+something to be aware of if a retrace suddenly fails for no apparent reason.
+Still, it is a relatively rare occurance except when running some of the
+larger traces.
+
+3) Since killing the retracer also kills the gateway client, it is undesirable
+to handle errors by calling e.g. exit(). For iOS, these calls have been
+changed (by using ifdefs) to instead throw an exceptions which is then caught
+by the retrace-orchestrating PARetraceViewController (see below). The trace is
+then aborted and an error-message made available to be shown on-screen.
+
+4) Supporting multiple drawables (surfaces) on iOS is not trivial (as seems to
+be the case on Android as well). Also, iOS has a somewhat unusual approach to
+surface-drawing where, instead of binding a surface to a context, drawing to
+the default (0) framebuffer, and then calling *SwapBuffers, iOS has clients
+allocate a special OpenGL renderbuffer with OS backed storage (but which
+otherwise functions as a normal renderbuffer). After drawing to this
+renderbuffer, a separate method is then called to have its contents cached by
+the OS and displayed on screen. As a consequence of this approach, there is
+not "default" (0) framebuffer on iOS which refers to the currently bound
+surface, so calls to glFramebuffer(GL_FRAMEBUFFER, 0) does not make sense.
+However, by creating a normal framebuffer at the start of the program, and
+attaching the renderbuffer to this framebuffer, this framebuffer (with
+handle-id 1) can be used identically to how framebuffer 0 is used on other
+systems -- except for when it comes to swapping buffers.
+
+(More information:
+https://developer.apple.com/library/ios/documentation/3DDrawing/Conceptual/OpenGLES_ProgrammingGuide/Introduction/Introduction.html)
+
+5) Multiple contexts are also not supported in the port. Currently, the
+framework around the retracer assumes there is only one context -- which stays
+bound for the duration -- as well as only one surface. How much effort
+changing this is would have to be further investigated.
+
+6) The iPhone5s-screen is less than 720p (1136x640). This means on-screen
+retracing of 720p+ content is problematic, as a percentage of the fragments will fall
+off-screen and likely not be processed. For this reason, on-screen traces
+with a too large window width or height are rejected by aborting the trace
+immediatly. A result informing of this reason is returned as part of the
+result JSON. This does not affect offscreen traces.
+
+7) In order to support ETC1 textures -- even though e.g. the iPhone5s does not
+implement the ETC1 extension -- the ETC2 support required by GLES3 is
+leveraged by taking advantage of its ETC1 backwards compatibility. This is
+done by intercepting all texture-operations using ETC1 and changing
+GL_ETC1_RGB8_OES to GL_COMPRESSED_RGB8_ETC2 -- see
+patrace/src/retracer/retrace.py. The assumption is that only GLES3 or
+ETC2-supporting iDevices will be used going forwards, and this causes ETC1
+textures to be displayed correctly.
+
+---------------------------------
+Running app in Guided Access mode
+---------------------------------
+
+Enabling Guided Access mode while an app is running causes it to be restart
+after a crash. To enable this mode, do the following:
+
+1) Go to Settings -> General -> Accessibility -> Guided Access and turn
+"Guided Access" ON. Also choose to set a passcode (e.g. 1234).
+
+2) Start the app in question, then triple-click the home-button. "Guided
+Access started" should show on screen. At this point, if the app crashes it should
+automatically restart.
+
+3) To exit Guided Access, triple click the home button again, input the
+passcode, and chose "End" from the top-left corner. "Guided Access ended"
+should show on screen.
+
+------------------------------
+Retracer implementation
+------------------------------
+
+When a retrace is to be started, a PARetraceViewController is created and
+pushed to the view-controller stack. This view-controller is responsible for
+handling everything that has to do with actually performing the retrace. After
+creation, it is initialized by either giving it a file-path to a on-device
+trace-file (for manual retracing), or a (jsonData, storagePath,
+resultFilePath)-triple if launched by the gateway client. Using this
+information, the PARetraceViewController starts the retrace and runs until it
+is finished -- at which points it pops itself off the view-controller-stack
+giving control back to the view-controller launching it.
+
+PARetraceViewController is a subclass of GLKViewController (what this means,
+and what consequences it implies is covered later), and works in the
+following way (written assuming a request to start a retrace from the gateway
+client):
+
+- When initWithJSON is called, retracing-state is prepared by calling
+  iOSRetracer_initWithJson(jsonData, storagePath, resultFilePath). (Declared
+  in iOS_API.h.) This, and associated functions, are used to abstract away
+  what's going on behind-the-scenes in terms of configuring the global Retrace
+  object and TraceExecutor.
+
+- Once the view loads (viewDidLoad is called on the PARetraceViewController),
+  information about what kind of context (e.g. which profile) and surface
+  (color-bits, depth-bits, etc.) is necessary is retrived by calling
+  iOSRetracer_getRetracerOptions(). Based on this, a context is created and a
+  surface requested using options equal to or better than those spesified
+  (e.g., a surface employing 4x MSAA is created if 2x MSAA is requested, since
+  iOS only support 4x or nothing). The GLKViewController super-class is set up
+  to draw frames as fast as possible (60 HZ).
+
+- A callback to draw a frame is received by the PARetraceViewController once
+  the device is ready. If this is the first frame, the properties of the
+  created surface is recorded and checked through calling
+  iOSRetracer_setAndCheckSelectedConfig(...). This stores the actual
+  properties of the surface in GLWS (part of the Retracer) so that it can be
+  returned together with the results. If on-screen retracing is requested, the
+  surface with and height is also checked to be sufficently large.
+
+  Next, iOSRetracer_retraceUntilSwapBufferr() is called. This makes sure
+  everything is ready for the global Retracer object, and then calls
+  RetraceUntilSwapBuffers() on it. (What "making sure everything is ready"
+  means is covered when talking about GLKView below.) The return value is
+  interpreted and returned so that PARetraceViewController can know if the
+  retrace is finished or not.
+
+- The previous step is performed until retracing is done. Once it is, the
+  PARetraceViewController simply pops itself, returning control to the
+  view-controller which originally created it. If a result-file was produces
+  (i.e. the retrace finished successfully), it will be in the location
+  spesified when the PARetraceViewController was initializd.
+
+Subclassing GLKViewController (part of the Apple GLKit framework) simplifies
+the interaction between the iOS UI system and OpenGL ES by doing much of the
+setup necessary. This includes preparing a surface to draw to as well as
+setting up a rendering loop. However, this convenience comes with some
+drawbacks it is necessary to be aware of. Before each frame, the GLKView:
+
+- Makes its owned EAGLContext the current context
+- Binds the framebuffer associated with the view's surface
+- Calls glViewport with the properties of the surface
+
+... and after each frame, it:
+
+- Presents the contents of the view's associated framebuffer to the screen.
+
+This is all done without the Retracer's knowledge, so all state it relies on
+therefore need to be reset before Retracer::RetraceUntilSwapBuffers() is
+called to draw the next frame. Because of this, before each frame
+iOSRetracer_retraceUntilSwapBuffers():
+
+- Restores the viewport as it was at the end of the last frame. (Unless this is
+  the first frame.)
+- Binds the framebuffer that was bound at the end of the last frame. (Again,
+  unless this is the first frame.)
+
+This work could potentially be avoided by not using a GLKit, instead
+implementing all required functionality it provides ourselves. There does not
+appear to be any great benefits to doing this at the moment however
+(especially since the overhead of these operations should be very small.
+
+Additionally, since the GLKView handles presenting the rendered frame to
+screen, there is no *SwapBuffers-call available to be called inside the
+retracer. The iOS GLWS-implementation (windowing system abstraction used
+inside the retracer) therefore simply does nothing on a call to
+Drawable::swapBuffers(). Because a call to swapBuffers is followed by the
+retracer returning control to the caller of RetraceUntilSwapBuffers() this is
+not a problem however, as the swap is done -- just not in that exact moment.
+This does mean that the optional timeBlockedOnSwap-measurement in the retracer
+does not return correct values on iOS however (as it assumes swapBuffers()
+actually does what is claims). By not using GLKView one could change
+the code to actually do the swap in swapBuffers() if this turns out to be
+beneficial. (Much of this behaviour is the way is its because that's how the
+old iOS port handled it, and there were no obvious benefits to changing it
+while only introducing additional complexity and effort.)
+
+-------------------------------
+Gateway Client implementation
+------------------------------
+
+The gateway client and related functionality works in the following way:
+
+- A PAGatewayClientViewController is responsible for displaying
+  gatway-connection-status as well as launching retraces when they are
+  requested. It implements the PAGatewayClientCallbackProtocol (an obj-c
+  protocol is analogous to a interface in other languauges) which allows it to
+  receive connection-status information as well as retrace-requests / return
+  retrace-status information (still running / finished). 
+
+- PAGatewayClientWrapper handles running the common gateway client code in a
+  separate thread. The PAGatewayClientViewController creates an instance of
+  this class and uses start() and stop() to control it. start() takes a
+  pointer to a object implementing the PAGatewayClientCallbackProtocol and
+  sets everything up so that the gateway client can communicate with that
+  object.
+
+- IOSDeviceInterface.h/mm is the iOS spesific implementation of
+  DeviceInterface. It fills out DeviceInfo in doGetDeviceInfo(), and forwards
+  doUpdateConnectionStatus(..) information by using a global pointer to an
+  object implementing the PAGatewayClientCallbackProtocol. (Since the
+  IOSDeviceInterface-object is created by the PAGatewayClientWrapper, it
+  doesn't actually have to use a global object, but as described below, the
+  iOSPaRetracePlugin does -- so it's convenient they use the same mechanism).
+  When gateway client is to be stopped, e.g. when the user selects to exit it
+  by clicking "Back" in the UI, this is stored here and eventually picked up
+  on the gateway client when it checks doIsClientRunning() -- eventually
+  causing the gateway client thread to stop executing allowing the
+  PAGatewayClientViewController to exit.
+
+- iOSPaRetracePlugin.h/mm is the gateway client plugin used to start and check
+  the status of retraces on iOS. It works by communicating with the object
+  pointed to by a global pointer to an object implementing the
+  PAGatewayClientCallbackProtocol (gIOSGatewayCallback). The reason for using
+  a global pointer here is because the plugin is created by the PluginManager
+  in the gateway client, so there is currently no easy way to inject a
+  callback-pointer or otherwise customize it.
+
+So, when the gateway receives a retrace-task, it is forwarded to the
+iOSPaRetracePlugin, which then calls startRetrace with relevant information
+(configuration data in JSON format, trace-storage-folder, and
+result-file-path) on the current handler (gIOSGatewayCallback). This handler
+is the PAGatewayClientViewController, and it reacts by creating a
+PARetraceViewController (described above) to do the retracing. It can then
+track the retrace status by seeing when it becomes visible again (the
+PARetraceViewController has popped itself off the view-controller-stack). The polling
+background gateway client thread will eventually discover the retrace is
+finished, and read the result-file.
+
+--------------------------------
+Building iOS project using Xcode
+--------------------------------
+
+To build the project, do the following:
+- Launch Xcode workspace by running retrace.xcworkspace located in
+  patrace/project/iOS/
+- Select the RetracerApp scheme using the selector immediatly to the right of
+  the "Stop" button in the upper left corner. 
+- Click the selector again, and select "Edit Scheme". Make sure Build
+  Configuration is "Release".
+- Build the app by clicking the "Play"-button in the upper right. This starts
+  the app on the device if everything is successfull. 
+  
+To prepare the app for duing actual retracing, to the above to build and run
+the app, but then stop it using the stop-button. Instead, start it manually on
+the device using the icon. This is because running it from Xcode also connects
+the debugger, which is likely to have some overhead associated with it.
+
+Some notes on the Xcode workspace:
+- The md5, snappy, png, and jsoncpp-projects builds static libraries which are
+  then linked by the RetracerApp.
+- The patrace-project contains the retracer and gateway-client code
+  (patrace/src/retracer and patrace/src/gateway_client). The
+  common-project contains code from the patrace/src/common.
+- Setting up include paths can be tricky. Using the "Levels" view in the
+  project/target Build Settings tab is recommended so that it is easier to see
+  where a given setting comes from (target/project/config-file).
+- The patrace-project has a "Run Script" build-phase which runs gen_source.sh
+  which again runs retrace.py / eglproc.py etc. This is run for each build,
+  and forces a large recompile. When developing it can be convenient to
+  disable the running of this script, as the files it generates are unlikely
+  to change (unless that's what your're tweaking). Remember to re-enable it
+  though.
+
+---------------------------
+iOS Jenkins integration
+---------------------------
+
+Build a Xcode-workspace from the command line is straightforward using the
+command "xcodebuild -workspace <path-to-workspace> -scheme <scheme>". In this
+case the command is:
+
+    xcodebuild -workspace patrace/project/iOS/retrace.xcworkspace -scheme RetracerApp
+
+To integrate with Jenkins, script/jenkins.sh has been updated to do this when
+building for iOS. A prerequisite for this working is that the right
+certificates/provisioning profiles for iOS development is set up for the user
+that's trying to build -- so this needs to be done beforehand.  (Just log in
+as the user which needs build-permission and set it up by following
+instructions from Apple.) Before building, the jenkins.sh script is also set
+up to unlock the keychain so that xcodebuild has the access it needs to sign
+the binaries. 
+
+To use a Mac as a Jenkins slave, the following was done:
+- Set up a custom user (login/password jenkins/jenkins).
+- Make sure SSH logins are enabled.
+- Login as normal and set up Xcode. 
+- Configure jenkins to use the machine as a slave, but only build jobs tied to
+  it.
+- Create a new Jenkins-job for the iOS project and tie it to the slave.
+
+-----------------
+Other notes
+-----------------
+
+- (New gateway only) iOS is using a prebuild libcurl which only works 100% on 64-bit devices. For
+  example, curl_off_t -- which is a typedeffed long -- have
+  different sizes on 32bit and 64bit devices, while the binary expects it to
+  be 8 bytes. This can be worked around by using a long long (8 bytes on all
+  iOS devices) instead, but the current assumption is that all iOS devices
+  will be 64-bit.

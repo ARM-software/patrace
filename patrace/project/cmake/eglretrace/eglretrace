@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+echo "*** Warning: 'eglretrace' name is DEPRECATED. Please use 'paretrace' instead. ***"
+DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd ) 
+$DIR/paretrace $@

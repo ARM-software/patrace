@@ -1,0 +1,412 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		991B8ABD197D2C6D00FCE164 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 991B8ABC197D2C6D00FCE164 /* Security.framework */; };
+		9921A5001949CA6900AB8430 /* PAGatewayClientWrapper.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9921A4FF1949CA6900AB8430 /* PAGatewayClientWrapper.mm */; };
+		9945769A194AF5C30028F48C /* PAMainMenuViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 99457698194AF5C30028F48C /* PAMainMenuViewController.m */; };
+		9945769B194AF5C30028F48C /* PAMainMenuViewController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 99457699194AF5C30028F48C /* PAMainMenuViewController.xib */; };
+		9945769E194B02C30028F48C /* PAGatewayClientViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 9945769D194B02C30028F48C /* PAGatewayClientViewController.m */; };
+		994576A1194B0BEF0028F48C /* IOSDeviceInterface.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9945769F194B0BEF0028F48C /* IOSDeviceInterface.mm */; };
+		9949352C1948ADB0000CABA0 /* RetracerAppConfig.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 9949352B1948ADB0000CABA0 /* RetracerAppConfig.xcconfig */; };
+		994B5861198A73690004AEBC /* libcommon.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 994B5860198A73690004AEBC /* libcommon.a */; };
+		994B5863198A73870004AEBC /* GLKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 994B5862198A73870004AEBC /* GLKit.framework */; };
+		994B5865198A73930004AEBC /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 994B5864198A73930004AEBC /* OpenGLES.framework */; };
+		994B5867198A73A40004AEBC /* libz.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 994B5866198A73A40004AEBC /* libz.dylib */; };
+		994B586D198A73A90004AEBC /* libjsoncpp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 994B5868198A73A90004AEBC /* libjsoncpp.a */; };
+		994B586E198A73A90004AEBC /* libmd5.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 994B5869198A73A90004AEBC /* libmd5.a */; };
+		994B586F198A73A90004AEBC /* libpatrace.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 994B586A198A73A90004AEBC /* libpatrace.a */; };
+		994B5870198A73A90004AEBC /* libpng.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 994B586B198A73A90004AEBC /* libpng.a */; };
+		994B5871198A73A90004AEBC /* libsnappy.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 994B586C198A73A90004AEBC /* libsnappy.a */; };
+		994B58A5198A74280004AEBC /* libcurl.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 994B58A4198A74280004AEBC /* libcurl.a */; };
+		9974A5E5194735BB007E020D /* PARetraceViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9974A5E4194735BB007E020D /* PARetraceViewController.mm */; };
+		9974A5E819473609007E020D /* iOS_API.mm in Sources */ = {isa = PBXBuildFile; fileRef = 9974A5E719473609007E020D /* iOS_API.mm */; };
+		99CA8E2E1946F90D00DC3DBD /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99CA8E2D1946F90D00DC3DBD /* UIKit.framework */; };
+		99CA8E301946F90D00DC3DBD /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99CA8E2F1946F90D00DC3DBD /* Foundation.framework */; };
+		99CA8E321946F90D00DC3DBD /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 99CA8E311946F90D00DC3DBD /* CoreGraphics.framework */; };
+		99CA8E381946F90D00DC3DBD /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 99CA8E361946F90D00DC3DBD /* InfoPlist.strings */; };
+		99CA8E3A1946F90D00DC3DBD /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 99CA8E391946F90D00DC3DBD /* main.m */; };
+		99CA8E3E1946F90D00DC3DBD /* PAAppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 99CA8E3D1946F90D00DC3DBD /* PAAppDelegate.mm */; };
+		99CA8E401946F90D00DC3DBD /* Default.png in Resources */ = {isa = PBXBuildFile; fileRef = 99CA8E3F1946F90D00DC3DBD /* Default.png */; };
+		99CA8E421946F90D00DC3DBD /* Default@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 99CA8E411946F90D00DC3DBD /* Default@2x.png */; };
+		99CA8E441946F90D00DC3DBD /* Default-568h@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 99CA8E431946F90D00DC3DBD /* Default-568h@2x.png */; };
+		99CA8E4C1946F95600DC3DBD /* PATraceFilesViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 99CA8E4B1946F95600DC3DBD /* PATraceFilesViewController.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		991B8ABC197D2C6D00FCE164 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		9921A4FE1949CA6900AB8430 /* PAGatewayClientWrapper.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PAGatewayClientWrapper.h; sourceTree = "<group>"; };
+		9921A4FF1949CA6900AB8430 /* PAGatewayClientWrapper.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = PAGatewayClientWrapper.mm; sourceTree = "<group>"; };
+		992288C9194EEA6B00F4AAEC /* PAGatewayClientCallbackProtocol.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PAGatewayClientCallbackProtocol.h; sourceTree = "<group>"; };
+		99457697194AF5C30028F48C /* PAMainMenuViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PAMainMenuViewController.h; sourceTree = "<group>"; };
+		99457698194AF5C30028F48C /* PAMainMenuViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = PAMainMenuViewController.m; sourceTree = "<group>"; };
+		99457699194AF5C30028F48C /* PAMainMenuViewController.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = PAMainMenuViewController.xib; sourceTree = "<group>"; };
+		9945769C194B02C30028F48C /* PAGatewayClientViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PAGatewayClientViewController.h; sourceTree = "<group>"; };
+		9945769D194B02C30028F48C /* PAGatewayClientViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = PAGatewayClientViewController.m; sourceTree = "<group>"; };
+		9945769F194B0BEF0028F48C /* IOSDeviceInterface.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = IOSDeviceInterface.mm; sourceTree = "<group>"; };
+		994576A0194B0BEF0028F48C /* IOSDeviceInterface.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = IOSDeviceInterface.h; sourceTree = "<group>"; };
+		9949352B1948ADB0000CABA0 /* RetracerAppConfig.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = RetracerAppConfig.xcconfig; sourceTree = "<group>"; };
+		994B5860198A73690004AEBC /* libcommon.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcommon.a; path = "../../../../../Library/Developer/Xcode/DerivedData/retrace-awcrlkuymjjvsbdaxsojcdfqrlmt/Build/Products/Release-iphoneos/libcommon.a"; sourceTree = "<group>"; };
+		994B5862198A73870004AEBC /* GLKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GLKit.framework; path = System/Library/Frameworks/GLKit.framework; sourceTree = SDKROOT; };
+		994B5864198A73930004AEBC /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
+		994B5866198A73A40004AEBC /* libz.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libz.dylib; path = usr/lib/libz.dylib; sourceTree = SDKROOT; };
+		994B5868198A73A90004AEBC /* libjsoncpp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libjsoncpp.a; path = "../../../../../Library/Developer/Xcode/DerivedData/retrace-awcrlkuymjjvsbdaxsojcdfqrlmt/Build/Products/Release-iphoneos/libjsoncpp.a"; sourceTree = "<group>"; };
+		994B5869198A73A90004AEBC /* libmd5.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libmd5.a; path = "../../../../../Library/Developer/Xcode/DerivedData/retrace-awcrlkuymjjvsbdaxsojcdfqrlmt/Build/Products/Release-iphoneos/libmd5.a"; sourceTree = "<group>"; };
+		994B586A198A73A90004AEBC /* libpatrace.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libpatrace.a; path = "../../../../../Library/Developer/Xcode/DerivedData/retrace-awcrlkuymjjvsbdaxsojcdfqrlmt/Build/Products/Release-iphoneos/libpatrace.a"; sourceTree = "<group>"; };
+		994B586B198A73A90004AEBC /* libpng.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libpng.a; path = "../../../../../Library/Developer/Xcode/DerivedData/retrace-awcrlkuymjjvsbdaxsojcdfqrlmt/Build/Products/Release-iphoneos/libpng.a"; sourceTree = "<group>"; };
+		994B586C198A73A90004AEBC /* libsnappy.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsnappy.a; path = "../../../../../Library/Developer/Xcode/DerivedData/retrace-awcrlkuymjjvsbdaxsojcdfqrlmt/Build/Products/Release-iphoneos/libsnappy.a"; sourceTree = "<group>"; };
+		994B58A4198A74280004AEBC /* libcurl.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libcurl.a; path = ../../../../thirdparty/libcurl_prebuilt/ios/lib/libcurl.a; sourceTree = "<group>"; };
+		9974A5E3194735BB007E020D /* PARetraceViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PARetraceViewController.h; sourceTree = "<group>"; };
+		9974A5E4194735BB007E020D /* PARetraceViewController.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = PARetraceViewController.mm; sourceTree = "<group>"; };
+		9974A5E619473609007E020D /* iOS_API.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = iOS_API.h; sourceTree = "<group>"; };
+		9974A5E719473609007E020D /* iOS_API.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = iOS_API.mm; sourceTree = "<group>"; };
+		99CA8E2A1946F90D00DC3DBD /* RetracerApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RetracerApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		99CA8E2D1946F90D00DC3DBD /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		99CA8E2F1946F90D00DC3DBD /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		99CA8E311946F90D00DC3DBD /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		99CA8E351946F90D00DC3DBD /* RetracerApp-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "RetracerApp-Info.plist"; sourceTree = "<group>"; };
+		99CA8E371946F90D00DC3DBD /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		99CA8E391946F90D00DC3DBD /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		99CA8E3B1946F90D00DC3DBD /* RetracerApp-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "RetracerApp-Prefix.pch"; sourceTree = "<group>"; };
+		99CA8E3C1946F90D00DC3DBD /* PAAppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PAAppDelegate.h; sourceTree = "<group>"; };
+		99CA8E3D1946F90D00DC3DBD /* PAAppDelegate.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = PAAppDelegate.mm; sourceTree = "<group>"; };
+		99CA8E3F1946F90D00DC3DBD /* Default.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Default.png; sourceTree = "<group>"; };
+		99CA8E411946F90D00DC3DBD /* Default@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Default@2x.png"; sourceTree = "<group>"; };
+		99CA8E431946F90D00DC3DBD /* Default-568h@2x.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Default-568h@2x.png"; sourceTree = "<group>"; };
+		99CA8E4A1946F95500DC3DBD /* PATraceFilesViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PATraceFilesViewController.h; sourceTree = "<group>"; };
+		99CA8E4B1946F95600DC3DBD /* PATraceFilesViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = PATraceFilesViewController.m; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		99CA8E271946F90D00DC3DBD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				994B58A5198A74280004AEBC /* libcurl.a in Frameworks */,
+				994B586D198A73A90004AEBC /* libjsoncpp.a in Frameworks */,
+				994B586E198A73A90004AEBC /* libmd5.a in Frameworks */,
+				994B5870198A73A90004AEBC /* libpng.a in Frameworks */,
+				994B5871198A73A90004AEBC /* libsnappy.a in Frameworks */,
+				994B5867198A73A40004AEBC /* libz.dylib in Frameworks */,
+				994B5861198A73690004AEBC /* libcommon.a in Frameworks */,
+				994B586F198A73A90004AEBC /* libpatrace.a in Frameworks */,
+				994B5865198A73930004AEBC /* OpenGLES.framework in Frameworks */,
+				994B5863198A73870004AEBC /* GLKit.framework in Frameworks */,
+				991B8ABD197D2C6D00FCE164 /* Security.framework in Frameworks */,
+				99CA8E2E1946F90D00DC3DBD /* UIKit.framework in Frameworks */,
+				99CA8E301946F90D00DC3DBD /* Foundation.framework in Frameworks */,
+				99CA8E321946F90D00DC3DBD /* CoreGraphics.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		99CA8E211946F90D00DC3DBD = {
+			isa = PBXGroup;
+			children = (
+				9949352B1948ADB0000CABA0 /* RetracerAppConfig.xcconfig */,
+				99CA8E331946F90D00DC3DBD /* retracer_application */,
+				99CA8E2C1946F90D00DC3DBD /* Frameworks */,
+				99CA8E2B1946F90D00DC3DBD /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		99CA8E2B1946F90D00DC3DBD /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				99CA8E2A1946F90D00DC3DBD /* RetracerApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		99CA8E2C1946F90D00DC3DBD /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				994B58A4198A74280004AEBC /* libcurl.a */,
+				994B5868198A73A90004AEBC /* libjsoncpp.a */,
+				994B5869198A73A90004AEBC /* libmd5.a */,
+				994B586A198A73A90004AEBC /* libpatrace.a */,
+				994B586B198A73A90004AEBC /* libpng.a */,
+				994B586C198A73A90004AEBC /* libsnappy.a */,
+				994B5866198A73A40004AEBC /* libz.dylib */,
+				994B5860198A73690004AEBC /* libcommon.a */,
+				994B5864198A73930004AEBC /* OpenGLES.framework */,
+				994B5862198A73870004AEBC /* GLKit.framework */,
+				991B8ABC197D2C6D00FCE164 /* Security.framework */,
+				99CA8E2D1946F90D00DC3DBD /* UIKit.framework */,
+				99CA8E2F1946F90D00DC3DBD /* Foundation.framework */,
+				99CA8E311946F90D00DC3DBD /* CoreGraphics.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		99CA8E331946F90D00DC3DBD /* retracer_application */ = {
+			isa = PBXGroup;
+			children = (
+				9974A5E619473609007E020D /* iOS_API.h */,
+				9974A5E719473609007E020D /* iOS_API.mm */,
+				99CA8E3C1946F90D00DC3DBD /* PAAppDelegate.h */,
+				99CA8E3D1946F90D00DC3DBD /* PAAppDelegate.mm */,
+				99CA8E4A1946F95500DC3DBD /* PATraceFilesViewController.h */,
+				99CA8E4B1946F95600DC3DBD /* PATraceFilesViewController.m */,
+				9974A5E3194735BB007E020D /* PARetraceViewController.h */,
+				9974A5E4194735BB007E020D /* PARetraceViewController.mm */,
+				9921A4FE1949CA6900AB8430 /* PAGatewayClientWrapper.h */,
+				9921A4FF1949CA6900AB8430 /* PAGatewayClientWrapper.mm */,
+				99457697194AF5C30028F48C /* PAMainMenuViewController.h */,
+				99457698194AF5C30028F48C /* PAMainMenuViewController.m */,
+				99457699194AF5C30028F48C /* PAMainMenuViewController.xib */,
+				9945769C194B02C30028F48C /* PAGatewayClientViewController.h */,
+				9945769D194B02C30028F48C /* PAGatewayClientViewController.m */,
+				9945769F194B0BEF0028F48C /* IOSDeviceInterface.mm */,
+				994576A0194B0BEF0028F48C /* IOSDeviceInterface.h */,
+				992288C9194EEA6B00F4AAEC /* PAGatewayClientCallbackProtocol.h */,
+				99CA8E341946F90D00DC3DBD /* Supporting Files */,
+			);
+			path = retracer_application;
+			sourceTree = "<group>";
+		};
+		99CA8E341946F90D00DC3DBD /* Supporting Files */ = {
+			isa = PBXGroup;
+			children = (
+				99CA8E351946F90D00DC3DBD /* RetracerApp-Info.plist */,
+				99CA8E361946F90D00DC3DBD /* InfoPlist.strings */,
+				99CA8E391946F90D00DC3DBD /* main.m */,
+				99CA8E3B1946F90D00DC3DBD /* RetracerApp-Prefix.pch */,
+				99CA8E3F1946F90D00DC3DBD /* Default.png */,
+				99CA8E411946F90D00DC3DBD /* Default@2x.png */,
+				99CA8E431946F90D00DC3DBD /* Default-568h@2x.png */,
+			);
+			name = "Supporting Files";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		99CA8E291946F90D00DC3DBD /* RetracerApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 99CA8E471946F90D00DC3DBD /* Build configuration list for PBXNativeTarget "RetracerApp" */;
+			buildPhases = (
+				99E347DC198FAE7900645962 /* ShellScript */,
+				99CA8E261946F90D00DC3DBD /* Sources */,
+				99CA8E271946F90D00DC3DBD /* Frameworks */,
+				99CA8E281946F90D00DC3DBD /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RetracerApp;
+			productName = retracer_application;
+			productReference = 99CA8E2A1946F90D00DC3DBD /* RetracerApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		99CA8E221946F90D00DC3DBD /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				CLASSPREFIX = PA;
+				LastUpgradeCheck = 0510;
+				ORGANIZATIONNAME = PATeam;
+			};
+			buildConfigurationList = 99CA8E251946F90D00DC3DBD /* Build configuration list for PBXProject "RetracerApp" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = 99CA8E211946F90D00DC3DBD;
+			productRefGroup = 99CA8E2B1946F90D00DC3DBD /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				99CA8E291946F90D00DC3DBD /* RetracerApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		99CA8E281946F90D00DC3DBD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9949352C1948ADB0000CABA0 /* RetracerAppConfig.xcconfig in Resources */,
+				99CA8E381946F90D00DC3DBD /* InfoPlist.strings in Resources */,
+				99CA8E401946F90D00DC3DBD /* Default.png in Resources */,
+				9945769B194AF5C30028F48C /* PAMainMenuViewController.xib in Resources */,
+				99CA8E421946F90D00DC3DBD /* Default@2x.png in Resources */,
+				99CA8E441946F90D00DC3DBD /* Default-568h@2x.png in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		99E347DC198FAE7900645962 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "${PROJECT_DIR}/../gen_version_info.sh";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		99CA8E261946F90D00DC3DBD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				99CA8E3A1946F90D00DC3DBD /* main.m in Sources */,
+				9945769A194AF5C30028F48C /* PAMainMenuViewController.m in Sources */,
+				994576A1194B0BEF0028F48C /* IOSDeviceInterface.mm in Sources */,
+				99CA8E3E1946F90D00DC3DBD /* PAAppDelegate.mm in Sources */,
+				9945769E194B02C30028F48C /* PAGatewayClientViewController.m in Sources */,
+				99CA8E4C1946F95600DC3DBD /* PATraceFilesViewController.m in Sources */,
+				9921A5001949CA6900AB8430 /* PAGatewayClientWrapper.mm in Sources */,
+				9974A5E5194735BB007E020D /* PARetraceViewController.mm in Sources */,
+				9974A5E819473609007E020D /* iOS_API.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		99CA8E361946F90D00DC3DBD /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				99CA8E371946F90D00DC3DBD /* en */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		99CA8E451946F90D00DC3DBD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 7.1;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		99CA8E461946F90D00DC3DBD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++0x";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
+				COPY_PHASE_STRIP = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 7.1;
+				OTHER_CFLAGS = "-DNS_BLOCK_ASSERTIONS=1";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		99CA8E481946F90D00DC3DBD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9949352B1948ADB0000CABA0 /* RetracerAppConfig.xcconfig */;
+			buildSettings = {
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "retracer_application/RetracerApp-Prefix.pch";
+				INFOPLIST_FILE = "retracer_application/RetracerApp-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 7.1;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/../../../../thirdparty/libcurl_prebuilt/ios/lib",
+				);
+				PRODUCT_NAME = RetracerApp;
+				WRAPPER_EXTENSION = app;
+			};
+			name = Debug;
+		};
+		99CA8E491946F90D00DC3DBD /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9949352B1948ADB0000CABA0 /* RetracerAppConfig.xcconfig */;
+			buildSettings = {
+				GCC_PRECOMPILE_PREFIX_HEADER = YES;
+				GCC_PREFIX_HEADER = "retracer_application/RetracerApp-Prefix.pch";
+				INFOPLIST_FILE = "retracer_application/RetracerApp-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 7.1;
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/thirdparty/libcurl_prebuilt/ios/lib",
+				);
+				PRODUCT_NAME = RetracerApp;
+				WRAPPER_EXTENSION = app;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		99CA8E251946F90D00DC3DBD /* Build configuration list for PBXProject "RetracerApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				99CA8E451946F90D00DC3DBD /* Debug */,
+				99CA8E461946F90D00DC3DBD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		99CA8E471946F90D00DC3DBD /* Build configuration list for PBXNativeTarget "RetracerApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				99CA8E481946F90D00DC3DBD /* Debug */,
+				99CA8E491946F90D00DC3DBD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 99CA8E221946F90D00DC3DBD /* Project object */;
+}

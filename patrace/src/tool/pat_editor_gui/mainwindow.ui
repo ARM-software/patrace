@@ -1,0 +1,398 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>832</width>
+    <height>582</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <widget class="QWidget" name="centralWidget">
+   <layout class="QGridLayout" name="gridLayout">
+    <item row="1" column="0" colspan="7">
+     <layout class="QHBoxLayout" name="horizontalLayout" stretch="3,5">
+      <item>
+       <layout class="QVBoxLayout" name="verticalLayout">
+        <item>
+         <widget class="QTreeWidget" name="treeJsonFile">
+          <property name="columnCount">
+           <number>1</number>
+          </property>
+          <attribute name="headerVisible">
+           <bool>false</bool>
+          </attribute>
+          <column>
+           <property name="text">
+            <string notr="true">1</string>
+           </property>
+          </column>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <item>
+           <widget class="QLineEdit" name="Filter">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+              <horstretch>3</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>13</width>
+              <height>22</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QPushButton" name="FindNext">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+              <horstretch>1</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Next(&amp;N)</string>
+            </property>
+            <property name="shortcut">
+             <string>Ctrl+N</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="FindPrevious">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+              <horstretch>1</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="text">
+             <string>Pre(&amp;P)</string>
+            </property>
+            <property name="shortcut">
+             <string>Ctrl+P</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QTableWidget" name="ItemInformation">
+        <property name="sizeAdjustPolicy">
+         <enum>QAbstractScrollArea::AdjustToContents</enum>
+        </property>
+        <property name="showGrid">
+         <bool>true</bool>
+        </property>
+        <property name="wordWrap">
+         <bool>false</bool>
+        </property>
+        <property name="rowCount">
+         <number>0</number>
+        </property>
+        <property name="columnCount">
+         <number>0</number>
+        </property>
+        <attribute name="horizontalHeaderVisible">
+         <bool>false</bool>
+        </attribute>
+        <attribute name="horizontalHeaderCascadingSectionResizes">
+         <bool>false</bool>
+        </attribute>
+        <attribute name="horizontalHeaderDefaultSectionSize">
+         <number>110</number>
+        </attribute>
+        <attribute name="horizontalHeaderMinimumSectionSize">
+         <number>110</number>
+        </attribute>
+        <attribute name="verticalHeaderVisible">
+         <bool>false</bool>
+        </attribute>
+        <attribute name="verticalHeaderCascadingSectionResizes">
+         <bool>true</bool>
+        </attribute>
+        <attribute name="verticalHeaderDefaultSectionSize">
+         <number>30</number>
+        </attribute>
+        <attribute name="verticalHeaderHighlightSections">
+         <bool>true</bool>
+        </attribute>
+        <attribute name="verticalHeaderMinimumSectionSize">
+         <number>30</number>
+        </attribute>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <item row="0" column="5">
+     <widget class="QToolButton" name="actionSetChange">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+        <horstretch>2</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="text">
+       <string>Set change</string>
+      </property>
+      <property name="icon">
+       <iconset>
+        <normalon>:/icon/icon/check.png</normalon>
+       </iconset>
+      </property>
+      <property name="shortcut">
+       <string>Ctrl+S</string>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="3">
+     <widget class="QToolButton" name="actionAdd">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+        <horstretch>1</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="text">
+       <string>Add(&amp;A)</string>
+      </property>
+      <property name="icon">
+       <iconset>
+        <normalon>:/icon/icon/add.png</normalon>
+       </iconset>
+      </property>
+      <property name="shortcut">
+       <string>Ctrl+A</string>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="6">
+     <widget class="QToolButton" name="actionHelp">
+      <property name="text">
+       <string>...</string>
+      </property>
+      <property name="icon">
+       <iconset>
+        <normalon>:/icon/icon/help.png</normalon>
+       </iconset>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="4">
+     <widget class="QToolButton" name="actionDelete">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+        <horstretch>1</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="text">
+       <string>Delete(&amp;D)</string>
+      </property>
+      <property name="icon">
+       <iconset>
+        <normalon>:/icon/icon/delete.png</normalon>
+       </iconset>
+      </property>
+      <property name="shortcut">
+       <string>Ctrl+D</string>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="2">
+     <widget class="QToolButton" name="actionNewItem">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+        <horstretch>1</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="text">
+       <string>New(&amp;N)</string>
+      </property>
+      <property name="icon">
+       <iconset>
+        <normalon>:/icon/icon/new.png</normalon>
+       </iconset>
+      </property>
+      <property name="shortcut">
+       <string>Ctrl+N</string>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="0">
+     <widget class="QToolButton" name="actionOpen">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="text">
+       <string>Open(&amp;O)</string>
+      </property>
+      <property name="icon">
+       <iconset>
+        <normalon>:/icon/icon/open.png</normalon>
+       </iconset>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="1">
+     <widget class="QToolButton" name="actionSave">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="text">
+       <string>Save(&amp;S)</string>
+      </property>
+      <property name="icon">
+       <iconset>
+        <normalon>:/icon/icon/save.png</normalon>
+       </iconset>
+      </property>
+     </widget>
+    </item>
+   </layout>
+   <zorder>actionNewItem</zorder>
+   <zorder>actionDelete</zorder>
+   <zorder>actionSetChange</zorder>
+   <zorder>actionSave</zorder>
+   <zorder>actionOpen</zorder>
+   <zorder>actionAdd</zorder>
+   <zorder>actionHelp</zorder>
+  </widget>
+  <widget class="QStatusBar" name="statusBar"/>
+  <widget class="QMenuBar" name="menuBar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>832</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menu_File">
+    <property name="title">
+     <string>&amp;File</string>
+    </property>
+    <widget class="QMenu" name="menuOpen">
+     <property name="title">
+      <string>&amp;Open</string>
+     </property>
+     <addaction name="actionOpen_Pat_File"/>
+     <addaction name="separator"/>
+     <addaction name="actionOpen_Json_File"/>
+     <addaction name="actionOpen_Json_Directory"/>
+    </widget>
+    <widget class="QMenu" name="menu_Save">
+     <property name="title">
+      <string>&amp;Save</string>
+     </property>
+     <addaction name="actionSave_as_PAt"/>
+     <addaction name="separator"/>
+     <addaction name="actionSave_as_Json"/>
+    </widget>
+    <addaction name="menuOpen"/>
+    <addaction name="menu_Save"/>
+   </widget>
+   <widget class="QMenu" name="menu_Edit">
+    <property name="title">
+     <string>&amp;Edit</string>
+    </property>
+    <addaction name="actionSave_Item"/>
+    <addaction name="actionNew_Item"/>
+    <addaction name="actionAdd_Item"/>
+    <addaction name="actionDelete_Item"/>
+   </widget>
+   <addaction name="menu_File"/>
+   <addaction name="menu_Edit"/>
+  </widget>
+  <widget class="QToolBar" name="toolBar">
+   <property name="windowTitle">
+    <string>toolBar</string>
+   </property>
+   <attribute name="toolBarArea">
+    <enum>TopToolBarArea</enum>
+   </attribute>
+   <attribute name="toolBarBreak">
+    <bool>false</bool>
+   </attribute>
+  </widget>
+  <action name="actionrter">
+   <property name="text">
+    <string>rter</string>
+   </property>
+  </action>
+  <action name="actionOpen_Pat_File">
+   <property name="text">
+    <string>Open Pat File</string>
+   </property>
+  </action>
+  <action name="actionOpen_Json_File">
+   <property name="text">
+    <string>Open Json File</string>
+   </property>
+  </action>
+  <action name="actionOpen_Json_Directory">
+   <property name="text">
+    <string>Open Json Directory</string>
+   </property>
+  </action>
+  <action name="actionSave_as_PAt">
+   <property name="text">
+    <string>Save as Pat</string>
+   </property>
+  </action>
+  <action name="actionSave_as_Json">
+   <property name="text">
+    <string>Save as Json</string>
+   </property>
+  </action>
+  <action name="actionSave_Item">
+   <property name="text">
+    <string>Save Change</string>
+   </property>
+  </action>
+  <action name="actionNew_Item">
+   <property name="text">
+    <string>New Item</string>
+   </property>
+  </action>
+  <action name="actionAdd_Item">
+   <property name="text">
+    <string>Add Item</string>
+   </property>
+  </action>
+  <action name="actionDelete_Item">
+   <property name="text">
+    <string>Delete Item</string>
+   </property>
+  </action>
+ </widget>
+ <layoutdefault spacing="6" margin="11"/>
+ <resources/>
+ <connections/>
+</ui>

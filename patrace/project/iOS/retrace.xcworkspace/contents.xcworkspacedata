@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:common/common.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:retracer/../retracer_application/RetracerApp.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:retracer/patrace.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:png/png.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:jsoncpp/jsoncpp.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:snappy/snappy.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:md5/md5.xcodeproj">
+   </FileRef>
+</Workspace>

@@ -1,0 +1,23 @@
+#if !defined(CONFIG_HPP_)
+#define CONFIG_HPP_
+
+// These are macros to make sure we compile these as resolved strings in the binary,
+// to allow easy verification of binaries for non-native platforms version using "strings".
+
+#define PATRACE_VERSION_MAJOR @PATRACE_VERSION_MAJOR@
+#define PATRACE_VERSION_MINOR @PATRACE_VERSION_MINOR@
+#define PATRACE_VERSION_PATCH @PATRACE_VERSION_PATCH@
+
+#define PATRACE_REVISION "@PATRACE_REVISION@"
+#define PATRACE_VERSION_TYPE "@PATRACE_VERSION_TYPE@"
+
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
+#if PATRACE_VERSION_PATCH
+#define PATRACE_VERSION "r" STR(PATRACE_VERSION_MAJOR) "p" STR(PATRACE_VERSION_MINOR) "." STR(PATRACE_VERSION_PATCH) " " PATRACE_VERSION_TYPE " " PATRACE_REVISION
+#else
+#define PATRACE_VERSION "r" STR(PATRACE_VERSION_MAJOR) "p" STR(PATRACE_VERSION_MINOR) " " PATRACE_VERSION_TYPE " " PATRACE_REVISION
+#endif
+
+#endif // !defined(CONFIG_HPP_)

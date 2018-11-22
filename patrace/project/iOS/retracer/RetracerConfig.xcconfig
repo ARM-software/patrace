@@ -1,0 +1,13 @@
+//
+//  RetracerConfig.xcconfig
+//  retracer
+//
+//  Created by Christian Forfang on 6/10/14.
+//  Copyright (c) 2014 PATeam. All rights reserved.
+//
+
+HEADER_SEARCH_PATHS = $(inherited) "../../../../thirdparty/" "../../../../thirdparty/opengl-registry/api" "../../../../thirdparty/snappy" "../../../../thirdparty/libcurl_prebuilt/ios/include" "../../../../thirdparty/jsoncpp/include" "../../../src" "../../../common"
+
+LIBRARY_SEARCH_PATHS = $(inherited) "$(SRCROOT)/../../../../thirdparty/libcurl_prebuilt/ios/lib"
+
+GCC_PREPROCESSOR_DEFINITIONS = $(BASE_PREPROCESSOR_MACROS) GLES_CALLCONVENTION= RETRACE PLATFORM_64BIT $(inherited)

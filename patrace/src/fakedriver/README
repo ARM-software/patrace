@@ -1,0 +1,24 @@
+1. Hook egl/gles function calls from the application.
+2. Forward the function calls to the interceptor or the real driver depend on configurations.
+
+Q: How do I build this for Android?
+A: Go to patrace/project/android/fakedriver and issue make.
+It builds two sets of libraries: the separate libraries (libEGL_wrapper.so,
+libGLESv1_CM_wrapper.so, libGLESv2_wrapper.so) and the monolithic library
+(libGLES_wrapper.so). Depending on your system you'll need to either
+install the separate or the monolithic wrapper.
+
+Look into /system/lib/egl and /system/vendor/lib/egl on your device. If you
+see libGLES_mali.so, you need to install the monolithic library. (This means
+you probably have JB.) Otherwise you'll need to install the separate libraries.
+
+To install the monolithic library:
+
+$ adb push libGLES_wrapper.so /system/vendor/lib/egl (or /system/lib/egl,
+wherever libGLES_mali.so is located.)
+
+To install the separate libraries:
+$ adb push libEGL_wrapper.so /system/lib/egl
+$ adb push libGLESv1_CM_wrapper.so /system/lib/egl
+$ adb push libGLESv2_wrapper.so /system/lib/egl
+
