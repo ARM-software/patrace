@@ -581,7 +581,7 @@ class Tracer:
             print '%s    %s%s(%s);' % (indent, result, dispatch, params)
             print '%s    --gTraceThread.at(tid).mCallDepth;' % indent
             print '%s    const char *str = reinterpret_cast<const char*>(_result);' % indent
-            print '%s    if (name == GL_EXTENSIONS && _result && (strcmp(str, "GL_ARM_mali_shader_binary") == 0 || strcmp(str, "GL_ARM_mali_program_binary") == 0 || strcmp(str, "GL_OES_get_program_binary") == 0))' % indent
+            print '%s    if (name == GL_EXTENSIONS && _result && tracerParams.ErrorOutOnBinaryShaders && (strcmp(str, "GL_ARM_mali_shader_binary") == 0 || strcmp(str, "GL_ARM_mali_program_binary") == 0 || strcmp(str, "GL_OES_get_program_binary") == 0))' % indent
             print '%s    {' % indent
             print '%s        static std::string s;' % indent
             print '%s        s = str;' % indent
@@ -675,7 +675,7 @@ class Tracer:
             print '        _result = reinterpret_cast<const GLubyte*>(tracerParams.SupportedExtensionsString.c_str());'
             #print r'        DBG_LOG("Fake extensions: \'%s\'\n", (const char*)_result);'
             print '    }'
-            print '    else if (name == GL_EXTENSIONS) // remove binary shader support by default'
+            print '    else if (name == GL_EXTENSIONS && tracerParams.ErrorOutOnBinaryShaders) // remove binary shader support by default'
             print '    {'
             print '        static std::string retval;'
             print '        retval = "";'
@@ -709,7 +709,7 @@ class Tracer:
             print '%s    *data = value;' % indent
             print '%s}' % indent
             # remove binary program / shader support
-            print '%selse if (pname == GL_NUM_PROGRAM_BINARY_FORMATS || pname == GL_NUM_SHADER_BINARY_FORMATS)' % indent
+            print '%selse if (tracerParams.ErrorOutOnBinaryShaders && (pname == GL_NUM_PROGRAM_BINARY_FORMATS || pname == GL_NUM_SHADER_BINARY_FORMATS))' % indent
             print '%s{' % indent
             print '%s    *data = 0;' % indent
             print '%s}' % indent

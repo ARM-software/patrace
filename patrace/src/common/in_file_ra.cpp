@@ -247,7 +247,15 @@ void InFileRA::ReadSigBook() {
         mExIdToLen[id] = gApiInfo.NameToLen(name);
         mExIdToFunc[id] = gApiInfo.NameToFptr(name);
     }
+}
 
+void InFileRA::copySigBook(std::vector<std::string> &sigbook)
+{
+    sigbook.push_back("");
+    for (unsigned short id = 1; id <= mMaxSigId; ++id)
+    {
+        sigbook.push_back(mExIdToName[id]);
+    }
 }
 
 }

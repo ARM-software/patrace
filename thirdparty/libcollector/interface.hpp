@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <atomic>
 #include <thread>
+#include <pthread.h>
 #include <chrono>
 
 #include <jsoncpp/json/value.h>

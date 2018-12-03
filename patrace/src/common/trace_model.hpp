@@ -289,7 +289,7 @@ public:
     unsigned int            mTxtColor;
 
     std::string ToStr(bool isAbbreviate = true);
-    char* Serialize(char* dest);
+    char* Serialize(char* dest, int overrideID = -1);
     void Stylize();
 
     std::string ToCppCall();

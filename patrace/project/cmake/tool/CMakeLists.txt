@@ -489,4 +489,27 @@ target_link_libraries (trace_to_txt
 )
 add_dependencies (trace_to_txt call_parser_src_generation)
 install (TARGETS trace_to_txt DESTINATION tools)
+
+###
+
+add_executable(remove_crop
+    ${SRC_ROOT}/tool/remove_crop.cpp
+    ${SRC_FOR_TOOLS}
+)
+target_link_libraries(remove_crop
+    md5
+    jsoncpp
+    common_eglstate
+    common_image
+    common_system
+    common
+    ${PNG_LIBRARIES}
+    ${ZLIB_LIBRARIES}
+    ${SNAPPY_LIBRARIES}
+    ${LIBRARIES_FOR_TOOLS}
+    ${LIBRARIES_FOR_TOOLS_SYSTEM}
+)
+add_dependencies(remove_crop call_parser_src_generation)
+install(TARGETS remove_crop DESTINATION tools)
+
 ###########################################################################

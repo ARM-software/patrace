@@ -1040,7 +1040,7 @@ std::string CallTM::ToStr(bool isAbbreviate)
     return mRet.ToStr(this, isAbbreviate ? 32 : 0) + " " + mCallName + "(" + strArgs + ")" + strErr;
 }
 
-char* CallTM::Serialize(char* dest)
+char* CallTM::Serialize(char* dest, int overrideID)
 {
     if (mCallId == 0) // This call is not supported by ApiInfo
     {
@@ -1052,12 +1052,18 @@ char* CallTM::Serialize(char* dest)
     int len = gApiInfo.IdToLenArr[mCallId];
     if (len) {
         BCall *pCall = (BCall*)dest;
-        pCall->funcId = mCallId;
+        if (overrideID == -1)
+            pCall->funcId = mCallId;
+        else
+            pCall->funcId = overrideID;
         pCall->tid = mTid;
         pCall->reserved = 0;
         dest += sizeof(BCall);
     } else {
-        pCallVlen->funcId = mCallId;
+        if (overrideID == -1)
+            pCallVlen->funcId = mCallId;
+        else
+            pCallVlen->funcId = overrideID;
         pCallVlen->tid = mTid;
         pCallVlen->reserved = 0;
         dest += sizeof(BCall_vlen);

@@ -67,6 +67,7 @@ public:
         }
         return 0;
     }
+    void copySigBook(std::vector<std::string> &sigbook);
 
 private:
     bool ReadChunk(unsigned int len) {

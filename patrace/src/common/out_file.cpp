@@ -40,7 +40,7 @@ OutFile::~OutFile()
     Close();
 }
 
-bool OutFile::Open(const char* name, bool writeSigBook)
+bool OutFile::Open(const char* name, bool writeSigBook, const std::vector<std::string> *sigbook)
 {
     os::String autogenFileName;
     if (name == NULL) {
@@ -82,7 +82,10 @@ bool OutFile::Open(const char* name, bool writeSigBook)
     CreateCache(SNAPPY_CHUNK_SIZE);
     if (writeSigBook)
     {
-        WriteSigBook();
+        if (sigbook)
+            WriteSigBook(sigbook);
+        else
+            WriteSigBook(NULL);
     }
 
     return true;
@@ -181,19 +184,30 @@ void OutFile::CreateCache(int len)
     mCompressedCache = new char[mCompressedCacheLen];
 }
 
-void OutFile::WriteSigBook()
+void OutFile::WriteSigBook(const std::vector<std::string> *sigbook)
 {
     char* buf = new char[1024*1024];
     char* dest = buf;
 
     unsigned int* toNext = (unsigned int*)dest;
     dest = WriteFixed<unsigned int>(dest, 0);           // leave a slot
-    dest = WriteFixed<unsigned int>(dest, ApiInfo::MaxSigId);   // cnt
-
-    for (unsigned short id = 1; id <= ApiInfo::MaxSigId; ++id)
+    if (sigbook)
     {
-        dest = WriteFixed<unsigned int>(dest, id);
-        dest = WriteString(dest, ApiInfo::IdToNameArr[id]);
+        dest = WriteFixed<unsigned int>(dest, sigbook->size() - 1);   // cnt
+        for (unsigned short id = 1; id <= sigbook->size() - 1; ++id)
+        {
+            dest = WriteFixed<unsigned int>(dest, id);
+            dest = WriteString(dest, sigbook->at(id).c_str());
+        }
+    }
+    else
+    {
+        dest = WriteFixed<unsigned int>(dest, ApiInfo::MaxSigId);   // cnt
+        for (unsigned short id = 1; id <= ApiInfo::MaxSigId; ++id)
+        {
+            dest = WriteFixed<unsigned int>(dest, id);
+            dest = WriteString(dest, ApiInfo::IdToNameArr[id]);
+        }
     }
 
     *toNext = dest-buf;
