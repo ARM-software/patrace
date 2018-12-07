@@ -446,6 +446,57 @@ bool TraceExecutor::writeData(int frames, double duration, long long startTime, 
         if (gRetracer.mCollectors)
         {
             result_data_value["frame_data"] = gRetracer.mCollectors->results();
+
+            try {
+                if (result_data_value["frame_data"].isMember("ferret")) {
+                    if ( result_data_value["frame_data"]["ferret"].empty() ) {
+                        DBG_LOG("Ferret data detected, but the results are empty.\n");
+                    } else {
+                        DBG_LOG("Ferret data detected, checking for postprocessed results...\n");
+                        // Calculate CPU FPS
+                        if (result_data_value["frame_data"]["ferret"].isMember("postprocessed_results")) {
+                            DBG_LOG("Postprocessed ferret data detected, calculating CPU FPS!\n");
+
+                            int main_thread = result_data_value["frame_data"]["ferret"]["postprocessed_results"]["main_thread_index"].asInt();
+                            double main_thread_megacycles = result_data_value["frame_data"]["ferret"]["postprocessed_results"]["main_thread_megacycles"].asInt();
+                            DBG_LOG("Main (heaviest) thread index set to: %d, main thread mega cycles consumed = %f\n", main_thread, main_thread_megacycles);
+
+                            result_data_value["main_thread_cpu_runtime@3GHz"] = main_thread_megacycles / 3000.0;
+
+                            double main_thread_cpu_runtime_3ghz = result_data_value["main_thread_cpu_runtime@3GHz"].asDouble();
+                            if (main_thread_cpu_runtime_3ghz == 0.0) {
+                                DBG_LOG("WARNING: Main thread CPU megacycles reported as 0. Possibly invalid ferret results.\n");
+                                result_data_value["cpu_fps_main_thread@3GHz"] = 0.0;
+                            } else {
+                                result_data_value["cpu_fps_main_thread@3GHz"] = static_cast<double>(frames) / main_thread_cpu_runtime_3ghz;
+                            }
+
+                            double total_megacycles = result_data_value["frame_data"]["ferret"]["postprocessed_results"]["megacycles_sum"].asDouble();
+                            DBG_LOG("Total CPU mega cycles consumed = %f\n", total_megacycles);
+
+                            result_data_value["full_system_cpu_runtime@3GHz"] = total_megacycles / 3000.0;
+
+                            double full_system_cpu_runtime_3ghz = result_data_value["full_system_cpu_runtime@3GHz"].asDouble();
+                            if (full_system_cpu_runtime_3ghz == 0.0) {
+                                DBG_LOG("WARNING: Total CPU megacycles reported as 0. Possibly invalid ferret results.\n");
+                                result_data_value["cpu_fps_full_system@3GHz"] = 0.0;
+                            } else {
+                                result_data_value["cpu_fps_full_system@3GHz"] = static_cast<double>(frames) / full_system_cpu_runtime_3ghz;
+                            }
+
+                            if (duration < 5.0) {
+                                DBG_LOG("WARNING: Runtime was less than 5 seconds, this can lead to inaccurate CPU load measurements (increasing runtime is highly recommended)\n");
+                            }
+
+                            DBG_LOG("CPU full system FPS@3GHz = %f, CPU main thread FPS@3GHz = %f\n", result_data_value["cpu_fps_full_system@3GHz"].asDouble(), result_data_value["cpu_fps_main_thread@3GHz"].asDouble());
+                        } else {
+                            DBG_LOG("Ferret data has no postprocessed results! Possibly wrong input parameters (check frequency list and cpu list in input json)\n");
+                        }
+                    }
+                }
+            } catch (...) {
+                DBG_LOG("ERROR: Exception raised during CPU FPS calculations. Potentially broken JSON value returned by collector module.\n");
+            }
         }
 
         if (!mProgramAttributeListMap.empty())

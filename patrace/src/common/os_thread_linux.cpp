@@ -91,7 +91,7 @@ bool Thread::end()
 
 void* Thread::waitUntilExit()
 {
-    void* returnValue;
+    void* returnValue = nullptr;
     if (mStarted)
     {
         pthread_join(tid, &returnValue);

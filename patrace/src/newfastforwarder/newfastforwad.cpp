@@ -7,6 +7,10 @@
 #include <newfastforwarder/parser.hpp>
 #include <GLES2/gl2ext.h>
 
+#ifdef __clang__
+#pragma clang diagnostic ignored "-Wgnu-array-member-paren-init"
+#endif
+
 using namespace std;
 
 namespace newfastforwad {

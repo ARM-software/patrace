@@ -615,7 +615,7 @@ GLSLShader GLSLParser::preprocessor(std::string shader, int shaderType)
                 std::string version = scan_token(line).str;
                 assert(version.size() > 0);
                 ret.version = strtol(version.c_str(), nullptr, 10);
-                assert(ret.version != LONG_MAX && ret.version != LONG_MIN); // over-/underflow
+                assert(ret.version != INT_MAX && ret.version != INT_MIN); // over-/underflow
                 assert(ret.version != 0); // generic error
             }
             else if (directive == "error")
@@ -629,7 +629,7 @@ GLSLShader GLSLParser::preprocessor(std::string shader, int shaderType)
             {
                 std::string newlineno = scan_token(line).str;
                 long lineno2 = strtol(newlineno.c_str(), nullptr, 10);
-                assert(lineno2 != LONG_MAX && lineno2 != LONG_MIN); // over-/underflow
+                assert(lineno2 != INT_MAX && lineno2 != INT_MIN); // over-/underflow
                 if (mDebug) ret.code += "//## gobbled up (ignored) line " + newlineno;
             }
             else if (directive == "pragma")

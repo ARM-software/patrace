@@ -30,6 +30,7 @@
 #include "common/library.hpp"
 #include "os_string.hpp"
 #include <string>
+#include <unordered_set>
 
 #ifdef __APPLE__
 #include "TargetConditionals.h"
@@ -197,6 +198,10 @@ DLL_HANDLE OpenDllByType(enum DLLType t, const char *reqFunc)
     return ret;
 }
 
+/// Register each function for which we have complained about lacking
+/// function pointer, to avoid spamming endlessly about it.
+static std::unordered_set<std::string> complained;
+
 /*
  * Lookup a public EGL/GL/GLES symbol
  *
@@ -242,9 +247,10 @@ void* _getProcAddress(const char* procName)
         retValue = (void *)_eglGetProcAddress(procName);
     }
 
-    if (retValue == NULL)
+    if (retValue == NULL && complained.count(procName) == 0)
     {
         DBG_LOG("Cannot find the function pointer of %s\n", procName);
+        complained.insert(procName);
     }
     return retValue;
 }

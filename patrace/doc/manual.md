@@ -58,7 +58,7 @@ For embedded devices that do not use hardfloat (rare these days):
 
 ### Building for Android
 
-Build dependencies:Install the latest Android SDK and NDK. Add the ndk installation dir to your path environment variable, or to the NDK environment variable. Add the tools and platform-tools folders located in the android sdk installation folder to your path. Make sure you have java and ant installed:
+Build dependencies: You must install the Android SDK and NDK with support for the **android** command as well as the **ndk-build** command (deprecated in later SDK versions). You can get the SDK tools at https://dl.google.com/android/adt/adt-bundle-linux-x86_64-20140702.zip and the NDK at https://dl.google.com/android/repository/android-ndk-r13b-linux-x86_64.zip. Add the NDK installation dir to your path environment variable, or to the NDK environment variable. Add the tools and platform-tools folders located in the android SDK installation folder to your path. Make sure you have java and ant installed:
 
 >     apt-get install openjdk-7-jdk ant
 
@@ -673,11 +673,11 @@ libcollector is a library for doing performance measurements.
 
 All collectors can be configured with the following JSON options:
 
-| Option     | What it does                                                                    | Values        | Default |
-|------------|---------------------------------------------------------------------------------|---------------|---------|
-| "required" | Aborts the program if initializing the collector fails.                         | true or false | false   |
-| "threaded" | Run the collector in a separate background thread.                              | true or false | false   |
-| "rate"     | When run in a background thread, how often to collect samples, in milliseconds. | integer       | 100     |
+| Option     | What it does                                                                    | Values        | Default                   |
+|------------|---------------------------------------------------------------------------------|---------------|---------------------------|
+| "required" | Aborts the program if initializing the collector fails.                         | true or false | false                     |
+| "threaded" | Run the collector in a separate background thread.                              | true or false | false (true for ferret)   |
+| "rate"     | When run in a background thread, how often to collect samples, in milliseconds. | integer       | 100 (200 for ferret)      |
 
 Existing collectors:
 
@@ -701,19 +701,106 @@ Existing collectors:
 | procfs               | Information from /procfs filesystem                                                                                                                                                     | Various          |                                     | 
 | rusage               | Information from getrusage() system call                                                                                                                                                | Various          |                                     | 
 | power                | TBD                                                                                                                                                                                     |                  | TBD                                 | 
+| ferret               | Monitors CPU usage by polling system files. Gives coarse per thread CPU load statistics (cycles consumed, frequencies during the rune etc.) | Various | 'cpus': List of cpus to monitor. Example: cpus: [0, 2, 3, 5, 7], will monitor core 0, 2, 3, 5 and 7. All work done on the other cores will be ignored.<br>This defaults to all cores on the system if not set.<br><br>'enable_postprocessing': Boolean value. If this is set, the sampled results will be postprocessed at shutdown. Giving per. thread derived statistics like estimated CPU fps etc. Defaults to false.<br><br>'banned_threads': Only used when 'enable_postprocessing' is set to true. This is a list of thread names to exclude when generating derived statistics. Defaults to: 'banned_threads': ["ferret"], this will exclude the CPU overhead added by the ferret instrumentation.<br><br>'output_dir': Path to an existing directory where sample data will be stored. |
 
 Example
 -------
 
 The above names should be added as keys under the "collectors" dictionary in the input.json file:
 
->     { "collectors":
->         { "cpufreq": {},
->           "gpufreq": {
->               "path": "/sys/kernel/gpu/gpu\_clock" },
->               "perf": {},
->               "procfs": {}, 
->               "rusage": {}
->         },
->         "file": "driver2.orig.gles3.pat", "frames": "1-191", "offscreen": true, "preload": true
->     }
+```
+{
+	"collectors": {
+		"cpufreq": {},
+        "gpufreq": {
+        "path": "/sys/kernel/gpu/gpu\_clock" },
+        "perf": {},
+        "procfs": {},
+        "rusage": {}
+    },
+    "file": "driver2.orig.gles3.pat",
+    "frames": "1-191",
+    "offscreen": true,
+    "preload": true
+}
+```
+
+
+Generating CPU load statistics
+------------------------------
+
+You can get statistics for the CPU load (driver overhead) when running a trace by enabling the ferret libcollector module with postprocessing.
+
+To do this, create a json parameter file similar to the one below (we will refer to it as parameters.json):
+
+```
+{
+    "collectors": {
+        "ferret": {
+            "enable_postprocessing": true,
+            "output_dir": "<my_out_dir>"
+        }
+    },
+    "file": <opath_to_my_trace_file>,
+    "frames": "<start_frame>-<end_frame>",
+    "offscreen": true,
+    "preload": true
+}
+```
+
+
+Then run paretrace as follows:
+
+> \# Linux
+> paretrace -jsonParameters parameters.json results.json .
+>
+>
+> \# Android (using adb)
+> adb shell am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es jsonData parameters.json --es resultFile results.json
+>
+>
+> \# Android, using the (on device) android shell
+> am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es jsonData parameters.json --es resultFile results.json
+
+
+Once the run finishes the most relevant CPU statistics will be printed to stdout.
+
+Detailed derived statistics will be available in the results.json file.
+
+In depth (per. sample) data can be found in the <my\_out\_dir> folder specified in the parameters.json file.
+
+
+
+The most interesting metrics are the following:
+
+|Metric name stdout  | Metric name json | Calculated as	| Description |
+|--------------------|------------------|---------------|-------------|
+|CPU full system FPS@3GHz |	cpu_fps_full_system@3GHz | num_frames / (total_cpu_cycles / 3,000,000,000) | This metric represents the total amount of work done by the driver across all cores on the system.<br><br>Specifically, it is the maximum FPS the driver could deliver if it were to run on a single 3GHz CPU core comparable to the ones the CPU data was generated on.<br><br>This includes work done in all threads, and therefore it is not a good measure for the maximum throughput of the driver (as it is expected to be worse for multithreaded DDK's). Use it only as a indicator of how much work the driver does (and not necessarily how fast it does it). |
+| CPU main thread FPS@3GHz | cpu_fps_main_thread@3GHz | num_frames / (heaviest_thread_cpu_cycles / 3,000,000,000) | This metric represents the work done by the heaviest thread in the driver.<br><br>This is the number that most accurately represents the maximum throughput CPU side. It will give you the maximum FPS the driver could deliver if the heaviest thread (assumed to also be the bottleneck) was to run on a 3GHz CPU core comparable to the ones the CPU data was generated on.<br><br>This number is the one to use if you are looking for a representation of the maximum FPS the target system could deliver if it was CPU bound. |
+
+
+
+Getting robust results
+----------------------
+
+In order to get good results (with low error bars) it is essential that the content you are retracing runs for an extended period of time.
+
+If the content in question has a high CPU load, running for 5+ seconds should give you good results. Still, running for longer will improve the quality of the data and reduce error bars.
+
+If the content in question has a low CPU load, running for several minutes might be required.
+
+In general, if the "active" times across all threads (as seen in the results.json file) is less than 0.2 for more than 4 cores (on a system with a clock tick time of 10ms) you should increase the runtime of your application until this is not the case.
+
+A good rule of thumb is to ensure that all active times on all cores for all relevant threads is greater than the one divided by the clock ticks per seconf (1 / \_SC_CLK_TCK on linux) times 20.
+
+Note that this is rarely an issue for modern content. Ensuring a runtime of 30+ seconds will result in good data most of the time.
+
+Also, you should configure your framerange such that all loading frame work is skipped (as loading assets is not relevant to the driver performance).
+
+
+
+Calculating a CPU index number
+------------------------------
+A CPU index number is a single number that summarizes the CPU performance across multiple content entries. A good way to calculate this is to simply run a set of content entries and calculate the geometric mean of all the cpu_fps_main_thread@3GHz results.
+
+This index can then be used to compare the results from different platforms with different drivers (assuming the content set is the same across all platforms and the CPU cores on them do not differ too much).
