@@ -634,7 +634,7 @@ class Retracer(object):
         if func.name == 'glGetUniformLocation':
             print '    if (old_ret == -1)'
             print '        return;'
-        elif func.name in ['glMapBuffer', 'glMapBufferRange', 'glMapBufferOES']:
+        elif func.name in ['glMapBuffer', 'glMapBufferRange', 'glMapBufferOES', 'glMapBufferRangeEXT']:
             print '    (void)old_ret;  // Unused variable'
             print
             print '    Context& context = gRetracer.getCurrentContext();'

@@ -45,6 +45,7 @@ static bool bareLog = false;
 static bool report_unused_shaders = false;
 static bool write_used_shaders = false;
 static std::unordered_map<int, double> heavinesses;
+static bool no_cycles = true;
 
 struct ShaderState
 {
@@ -247,10 +248,10 @@ static void printHelp()
         "  -S            Show visual output\n"
         "  -s            Report also on shaders that are not in use\n"
         "  -n            Do not save screenshots\n"
+        "  -z            Show CPU cycles\n"
         "Options for per frame output:\n"
         "  -Z            Write out used shaders to disk\n"
         "Options for trace log:\n"
-        "  -z            Show CPU cycles for each call\n"
         "  -b            Bare log - useful for making diffs\n"
         ;
 }
@@ -336,6 +337,9 @@ static std::map<std::string, PerUnit> createPerFrame()
     v["programs_linked"].csv_description = "Programs linked";
     v["texture_binding"].csv_description = "Texture binding calls";
     v["buffer_binding"].csv_description = "Buffer binding calls";
+    v["vertex_buffer_binding"].csv_description = "Vertex buffer binding calls";
+    v["index_buffer_binding"].csv_description = "Index buffer binding calls";
+    v["uniform_buffer_binding"].csv_description = "Uniform buffer binding calls";
     v["vertex_buffer_changes"].csv_description = "Vertex buffer changes";
     v["uniform_buffer_changes"].csv_description = "Uniform buffer changes";
     v["index_buffer_changes"].csv_description = "Index buffer changes";
@@ -445,13 +449,14 @@ enum { FEATURE_VA, FEATURE_VBO, FEATURE_INDIRECT, FEATURE_SSBO, FEATURE_UBO, FEA
        FEATURE_INSTANCING, FEATURE_EGL_IMAGE, FEATURE_SEPARATE_SHADER_OBJECTS, FEATURE_VERTEX_ATTR_BINDING,
        FEATURE_VERTEX_BUFFER_BINDING, FEATURE_DISCARD_FBO, FEATURE_INVALIDATE_FBO, FEATURE_BINARY_SHADERS, FEATURE_TESSELLATION,
        FEATURE_GEOMETRY_SHADER, FEATURE_COMPUTE_SHADER, FEATURE_EGLCREATEIMAGE, FEATURE_POLYGON_OFFSET_FILL, FEATURE_VAO,
-       FEATURE_FBO_REUSE, FEATURE_INDIRECT_COMPUTE, FEATURE_MAX };
+       FEATURE_FBO_REUSE, FEATURE_INDIRECT_COMPUTE, FEATURE_CONTEXT_SHARING, FEATURE_ANISOTROPY, FEATURE_MAX };
 static std::vector<const char*> featurenames = { "VA", "VBO", "DrawIndirect", "SSBO", "UBO", "TransformFeedback", "PrimitiveRestart",
                                    "Instancing", "EGLImage", "SeparateShaderObjects", "VertexAttribBinding", "VertexBufferBinding",
                                    "DiscardFBO", "InvalidateFBO", "BinaryShaders", "Tessellation", "GeometryShader", "ComputeShader",
-                                   "EglCreateImage", "PolygonOffsetFill", "VAO", "FramebufferReuse", "IndirectCompute" };
+                                   "EglCreateImage", "PolygonOffsetFill", "VAO", "FramebufferReuse", "IndirectCompute", "ContextSharing",
+                                   "AnisotropicFiltering" };
 static std::vector<double> complexity_feature_value = { 0.02, 0.04, 0.2, 0.07, 0.06, 0.1, 0.2, 0.08, 0.08, 0.5, 0.15, 0.15, 0.05, 0.05, 0.3,
-                                                        0.4, 0.3, 0.2, 0.2, 0.2, 0.15, 0.5, 0.6 };
+                                                        0.4, 0.3, 0.2, 0.2, 0.2, 0.15, 0.5, 0.6, 0.2, 0.3 };
 
 struct CallData
 {
@@ -567,10 +572,21 @@ static void write_callstats(const std::map<std::string, CallData>& calldata, con
         DBG_LOG("Could not open %s for writing: %s\n", filename.c_str(), strerror(errno));
         return;
     }
-    fprintf(fp, "Function, Cycles, Count, Average\n");
-    for (auto& pair : calldata)
+    if (no_cycles)
     {
-        fprintf(fp, "%s, %ld, %ld, %ld\n", pair.first.c_str(), pair.second.cycles, pair.second.count, pair.second.cycles / pair.second.count);
+        fprintf(fp, "Function, Count\n");
+        for (auto& pair : calldata)
+        {
+            fprintf(fp, "%s, %ld\n", pair.first.c_str(), pair.second.count);
+        }
+    }
+    else
+    {
+        fprintf(fp, "Function, Cycles, Count, Average\n");
+        for (auto& pair : calldata)
+        {
+            fprintf(fp, "%s, %ld, %ld, %ld\n", pair.first.c_str(), pair.second.cycles, pair.second.count, pair.second.cycles / pair.second.count);
+        }
     }
     fclose(fp);
 }
@@ -601,14 +617,17 @@ void AnalyzeTrace::buffer_bound(GLenum target)
     if (target == GL_ARRAY_BUFFER)
     {
         perdraw["vertex_buffer_binding"].values.back()++;
+        perframe["vertex_buffer_binding"].values.back()++;
     }
     else if (target == GL_ELEMENT_ARRAY_BUFFER)
     {
         perdraw["index_buffer_binding"].values.back()++;
+        perframe["index_buffer_binding"].values.back()++;
     }
     else if (target == GL_SHADER_STORAGE_BUFFER || target == GL_UNIFORM_BUFFER)
     {
         perdraw["uniform_buffer_binding"].values.back()++;
+        perframe["uniform_buffer_binding"].values.back()++;
     }
 }
 
@@ -678,6 +697,10 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
             int share = call->mArgs[2]->GetAsInt();
             dumpstream << "    idx=" << contexts.size() << std::endl;
             contexts.push_back(Context(mret, contexts.size(), display, share));
+            if (share != 0)
+            {
+                features[FEATURE_CONTEXT_SHARING]++;
+            }
         }
         else if (call->mCallName == "eglDestroySurface")
         {
@@ -989,7 +1012,7 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
                         s.uniform_registers = v;
                     }
                 }
-                const int shaderidx = input.contexts[context_index].shader_remapping[shader];
+                const int shaderidx = input.contexts[context_index].shaders.remap(shader);
                 contexts[context_index].shaders[shaderidx] = s;
                 pclose(result);
             }
@@ -1043,7 +1066,7 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
 
             if (fb != 0 && relevant(frames) && id != 0)
             {
-                const int fbo_idx = input.contexts[context_index].framebuffer_remapping[input.contexts[context_index].drawframebuffer];
+                const int fbo_idx = input.contexts[context_index].framebuffers.remap(input.contexts[context_index].drawframebuffer);
                 const StateTracker::Framebuffer& framebuffer = input.contexts[context_index].framebuffers[fbo_idx];
                 // If the framebuffer attachments are modified in the same frame as they have been drawn to, then we consider it 'reused'.
                 if (framebuffer.used && framebuffer.last_used == frames)
@@ -1190,9 +1213,9 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
             else // glProgramUniform*()
             {
                 program_id = call->mArgs[0]->GetAsUInt();
-                if (input.contexts[context_index].program_remapping.count(program_id) > 0)
+                if (input.contexts[context_index].programs.contains(program_id))
                 {
-                    program_index = input.contexts[context_index].program_remapping[program_id];
+                    program_index = input.contexts[context_index].programs.remap(program_id);
                     location = call->mArgs[1]->GetAsInt();
                 }
             }
@@ -1274,7 +1297,7 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
 
             if (input.contexts[context_index].drawframebuffer != 0)
             {
-                int fbo_idx = input.contexts[context_index].framebuffer_remapping[input.contexts[context_index].drawframebuffer];
+                int fbo_idx = input.contexts[context_index].framebuffers.remap(input.contexts[context_index].drawframebuffer);
                 writeframebuffer = &input.contexts[context_index].framebuffers[fbo_idx];
             }
 
@@ -1414,22 +1437,26 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
                     const GLuint samplerObject = input.contexts[context_index].sampler_binding[s.value];
                     if (samplerObject) // do we have a sampler object bound?
                     {
-                        const int idx = input.contexts[context_index].sampler_remapping[samplerObject];
+                        const int idx = input.contexts[context_index].samplers.remap(samplerObject);
                         sampler = input.contexts[context_index].samplers[idx].state;
                     }
                     else if (texture_id != 0) // if not, use texture's sampler state
                     {
-                        const int idx = input.contexts[context_index].texture_remapping[texture_id];
+                        const int idx = input.contexts[context_index].textures.remap(texture_id);
                         sampler = input.contexts[context_index].textures[idx].state;
                     }
                     if (texture_id != 0)
                     {
                         texturetypefilters[texEnum(binding)][texEnum(sampler.min_filter)]++;
-                        const int idx = input.contexts[context_index].texture_remapping[texture_id];
+                        const int idx = input.contexts[context_index].textures.remap(texture_id);
                         StateTracker::Texture& texture = input.contexts[context_index].textures[idx];
                         texturetypesizes[texEnum(binding)][std::to_string(texture.width) + "x" + std::to_string(texture.height) + "x" + std::to_string(texture.depth)]++;
                         perframe["textures"].values.back()++;
                         perdraw["textures"].values.back()++;
+                        if (sampler.anisotropy > 1.0)
+                        {
+                            features[FEATURE_ANISOTROPY] = 1;
+                        }
                         if (input.contexts[context_index].render_passes.size() > 0 && input.contexts[context_index].render_passes.back().active
                             && renderpassframes.count(frames))
                         {
@@ -1484,7 +1511,7 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
 
     for (auto& c : input.contexts)
     {
-        for (auto& p : c.programs)
+        for (auto& p : c.programs.all())
         {
             if (!p.stats.drawcalls && !p.stats.dispatches)
             {
@@ -1539,7 +1566,7 @@ double AnalyzeTrace::calculate_dump_heaviness(const ParseInterfaceRetracing& inp
     long _dr = 0;
     for (const auto& c : input.contexts)
     {
-        for (const auto& p : c.programs)
+        for (const auto& p : c.programs.all())
         {
             _pr += p.stats.primitives;
             _dr += p.stats.drawcalls;
@@ -1568,7 +1595,7 @@ double AnalyzeTrace::calculate_heaviness(const ParseInterfaceRetracing& input, i
     long _dr = 0;
     for (const auto& c : input.contexts)
     {
-        for (const auto& p : c.programs)
+        for (const auto& p : c.programs.all())
         {
             if (p.stats_per_frame.count(frame) > 0)
             {
@@ -1607,7 +1634,7 @@ double AnalyzeTrace::calculate_complexity(const ParseInterfaceRetracing& input)
     int programs = 0;
     for (const auto& c : input.contexts)
     {
-        programs += c.programs.size();
+        programs += c.programs.all().size();
     }
     weights.push_back(ratio_with_cap(100, programs));
     weights.push_back(ratio_with_cap(10, texturetypes.size()));
@@ -1740,7 +1767,7 @@ Json::Value AnalyzeTrace::json_program(const StateTracker::Context& context, con
     int bytes = 0;
     for (const auto& pair : program.shaders)
     {
-        const StateTracker::Shader& shader = context.shaders[pair.second];
+        const StateTracker::Shader& shader = context.shaders.at(pair.second);
         const ShaderState& s = contexts[context.index].shaders[shader.index];
         lines += std::count(shader.source_code.cbegin(), shader.source_code.cend(), '\n');
         bytes += shader.source_compressed.size();
@@ -1841,25 +1868,25 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
         v["used_renderbuffer_target_types"] = used_renderbuffer_target_typesv;
         v["display"] = c.display;
         v["share"] = c.share_context;
-        v["shaders"] = (int)c.shaders.size();
-        v["textures"] = (int)c.textures.size();
+        v["shaders"] = (int)c.shaders.all().size();
+        v["textures"] = (int)c.textures.all().size();
         v["compressed_textures"] = (int)contexts[c.index].compressed_textures;
         v["framebuffers"] = Json::arrayValue;
-        for (const auto& fb : c.framebuffers)
+        for (const auto& fb : c.framebuffers.all())
         {
             v["framebuffers"].append(json_fb(c, fb.index, -1));
         }
-        v["renderbuffers"] = (int)c.renderbuffers.size();
-        v["samplers"] = (int)c.samplers.size();
-        v["buffers"] = (int)c.buffers.size();
-        v["queries"] = (int)c.queries.size();
+        v["renderbuffers"] = (int)c.renderbuffers.all().size();
+        v["samplers"] = (int)c.samplers.all().size();
+        v["buffers"] = (int)c.buffers.all().size();
+        v["queries"] = (int)c.queries.all().size();
         v["draw_calls"] = sum_map(c.draw_calls_per_frame);
         v["flush_calls"] = sum_map(c.flush_calls_per_frame);
         v["finish_calls"] = sum_map(c.finish_calls_per_frame);
-        v["transform_feedback_objects"] = (int)c.transform_feedbacks.size();
+        v["transform_feedback_objects"] = (int)c.transform_feedbacks.all().size();
         v["attribute_buffers"] = Json::arrayValue;
         std::map<std::tuple<GLenum, GLint, GLsizei>, int> buffer_combos;
-        for (const auto& buffer : c.buffers)
+        for (const auto& buffer : c.buffers.all())
         {
             for (const auto& tuple : buffer.types)
             {
@@ -1884,7 +1911,7 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
             v["attribute_buffers"].append(tv);
         }
         v["programs"] = Json::arrayValue;
-        for (auto& p : c.programs)
+        for (auto& p : c.programs.all())
         {
             if (p.stats.dispatches > 0 || p.stats.drawcalls > 0 || report_unused_shaders)
             {
@@ -2075,7 +2102,7 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
                 v["last_drawcall"] = r.last_call;
                 v["framebuffer_id"] = r.drawframebuffer;
                 const GLuint fb_id = r.drawframebuffer;
-                const int fb_index = c.framebuffer_remapping[fb_id];
+                const int fb_index = c.framebuffers.remap(fb_id);
                 StateTracker::Framebuffer& fb = c.framebuffers[fb_index];
                 used_fbos.insert(fb_index);
                 if (!fb.label.empty())
@@ -2091,7 +2118,7 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
                 {
                     for (auto t : r.used_renderbuffers)
                     {
-                        assert(t < (int)c.renderbuffers.size());
+                        assert(t < (int)c.renderbuffers.all().size());
                         assert(c.renderbuffers[t].id != 0);
                         list.append(c.renderbuffers[t].id);
                         digraph += add_node("    fbo_", fb_id, "rb_", c.renderbuffers[t].id);
@@ -2104,7 +2131,7 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
                     list = Json::arrayValue;
                     for (auto t : r.used_texture_targets)
                     {
-                        assert(t < (int)c.textures.size());
+                        assert(t < (int)c.textures.all().size());
                         assert(c.textures[t].id != 0);
                         list.append(c.textures[t].id);
                         digraph += add_node("    fbo_", fb_id, "tex_", c.textures[t].id);
@@ -2137,7 +2164,7 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
                     std::unordered_set<int> vertexset; // by id
                     for (const auto t : r.used_programs)
                     {
-                        assert(t < (int)c.programs.size());
+                        assert(t < (int)c.programs.all().size());
                         assert(c.programs[t].id != 0);
                         list.append(c.programs[t].id);
                         for (const auto s : c.programs[t].shaders)
@@ -2169,7 +2196,7 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
                 subresult["renderpasses"].append(v);
             }
         }
-        for (auto& r : c.textures)
+        for (auto& r : c.textures.all())
         {
             if (used_textures_by_id.count(r.index) > 0)
             {
@@ -2193,7 +2220,7 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
                 subresult["textures"].append(tex);
             }
         }
-        for (auto& r : c.programs)
+        for (auto& r : c.programs.all())
         {
             if (used_programs.count(r.index) == 0)
             {
@@ -2324,6 +2351,7 @@ int main(int argc, char **argv)
         else if (arg == "-z")
         {
             dumpCallTime = true;
+            no_cycles = false;
         }
         else if (arg == "-b")
         {

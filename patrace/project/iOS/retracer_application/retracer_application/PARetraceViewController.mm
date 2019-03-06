@@ -284,7 +284,7 @@
     {
         try
         {
-            iOSRetracer_TraceState state = iOSRetracer_retraceUntilSwapBuffers();
+            iOSRetracer_TraceState state = iOSRetracer_retrace();
             
             // Check if done
             if (state != iOSRetracer_TRACE_NOT_FINISHED)

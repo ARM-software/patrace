@@ -303,14 +303,14 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
     struct wl_display *display = wl_display_connect(NULL);
     if (!display) {
         gRetracer.reportAndAbort("Unable to open Wayland display\n");
-        return NULL;
+        return 0;
     }
 
     struct wl_registry *registry = wl_display_get_registry(display);
     if (!registry) {
         gRetracer.reportAndAbort("Unable to get Wayland display registry\n");
         wl_display_disconnect(display);
-        return NULL;
+        return 0;
     }
 
     static struct wl_registry_listener listener = {
@@ -330,7 +330,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
         gRetracer.reportAndAbort("Unable to add registry listener\n");
         wl_registry_destroy(registry);
         wl_display_disconnect(display);
-        return NULL;
+        return 0;
     }
 
     res = wl_display_roundtrip(display);
@@ -339,7 +339,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
         gRetracer.reportAndAbort("Unable to perform display roundtrip to get interfaces\n");
         wl_registry_destroy(registry);
         wl_display_disconnect(display);
-        return NULL;
+        return 0;
     }
 
     wl_registry_destroy(registry);
@@ -356,7 +356,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
             wl_seat_destroy(mSeat);
 
         wl_display_disconnect(display);
-        return NULL;
+        return 0;
     }
 
     static const struct wl_output_listener output_listener = {
@@ -403,7 +403,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
         wl_shell_destroy(mShell);
         wl_seat_destroy(mSeat);
         wl_display_disconnect(display);
-        return NULL;
+        return 0;
     }
 
     wl_list_init(&mKeyboardState.keysPressed);
@@ -426,7 +426,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
             wl_shell_destroy(mShell);
             wl_seat_destroy(mSeat);
             wl_display_disconnect(display);
-            return NULL;
+            return 0;
         }
 
         wl_proxy_set_queue((struct wl_proxy *)mKeyboard, mKBQueue);
@@ -435,7 +435,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
         if (res) {
             gRetracer.reportAndAbort("Unable to set keyboard listener\n");
             releaseNativeDisplay((EGLNativeDisplayType)display);
-            return NULL;
+            return 0;
         }
     }
 

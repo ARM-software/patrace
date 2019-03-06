@@ -395,7 +395,7 @@ static void retrace_eglDestroyContext(char* src)
 
     if (gRetracer.mOptions.mForceOffscreen && gRetracer.mMosaicNeedToBeFlushed) {
         DBG_LOG("Render the mosaic picture to screen before destroying context:\n");
-        gRetracer.forceRenderMosaicToScreen();
+        forceRenderMosaicToScreen();
         gRetracer.mMosaicNeedToBeFlushed = false;
     }
 
@@ -629,7 +629,7 @@ static void retrace_eglCreateImageKHR(char* src)
         try {
             graphicBuffer = gRetracer.mGraphicBuffers.at(tid).at(id);
         }
-        catch (std::out_of_range) {
+        catch (std::out_of_range&) {
             DBG_LOG("Cannot find the corresponding GraphicBuffer for eglCreateImageKHR in call %d. "
                     "Either a glGenGraphicBuffer missing or retracing a very old pat file.\n", gRetracer.GetCurCallId());
             goto retrace;
@@ -806,7 +806,6 @@ static void swapBuffersCommon(char* src, bool withDamage)
         if (gRetracer.mpOffscrMgr->MosaicToScreenIfNeeded())
         {
             pDrawable->swapBuffers();
-            gRetracer.mDoPresentFramebuffer = true;
             gRetracer.mMosaicNeedToBeFlushed = false;
         }
         else
@@ -837,7 +836,6 @@ static void swapBuffersCommon(char* src, bool withDamage)
             pDrawable->swapBuffers();
         }
         gRetracer.OnNewFrame();
-        gRetracer.mDoPresentFramebuffer = true;
     }
     gEGLMutex.unlock();
 }

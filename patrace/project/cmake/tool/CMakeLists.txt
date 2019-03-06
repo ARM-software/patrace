@@ -361,6 +361,20 @@ install(TARGETS trim DESTINATION tools)
 
 ###
 
+add_executable(strip
+    ${SRC_ROOT}/tool/strip.cpp
+    ${SRC_ROOT}/tool/utils.cpp
+    ${SRC_FOR_TOOLS}
+)
+target_link_libraries(strip
+    md5
+    ${LIBRARIES_FOR_TOOLS}
+)
+add_dependencies(strip call_parser_src_generation)
+install(TARGETS strip DESTINATION tools)
+
+###
+
 add_executable(resize
     ${SRC_ROOT}/tool/resize.cpp
     ${SRC_ROOT}/tool/utils.cpp

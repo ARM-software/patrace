@@ -177,7 +177,7 @@ public:
 
     void CloseTraceFile();
 
-    bool RetraceUntilSwapBuffers();
+    bool Retrace();
 
     // methods for debug purpose
     // Step forward specific number frames or drawcalls
@@ -185,7 +185,7 @@ public:
 
     void CheckGlError();
 
-    void reportAndAbort(const char *format, ...) const NORETURN;
+    void reportAndAbort(const char *format, ...); // const NORETURN;
     void saveResult();
     bool addResultInformation();
 
@@ -234,7 +234,6 @@ public:
         mCallStats[funcName].time += time;
         mCallStatsMutex.unlock();
     }
-    void forceRenderMosaicToScreen();
 
     common::InFile      mFile;
     RetraceOptions      mOptions;
@@ -245,7 +244,6 @@ public:
     bool                mFailedToLinkShaderProgram;
     bool volatile       mFinish;
 
-    bool                mDoPresentFramebuffer;
     OffscreenManager*   mpOffscrMgr;
     common::ClientSideBufferObjectSet mCSBuffers;
 #ifdef ANDROID
@@ -340,10 +338,13 @@ inline int Retracer::getCurTid()
         for (it = workThreadPool.begin(); it != workThreadPool.end(); it++)
         {
             WorkThread* wThread = it->second;
-            if (os::Thread::IsSameThread(cur_tid, wThread->getTid()))
+            if (wThread)
             {
-                map_tid = it->first;
-                break;
+                if (os::Thread::IsSameThread(cur_tid, wThread->getTid()))
+                {
+                    map_tid = it->first;
+                    break;
+                }
             }
         }
         if (it == workThreadPool.end())
@@ -368,7 +369,10 @@ inline unsigned Retracer::GetCurCallId()
     {
         int tid = getCurTid();
         Work *work = GetCurWork(tid);
-        id = work->getCallID();
+        if (work) // in case of a null pointer, there is no work in the queue at the beginning of retracing
+        {
+            id = work->getCallID();
+        }
     }
 
     return id;
@@ -426,7 +430,10 @@ inline unsigned Retracer::GetCurFrameId()
     {
         int tid = getCurTid();
         Work *work = GetCurWork(tid);
-        id = work->getFrameID();
+        if (work)
+        {
+            id = work->getFrameID();
+        }
     }
 
     return id;
@@ -446,7 +453,10 @@ inline Work* Retracer::GetCurWork(int tid)
 {
     Work *work = NULL;
     workThreadPoolMutex.lock();
-    work = workThreadPool[tid]->GetCurWork();
+    if (workThreadPool[tid])
+    {
+        work = workThreadPool[tid]->GetCurWork();
+    }
     workThreadPoolMutex.unlock();
     return work;
 }
@@ -482,6 +492,7 @@ void hardcode_glDeleteTransformFeedbacks(int n, unsigned int* oldTransformFeedba
 void hardcode_glDeleteQueries(int n, unsigned int* oldQueries);
 void hardcode_glDeleteSamplers(int n, unsigned int* oldSamplers);
 void hardcode_glDeleteVertexArrays(int n, unsigned int* oldVertexArrays);
+void forceRenderMosaicToScreen();
 
 GLuint lookUpPolymorphic(GLuint name, GLenum target);
 

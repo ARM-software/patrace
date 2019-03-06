@@ -43,7 +43,7 @@ class MainWindow(QMainWindow):
         self.create_menus()
         self.create_tabs()
 
-        from patrce import InputFile
+        from patrace import InputFile
         self.trace = InputFile()
         self.trace.Open(self.trace_path, True)
         self.header_version = self.trace.version

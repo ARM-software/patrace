@@ -53,12 +53,13 @@ def version():
 
 patrace_extension = setuptools.Extension(
     '_patrace',
-    extra_compile_args=['-std=gnu++0x'],
+    extra_compile_args=['-std=c++11'],
     include_dirs=[
         'src',
         'common',
         'thirdparty',
         'thirdparty/snappy',
+        'thirdparty/egl-registry/api',
         'thirdparty/opengl-registry/api',
         'thirdparty/jsoncpp/include',
     ],

@@ -332,6 +332,7 @@ void BinAndMeta::saveAllEGLConfigs(EGLDisplay dpy)
         _eglGetConfigs(dpy, cfgArray, cfgCnt, &numCfgsReturned);
         std::lock_guard<std::recursive_mutex> guard(gTraceOut->callMutex); // changing global EGL config state
         configIdToConfigAttribsMap.clear();
+        configIdToConfigAttribsMap[0] = MyEGLAttribs();     // create an all-zero attribs for EGL_CONFIG_ID=0
         for (EGLint i = 0; i < cfgCnt; i++)
         {
             EGLint cfgId;

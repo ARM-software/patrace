@@ -49,7 +49,7 @@ void grep_shader(ParseInterface& input, const std::string& trace_filename, const
     // Check what we found
     for (const auto& context : input.contexts)
     {
-        for (const auto& shader : context.shaders)
+        for (const auto& shader : context.shaders.all())
         {
             if (match_shader_type == GL_NONE || shader.shader_type == match_shader_type)
             {

@@ -27,7 +27,7 @@ jint    gJavaVersion; // used in retracer.cpp
 
 bool RenderFrame()
 {
-    return gRetracer.RetraceUntilSwapBuffers();
+    return gRetracer.Retrace();
 }
 
 JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_initFromJson(JNIEnv *env, jclass, jstring jstrJsonData, jstring jstrTraceDir, jstring jstrResultFile)

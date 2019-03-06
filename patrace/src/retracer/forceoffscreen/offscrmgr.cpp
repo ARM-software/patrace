@@ -51,6 +51,7 @@ OffscreenManager::OffscreenManager(
  , mDepth(false)
  , mGlesVer(glesVer)
  , mTexImage2D_format(0)
+ , mTexImage2D_internal_format(0)
  , mTexImage2D_type(0)
  , mRenderbufferStorage_depth_format(0)
  , mStencil(false)
@@ -118,6 +119,7 @@ void OffscreenManager::Init()
             mConfig.offscreen_alpha_size == 0)
     {
         mTexImage2D_format = GL_RGB;
+        mTexImage2D_internal_format = GL_RGB;
         mTexImage2D_type = GL_UNSIGNED_BYTE;
     }
     else if (
@@ -127,6 +129,7 @@ void OffscreenManager::Init()
             mConfig.offscreen_alpha_size == 0)
     {
         mTexImage2D_format = GL_RGB;
+        mTexImage2D_internal_format = GL_RGB;
         mTexImage2D_type = GL_UNSIGNED_SHORT_5_6_5;
     }
     else if (
@@ -136,6 +139,7 @@ void OffscreenManager::Init()
             mConfig.offscreen_alpha_size == 8)
     {
         mTexImage2D_format = GL_RGBA;
+        mTexImage2D_internal_format = GL_RGBA;
         mTexImage2D_type = GL_UNSIGNED_BYTE;
     }
     else if (
@@ -145,6 +149,7 @@ void OffscreenManager::Init()
             mConfig.offscreen_alpha_size == 4)
     {
         mTexImage2D_format = GL_RGBA;
+        mTexImage2D_internal_format = GL_RGBA;
         mTexImage2D_type = GL_UNSIGNED_SHORT_4_4_4_4;
     }
     else if (
@@ -154,7 +159,18 @@ void OffscreenManager::Init()
             mConfig.offscreen_alpha_size == 1)
     {
         mTexImage2D_format = GL_RGBA;
+        mTexImage2D_internal_format = GL_RGBA;
         mTexImage2D_type = GL_UNSIGNED_SHORT_5_5_5_1;
+    }
+    else if (
+            mConfig.offscreen_red_size == 10 &&
+            mConfig.offscreen_green_size == 10 &&
+            mConfig.offscreen_blue_size == 10 &&
+            mConfig.offscreen_alpha_size == 2)
+    {
+        mTexImage2D_format = GL_RGBA;
+        mTexImage2D_internal_format = GL_RGB10_A2;
+        mTexImage2D_type = GL_UNSIGNED_INT_2_10_10_10_REV;
     }
     else
     {
@@ -415,7 +431,7 @@ void OffscreenManager::framebufferTexture(int w, int h)
         _glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         _glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-        _glTexImage2D(GL_TEXTURE_2D, 0, mTexImage2D_format, mOffscrFboW, mOffscrFboH, 0, mTexImage2D_format, mTexImage2D_type, NULL);
+        _glTexImage2D(GL_TEXTURE_2D, 0, mTexImage2D_internal_format, mOffscrFboW, mOffscrFboH, 0, mTexImage2D_format, mTexImage2D_type, NULL);
         if (mMsaaSamples == 0)
             glFramebufferTexture2D12(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, mOffscreenTex[i], 0);
         else
@@ -450,8 +466,8 @@ void OffscreenManager::framebufferTexture(int w, int h)
         int status = glCheckFramebufferStatus12(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE)
         {
-            gRetracer.reportAndAbort("Framebuffer incomplete (FBOid=%d, resolution=%d x %d, tex_format=%X, tex_type=%X, depth_rbo_format=%X, stencil_rbo_format=%X, status=%04X",
-                                     mOffscreenFBO[i], mOffscrFboW, mOffscrFboH, mTexImage2D_format, mTexImage2D_type, mRenderbufferStorage_depth_format, mRenderbufferStorage_stencil_format, status);
+            gRetracer.reportAndAbort("Framebuffer incomplete (FBOid=%d, resolution=%d x %d, tex_format=%X, tex_internal_format=%X, tex_type=%X, depth_rbo_format=%X, stencil_rbo_format=%X, status=%04X",
+                                     mOffscreenFBO[i], mOffscrFboW, mOffscrFboH, mTexImage2D_format, mTexImage2D_internal_format, mTexImage2D_type, mRenderbufferStorage_depth_format, mRenderbufferStorage_stencil_format, status);
         }
     }
 }

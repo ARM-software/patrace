@@ -36,6 +36,8 @@
 #define EGL_WAYLAND_BUFFER_WL		0x31D5 /* eglCreateImageKHR target */
 #define EGL_WAYLAND_PLANE_WL		0x31D6 /* eglCreateImageKHR target */
 
+#define EGL_WAYLAND_Y_INVERTED_WL	0x31DB /* eglQueryWaylandBufferWL attribute */
+
 #define EGL_TEXTURE_Y_U_V_WL            0x31D7
 #define EGL_TEXTURE_Y_UV_WL             0x31D8
 #define EGL_TEXTURE_Y_XUXV_WL           0x31D9
@@ -56,6 +58,7 @@ typedef EGLBoolean (EGLAPIENTRYP PFNEGLQUERYWAYLANDBUFFERWL) (EGLDisplay dpy, st
 #ifndef EGL_WL_create_wayland_buffer_from_image
 #define EGL_WL_create_wayland_buffer_from_image 1
 
+struct wl_buffer;
 #ifdef EGL_EGLEXT_PROTOTYPES
 EGLAPI struct wl_buffer * EGLAPIENTRY eglCreateWaylandBufferFromImageWL(EGLDisplay dpy, EGLImageKHR image);
 #endif
@@ -83,6 +86,5 @@ typedef struct wl_buffer * (EGLAPIENTRYP PFNEGLCREATEWAYLANDBUFFERFROMIMAGEWL) (
 #define GL_UNPACK_SKIP_ROWS_EXT                                 0x0CF3
 #define GL_UNPACK_SKIP_PIXELS_EXT                               0x0CF4
 #endif
-
 
 #endif

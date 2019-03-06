@@ -1,6 +1,7 @@
 #ifndef PARSE_INTERFACE_H
 #define PARSE_INTERFACE_H
 
+#include <deque>
 #include <vector>
 #include <list>
 #include <map> // do not use unordered, since we want reproducible output
@@ -134,15 +135,66 @@ struct SamplerState
 
 struct Resource
 {
-    int id;
+    GLuint id;
     int index;
     unsigned call_created;
     int call_destroyed = -1;
     unsigned frame_created;
     int frame_destroyed = -1;
     std::string label;
-    Resource(int _id, int _index, unsigned _call_created, unsigned _frame_created) : id(_id), index(_index),
+    Resource(GLuint _id, int _index, unsigned _call_created, unsigned _frame_created) : id(_id), index(_index),
              call_created(_call_created), frame_created(_frame_created) {}
+};
+
+template<typename T>
+struct ResourceStorage
+{
+    ResourceStorage(ResourceStorage* _share = nullptr, int zeroval = UNBOUND) : share(_share)
+    {
+        remapping[0] = zeroval; // make sure zero remapping does not crash
+        if (!share)
+        {
+            share = this;
+        }
+        assert(store.size() == 0);
+        assert(share->store.size() != 9999999); // test memory access
+	assert(share->remapping.at(0) == zeroval);
+    }
+
+    /// Make sure we do not accidentially copy this resource around somehow, because that would
+    /// invalidate all our pointers!
+    ResourceStorage(const ResourceStorage& r) = delete;
+
+    inline T& at(int idx) { return share->store.at(idx); }
+    inline const T& at(int idx) const { return share->store.at(idx); }
+    inline T& operator[](int idx) { return share->store.at(idx); }
+    inline T& id(GLuint id) { int idx; idx = share->remapping.at(id); return at(idx); }
+    inline const T& id(GLuint id) const { int idx; idx = share->remapping.at(id); return at(idx); }
+    inline int remap(GLuint id) const { return share->remapping.at(id); }
+    inline bool contains(GLuint id) const { return share->remapping.count(id) > 0; }
+    const std::vector<T>& all() const { return share->store; }
+    size_t size() const { return share->store.size(); }
+    ssize_t ssize() const { return static_cast<ssize_t>(share->store.size()); }
+
+    inline T & add(GLuint _id, unsigned _call_created, unsigned _frame_created)
+    {
+        int idx = share->store.size();
+        share->remapping[_id] = idx;
+        share->store.emplace_back(_id, idx, _call_created, _frame_created);
+        return share->store.back();
+    }
+
+    inline void remove(GLuint _id, unsigned _call_destroyed, unsigned _frame_destroyed)
+    {
+        int idx = share->remapping.at(_id);
+        share->store.at(idx).call_destroyed = _call_destroyed;
+        share->store.at(idx).frame_destroyed = _frame_destroyed;
+    }
+
+private:
+    ResourceStorage* share = nullptr;
+    std::map<int, int> remapping;
+    std::vector<T> store;
 };
 
 struct Sampler : public Resource
@@ -258,13 +310,12 @@ struct Shader : public Resource
     int lowp_varyings = 0;
     int mediump_varyings = 0;
     int highp_varyings = 0;
-    GLenum shader_type;
+    GLenum shader_type = GL_NONE;
     unsigned call = 0; // call where shader source was uploaded
     bool compile_status = false;
     std::vector<std::string> extensions;
 
-    Shader(int _id, int _index, int _call_created, int _frame_created, GLenum _type) : Resource(_id, _index, _call_created, _frame_created),
-           shader_type(_type) {}
+    Shader(int _id, int _index, int _call_created, int _frame_created) : Resource(_id, _index, _call_created, _frame_created) {}
 };
 
 struct base_stats
@@ -327,7 +378,8 @@ struct VertexArrayObject : public Resource
 struct Context : public Resource
 {
     int display;
-    int share_context; // by id
+    int share_context = 0; // by id
+    Context* share = nullptr;
 
     /// Global clear fill states
     FillState fillstate;
@@ -351,11 +403,19 @@ struct Context : public Resource
     unsigned readframebuffer = 0; // currently bound, stored by ID
     unsigned prev_drawframebuffer = 0; // previously bound, stored by ID
     unsigned prev_readframebuffer = 0; // previously bound, stored by ID
-    std::vector<Framebuffer> framebuffers;
-    std::map<int, int> framebuffer_remapping; // from id to index in the original file
 
-    std::vector<Renderbuffer> renderbuffers;
-    std::map<int, int> renderbuffer_remapping; // from id to index in the original file
+    ResourceStorage<Framebuffer> framebuffers;
+    ResourceStorage<Texture> textures;
+    ResourceStorage<Renderbuffer> renderbuffers;
+    ResourceStorage<Sampler> samplers;
+    ResourceStorage<Query> queries;
+    ResourceStorage<TransformFeedback> transform_feedbacks;
+    ResourceStorage<Buffer> buffers;
+    ResourceStorage<Program> programs;
+    ResourceStorage<Shader> shaders;
+    ResourceStorage<VertexArrayObject> vaos;
+    ResourceStorage<ProgramPipeline> program_pipelines;
+
     int renderbuffer_index = UNBOUND;
     std::vector<GLenum> draw_buffers; // as set by glDrawBuffers()
 
@@ -366,21 +426,13 @@ struct Context : public Resource
         int texture_index;
     };
     std::vector<MipmapGeneration> mipmaps;
-    std::vector<Texture> textures;
-    std::map<int, int> texture_remapping; // from id to index in the original file
     std::map<GLuint, std::map<GLenum, GLuint>> textureUnits; // texture unit : target : texture id
     GLuint activeTextureUnit = 0;
 
-    std::vector<Sampler> samplers;
-    std::map<int, int> sampler_remapping; // from id to index in the original file
     std::map<GLuint, int> sampler_binding; // texture unit : sampler id
 
-    std::vector<Query> queries;
-    std::map<int, int> query_remapping; // from id to index in the original file
     std::map<GLenum, int> query_binding; // target : query id
 
-    std::vector<TransformFeedback> transform_feedbacks;
-    std::map<GLuint, int> transform_feedback_remapping; // from id to index in the original file
     GLuint transform_feedback_binding = 0;
 
     struct BufferBinding
@@ -389,50 +441,52 @@ struct Context : public Resource
         GLintptr offset;
         GLsizeiptr size;
     };
-    std::vector<Buffer> buffers;
-    std::map<int, int> buffer_remapping; // from id to index in the original file
     std::map<GLenum, std::map<GLuint, BufferBinding>> boundBufferIds; // target : GL buffer index : buffer info
 
-    std::vector<Program> programs;
-    std::map<int, int> program_remapping; // from id to index in the original file
     int program_index = UNBOUND;
 
     // support for separate program pipelines
-    std::vector<ProgramPipeline> program_pipelines;
-    std::map<int, int> program_pipeline_remapping; // from id to index in the original file
     int program_pipeline_index = UNBOUND;
 
-    std::vector<Shader> shaders;
-    std::map<int, int> shader_remapping; // from id to index in the original file
-
-    std::vector<VertexArrayObject> vaos;
-    std::map<int, int> vao_remapping; // from id to index in the original file
     int vao_index = UNBOUND;
     std::unordered_set<GLuint> vao_enabled; // currently enabled VAOs
 
     int patchSize = 3;
     std::map<GLenum, bool> enabled;
 
-    Context(int _id, int _display, int _index, int _share, unsigned _call_created, unsigned _frame_created)
-            : Resource(_id, _index, _call_created, _frame_created), display(_display), share_context(_share)
+    Context(int _id, int _display, int _index, int _share_context, unsigned _call_created, unsigned _frame_created, Context* _share)
+            : Resource(_id, _index, _call_created, _frame_created), display(_display), share_context(_share_context), share(_share),
+              framebuffers(&_share->framebuffers, 0),
+              textures(&_share->textures),
+              renderbuffers(&_share->renderbuffers),
+              samplers(&_share->samplers),
+              queries(&_share->queries),
+              transform_feedbacks(&_share->transform_feedbacks),
+              buffers(&_share->buffers),
+              programs(&_share->programs),
+              shaders(&_share->shaders),
+              vaos(&_share->vaos),
+              program_pipelines(&_share->program_pipelines)
     {
-        framebuffers.push_back(Framebuffer(0, 0, _call_created, _frame_created)); // create default framebuffer
-        framebuffers[0].attachments[GL_STENCIL_ATTACHMENT] = Attachment();
-        framebuffers[0].attachments[GL_DEPTH_ATTACHMENT] = Attachment();
-        framebuffers[0].attachments[GL_COLOR_ATTACHMENT0] = Attachment();
+        init(_call_created, _frame_created);
+    }
+
+    Context(int _id, int _display, int _index, unsigned _call_created, unsigned _frame_created)
+            : Resource(_id, _index, _call_created, _frame_created), display(_display), framebuffers(nullptr, 0)
+    {
+        init(_call_created, _frame_created);
+    }
+
+private:
+    void init(unsigned _call_created, unsigned _frame_created)
+    {
+        Framebuffer& f = framebuffers.add(0, _call_created, _frame_created); // create default framebuffer
+        f.attachments[GL_STENCIL_ATTACHMENT] = Attachment();
+        f.attachments[GL_DEPTH_ATTACHMENT] = Attachment();
+        f.attachments[GL_COLOR_ATTACHMENT0] = Attachment();
         draw_buffers.resize(1);
         draw_buffers[0] = GL_BACK;
         enabled[GL_DITHER] = true; // the only one that starts enabled
-
-        // make sure zero-unbinding does not crash
-        framebuffer_remapping[0] = 0;
-        renderbuffer_remapping[0] = UNBOUND;
-        shader_remapping[0] = UNBOUND;
-        vao_remapping[0] = UNBOUND;
-        program_remapping[0] = UNBOUND;
-        buffer_remapping[0] = UNBOUND;
-        texture_remapping[0] = UNBOUND;
-        sampler_remapping[0] = UNBOUND;
     }
 };
 
@@ -453,7 +507,10 @@ struct Surface : public Resource
 class ParseInterfaceBase
 {
 public:
-    ParseInterfaceBase() {}
+    ParseInterfaceBase()
+    {
+        context_remapping[0] = UNBOUND;
+    }
     virtual bool open(const std::string& input, const std::string& output = std::string()) = 0;
     virtual void close() = 0;
     virtual common::CallTM* next_call() = 0;
@@ -465,7 +522,7 @@ public:
     void setScreenshots(bool value) { mScreenshots = value; }
     void interpret_call(common::CallTM *call);
 
-    std::vector<StateTracker::Context> contexts;
+    std::deque<StateTracker::Context> contexts; // using deque to avoid moving contents around in memory, invalidating pointers
     std::vector<StateTracker::Surface> surfaces;
     std::map<int, int> context_remapping; // from id to index in the original file
     std::map<int, int> surface_remapping; // from id to index in the original file

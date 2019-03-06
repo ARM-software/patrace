@@ -14,44 +14,6 @@
 #include "collector_utility.hpp"
 #include "interface.hpp"
 
-class FerretProcess
-{
-public:
-    FerretProcess() {}
-    FerretProcess(
-        int schedTickHz,
-        const std::vector<int>& cpuNr);
-    void add(
-        const std::string& label,
-        double ts,
-        int jiffies,
-        double freq,
-        int cpuNr);
-    double duration() const;
-    int active_jiffies() const;
-    Json::Value summary(const std::string& pid) const;
-
-private:
-    std::string label;
-    double first;
-    double last;
-    double jiffyPeriod;
-    int jiffies;
-    int totJiffiesAllCpus;
-    int maxSingleCoreFreq;
-
-    Json::Value maxCpuFreqs;
-    Json::Value mcyc;
-    Json::Value totJiffies;
-    Json::Value freqList;
-};
-
-
-Json::Value postprocess_ferret_data(
-    const std::string& outputFname,
-    const std::vector<std::string>& bannedThreads);
-
-
 class FerretCollector : public Collector
 {
 public:
@@ -219,10 +181,6 @@ private:
      */
     bool mInitSuccess = false;
 
-    /** If this is true, postprocessing is enabled member is valid.
-     */
-    bool mEnablePostprocess = false;
-
     /** The OS scheduler ticks per second.
      */
     long mClockTicks;
@@ -230,10 +188,6 @@ private:
     /** The CPU numbers to monitor.
      */
     std::vector<int> mCpus;
-
-    /** A list of thread (comm) names to exclude during postprocessing.
-     */
-    std::vector<std::string> mBannedThreads;
 
     /** The file output path.
      */

@@ -35,7 +35,7 @@ typedef enum {
 
 // Draws the next frame. Check returned value to know
 // if retrace should continue or why it shouldn't.
-iOSRetracer_TraceState iOSRetracer_retraceUntilSwapBuffers();
+iOSRetracer_TraceState iOSRetracer_retrace();
 
 // Call when aborting trace prematurely (otherwise called automatically at end of retrace)
 void iOSRetracer_closeTraceFile();

@@ -34,7 +34,7 @@ int iOSRetracer_retraceFile(const char* fileName)
     return (retValue == true) ? 0 /*OK*/ : 1 /*error*/;
 }
 
-iOSRetracer_TraceState iOSRetracer_retraceUntilSwapBuffers()
+iOSRetracer_TraceState iOSRetracer_retrace()
 {
     // Restore old state
     if (boundFBO != -1)
@@ -44,7 +44,7 @@ iOSRetracer_TraceState iOSRetracer_retraceUntilSwapBuffers()
         glScissor(boundScissor[0], boundScissor[1], boundScissor[2], boundScissor[3]);
     }
 
-    bool shouldContinue = gRetracer.RetraceUntilSwapBuffers();
+    bool shouldContinue = gRetracer.Retrace();
 
     // Save state
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &boundFBO);

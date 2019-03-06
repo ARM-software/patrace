@@ -65,6 +65,7 @@ private:
     bool            mDepth;
     int             mGlesVer;
     GLenum          mTexImage2D_format;
+    GLenum          mTexImage2D_internal_format;
     GLenum          mTexImage2D_type;
     GLenum          mRenderbufferStorage_depth_format;
     bool            mStencil;

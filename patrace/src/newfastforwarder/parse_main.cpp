@@ -132,7 +132,7 @@ int main(int argc, char** argv)
     //pre-execution
     if(gRetracer.mOptions.allDraws == false)
     {
-    while(gRetracer.RetraceUntilSwapBuffers());
+    gRetracer.Retrace();
 
     if(gRetracer.curPreExecuteState.endPreExecute == false){
         if(gRetracer.mCurFrameNo > gRetracer.mOptions.fastforwadFrame1)
@@ -177,7 +177,7 @@ int main(int argc, char** argv)
     }
 
     gRetracer.preExecute = true;
-    while(gRetracer.RetraceUntilSwapBuffers());
+    gRetracer.Retrace();
     //    long long end_time = os::getTime();
     //    float duration = static_cast<float>(end_time - start_time) / os::timeFrequency;
     //    printf("time 1 = %f\n", duration);

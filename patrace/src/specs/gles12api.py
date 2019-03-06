@@ -656,7 +656,8 @@ gles_functions = [
     # QCOM_alpha_test
     GlFunction(Void, "glAlphaFuncQCOM", [(GLenum, "func"), (GLclampf, "ref")]),
 
-    # GL_EXT_disjoint_timer_query (functions not already in GL_EXT_occlusion_query_boolean)
+    # GL_EXT_disjoint_timer_query
+    # (functions not already in GL_EXT_occlusion_query_boolean)
     GlFunction(Void, "glQueryCounterEXT", [(GLuint, "id"), (GLenum, "target")]),
     GlFunction(Void, "glGetQueryObjectivEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLint, "_gl_param_size(pname)"), "params")], sideeffects=False),
     GlFunction(Void, "glGetQueryObjecti64vEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLint64, "_gl_param_size(pname)"), "params")], sideeffects=False),
@@ -964,6 +965,36 @@ gles_functions = [
     GlFunction(Void, "glFramebufferPixelLocalStorageSizeEXT", [(GLframebuffer, "target"), (GLsizei, "size")]),
     GlFunction(GLsizei, "glGetFramebufferPixelLocalStorageSizeEXT", [(GLframebuffer, "target")], sideeffects=False),
     GlFunction(Void, "glClearPixelLocalStorageuiEXT", [(GLsizei, "offset"), (GLsizei, "n"), (Array(Const(GLuint), "n"), "values")]),
+
+    # GL_EXT_draw_buffers
+    GlFunction(Void, "glDrawBuffersEXT", [(GLsizei, "n"), (Array(Const(GLenum), "n"), "bufs")]),
+
+    # GL_EXT_instanced_arrays
+    GlFunction(Void, "glVertexAttribDivisorEXT", [(GLuint, "index"), (GLuint, "divisor")]),
+
+    # GL_EXT_map_buffer_range
+    GlFunction(GLpointer, "glMapBufferRangeEXT", [(GLenum, "target"), (GLintptr, "offset"), (GLsizeiptr, "length"), (GLbitfield_access, "access")]),
+    GlFunction(Void, "glFlushMappedBufferRangeEXT", [(GLenum, "target"), (GLintptr, "offset"), (GLsizeiptr, "length")]),
+
+    # GL_EXT_polygon_offset_clamp
+    GlFunction(Void, "glPolygonOffsetClampEXT", [(GLfloat, "factor"), (GLfloat, "units"), (GLfloat, "clamp")]),
+
+    # GL_EXT_raster_multisample
+    GlFunction(Void, "glRasterSamplesEXT", [(GLuint, "samples"), (GLboolean, "fixedsamplelocations")]),
+
+    # GL_EXT_sparse_texture
+    GlFunction(Void, "glTexPageCommitmentEXT", [(GLenum, "target"), (GLint, "level"), (GLint, "xoffset"), (GLint, "yoffset"), (GLint, "zoffset"), (GLsizei, "width"), (GLsizei, "height"), (GLsizei, "depth"), (GLboolean, "commit")]),
+
+    # GL_EXT_texture_view
+    GlFunction(Void, "glTextureViewEXT", [(GLtexture, "texture"), (GLenum, "target"), (GLtexture, "origtexture"), (GLenum, "internalformat"), (GLuint, "minlevel"), (GLuint, "numlevels"), (GLuint, "minlayer"), (GLuint, "numlayers")]),
+
+    # GL_OES_single_precision
+    GlFunction(Void, "glClearDepthfOES", [(GLclampf, "depth")]),
+    GlFunction(Void, "glClipPlanefOES", [(GLenum, "plane"), (Array(Const(GLfloat), 4), "equation")]),
+    GlFunction(Void, "glDepthRangefOES", [(GLclampf, "n"), (GLclampf, "f")]),
+    GlFunction(Void, "glFrustumfOES", [(GLfloat, "l"), (GLfloat, "r"), (GLfloat, "b"), (GLfloat, "t"), (GLfloat, "n"), (GLfloat, "f")]),
+    GlFunction(Void, "glGetClipPlanefOES", [(GLenum, "plane"), Out(Array(GLfloat, 4), "equation")], sideeffects=False),
+    GlFunction(Void, "glOrthofOES", [(GLfloat, "l"), (GLfloat, "r"), (GLfloat, "b"), (GLfloat, "t"), (GLfloat, "n"), (GLfloat, "f")]),
 ]
 
 glesapi = API('GLES')

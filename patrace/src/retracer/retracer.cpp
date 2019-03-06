@@ -317,7 +317,6 @@ Retracer::Retracer()
  , mOutOfMemory(false)
  , mFailedToLinkShaderProgram(false)
  , mFinish(false)
- , mDoPresentFramebuffer(false)
  , mpOffscrMgr(NULL)
  , mCSBuffers()
  , mpQuad(NULL)
@@ -416,7 +415,6 @@ bool Retracer::OpenTraceFile(const char* filename)
     mCurDrawNo = 0;
     mCurFrameNo = 0;
     mDispatchFrameNo = 0;
-    mDoPresentFramebuffer = false;
     mOutOfMemory = false;
     mFailedToLinkShaderProgram = false;
     mFinish = false;
@@ -805,11 +803,6 @@ bool Retracer::RetraceForward(unsigned int frameNum, unsigned int drawNum, bool 
             } else {
                 DBG_LOG("    Unsupported function : callNo %d\n", mCurCallNo);
             }
-        }
-
-        if (mDoPresentFramebuffer)
-        {
-            mDoPresentFramebuffer = false;
         }
 
         if (getCurTid() == mOptions.mRetraceTid)
@@ -1257,18 +1250,18 @@ const char* findFirst(const char** paths)
 }
 #endif
 
-void Retracer::forceRenderMosaicToScreen()
+void forceRenderMosaicToScreen()
 {
-    if (mMosaicNeedToBeFlushed)
+    if (gRetracer.mMosaicNeedToBeFlushed)
     {
-        if (mpOffscrMgr->last_tid != -1) {
-            mCurCall.tid = mpOffscrMgr->last_tid;
+        if (gRetracer.mpOffscrMgr->last_tid != -1) {
+            gRetracer.mCurCall.tid = gRetracer.mpOffscrMgr->last_tid;
 
-            int last_non_zero_draw = mpOffscrMgr->last_non_zero_draw;
-            int last_non_zero_ctx = mpOffscrMgr->last_non_zero_ctx;
+            int last_non_zero_draw = gRetracer.mpOffscrMgr->last_non_zero_draw;
+            int last_non_zero_ctx = gRetracer.mpOffscrMgr->last_non_zero_ctx;
 
-            if (!mState.GetDrawable(last_non_zero_draw)) {
-                int win = mState.GetWin(last_non_zero_draw);
+            if (!gRetracer.mState.GetDrawable(last_non_zero_draw)) {
+                int win = gRetracer.mState.GetWin(last_non_zero_draw);
                 int parameter[7];
                 parameter[0] = 0;                   // dpy, useless in retrace_eglCreateWindowSurface
                 parameter[1] = 0;                   // config, useless in retrace_eglCreateWindowSurface
@@ -1288,11 +1281,10 @@ void Retracer::forceRenderMosaicToScreen()
             parameter[4] = 1;                   // ret, useless in retrace_eglMakeCurrent
             retrace_eglMakeCurrent(reinterpret_cast<char *>(parameter));
 
-            mpOffscrMgr->MosaicToScreenIfNeeded(true);
-            retracer::Drawable* pDrawable = mState.mThreadArr[gRetracer.getCurTid()].getDrawable();
+            gRetracer.mpOffscrMgr->MosaicToScreenIfNeeded(true);
+            retracer::Drawable* pDrawable = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getDrawable();
             if (pDrawable != NULL) {
                 pDrawable->swapBuffers();
-                mDoPresentFramebuffer = true;
             }
             else {
                 DBG_LOG("pDrawable == NULL. The mosaic picture of last several frames can't be rendered to screen. This might be a bug.\n");
@@ -1301,7 +1293,7 @@ void Retracer::forceRenderMosaicToScreen()
     }
 }
 
-bool Retracer::RetraceUntilSwapBuffers()
+bool Retracer::Retrace()
 {
     void* fptr;
     char* src;
@@ -1322,7 +1314,7 @@ bool Retracer::RetraceUntilSwapBuffers()
         mFile.SetPreloadRange(mOptions.mBeginMeasureFrame, mOptions.mEndMeasureFrame, mOptions.mRetraceTid);
     }
 
-    if (mOptions.mBeginMeasureFrame == 0 && mCurFrameNo == 0)
+    if (!mOptions.mPreload && mOptions.mBeginMeasureFrame == 0 && mCurFrameNo == 0)
     {
         StartMeasuring(); // special case, otherwise triggered by eglSwapBuffers()
     }
@@ -1334,7 +1326,9 @@ bool Retracer::RetraceUntilSwapBuffers()
             wakeupAllWorkThreads();
             waitWorkThreadPoolIdle();
             if (mOptions.mForceOffscreen) {
-                forceRenderMosaicToScreen();
+                char empty_src[1] = "";
+                const char *forceRenderMosaicToScreenName = "forceRenderMosaicToScreen";
+                DispatchWork(mCurCall.tid, -1, -1, (void*)forceRenderMosaicToScreen, empty_src, forceRenderMosaicToScreenName, 0);
             }
 
             glFinish_call.tid = mCurCall.tid;
@@ -1368,6 +1362,11 @@ bool Retracer::RetraceUntilSwapBuffers()
             }
 #endif
             return false;
+        }
+
+        if (mOptions.mPreload && mOptions.mBeginMeasureFrame==0 && mTimerBeginTime==0)
+        {
+            StartMeasuring(); // special case for preload from 0. otherwise triggered by eglSwapBuffers
         }
 
         if (!mOptions.mMultiThread && mCurCall.tid != mOptions.mRetraceTid)
@@ -1498,13 +1497,6 @@ bool Retracer::RetraceUntilSwapBuffers()
         {
             mFinish = true;
         }
-
-        if (mDoPresentFramebuffer)
-        {
-            mDoPresentFramebuffer = false;
-            mCurCallNo++;
-            return true;
-        }
     }
 }
 
@@ -1632,12 +1624,12 @@ void Retracer::DiscardFramebuffers()
     }
 }
 
-void Retracer::reportAndAbort(const char *format, ...) const
+void Retracer::reportAndAbort(const char *format, ...) //const
 {
     char buf[256];
     va_list ap;
     memset(buf, 0, sizeof(buf));
-    sprintf(buf, "[c%u,f%u] ", mCurCallNo, mCurFrameNo);
+    sprintf(buf, "[c%u,f%u] ", GetCurCallId(), GetCurFrameId()); // mCurCallNo->GetCurCallId(),avoid the callId divergence in multithread case
     va_start(ap, format);
     const unsigned len = strlen(buf);
     vsnprintf(buf + len, sizeof(buf) - len - 1, format, ap);
@@ -1924,11 +1916,11 @@ void post_glLinkProgram(GLuint program, GLuint originalProgramName)
         vector<unsigned int>::iterator result = find(gRetracer.mOptions.mLinkErrorWhiteListCallNum.begin(), gRetracer.mOptions.mLinkErrorWhiteListCallNum.end(), gRetracer.GetCurCallId());
         if(result != gRetracer.mOptions.mLinkErrorWhiteListCallNum.end())
         {
-            DBG_LOG("Error in linking program %d: %s\n", originalProgramName, infoLog ? infoLog : "(n/a)");
+            DBG_LOG("Error in linking program %d: %s. But this call has already been added to whitelist. So ignore this error and continue retracing.\n", originalProgramName, infoLog ? infoLog : "(n/a)");
         }
         else
         {
-            gRetracer.reportAndAbort("Error in linking program %d: %s\n", originalProgramName, infoLog ? infoLog : "(n/a)");
+            DBG_LOG("!!!!! Pay Attention !!!!!\n\tError in linking program %d:%s\t!!!!!PLEASE NOTE THAT:This call [c%u, f%u] is a potential error and could produce an unexpected rendering.\n", originalProgramName, infoLog ? infoLog : "(n/a)", gRetracer.GetCurCallId(), gRetracer.GetCurFrameId());
         }
         free(infoLog);
     }

@@ -295,12 +295,12 @@ static void list_surfaces(common::TraceFileTM &inputFile)
     std::cout << "Threads: " << std::endl;
     for (auto &t : thread_data)
     {
-        std::cout << "    IDX=" << t.second.index << " Name=" << t.second.id << " GLCalls=" << t.second.glcount << " EGLCalls=" << t.second.eglcount << " Contexts=";
+        std::cout << "    IDX=" << t.second.index << " Name=" << t.second.id << " GLCalls=" << t.second.glcount << " EGLCalls=" << t.second.eglcount << " Contexts=[";
         for (auto &c : t.second.contexts_used)
         {
             std::cout << c << " ";
         }
-        std::cout << "] Surfaces=";
+        std::cout << "] Surfaces=[";
         for (auto &s : t.second.surfaces_used)
         {
             std::cout << s << " ";
@@ -514,6 +514,9 @@ int main(int argc, char **argv)
     context_remapping.clear();
     context_tracking.clear();
     int current_output_context = 0;
+    std::vector<std::pair<int, int>> non_injected_ranges;
+    int prev_injected = -1;
+    int total_injected = 0;
     while (!done && (call = next_call(inputFile)))
     {
         // We need to remember the context of the latest eglMakeCurrent not in the current frame.
@@ -523,6 +526,7 @@ int main(int argc, char **argv)
         unsigned tid = call->mTid;
         unsigned idx = tid_remapping[tid];
         bool skip = false;
+        bool any_injected = false;
         if (idx >= numThreads)
         {
             DBG_LOG("Call has higher thread idx %u than max tid %u\n", idx, numThreads);
@@ -721,6 +725,8 @@ int main(int argc, char **argv)
                         newCallNo++;
                         writeout(outputFile, &makeCurrent);
                         injected = true;
+                        any_injected = true;
+                        total_injected++;
                     }
                     dumpstream << "[f" << _curFrameIndex << ":t" << out->mTid << ":c" << ((context.context_index != UNBOUND) ? std::to_string(context.context_index) : std::string("-"))
                                << ":s" << ((context.surface_index != UNBOUND) ? std::to_string(context.surface_index) : std::string("-")) << "] "
@@ -736,6 +742,30 @@ int main(int argc, char **argv)
                 thread.clear();
             }
         }
+
+        // Keep track of non-injected franges. If we had a number of frames without injections, track those.
+        // Ignore such ranges with less than 100 frames.
+        if (any_injected && prev_injected != -1 && static_cast<int>(_curFrameIndex) - prev_injected > 100)
+        {
+            non_injected_ranges.push_back(std::make_pair(prev_injected, static_cast<int>(_curFrameIndex) - 1));
+        }
+        if (any_injected)
+        {
+            prev_injected = _curFrameIndex;
+        }
+    }
+
+    prev_injected = std::max(0, prev_injected);
+    if (static_cast<int>(_curFrameIndex) - prev_injected > 100)
+    {
+        non_injected_ranges.push_back(std::make_pair(prev_injected, static_cast<int>(_curFrameIndex) - 1));
+    }
+
+    DBG_LOG("Total number of injected eglMakeCurrent() calls: %d\n", total_injected);
+    DBG_LOG("Wide ranges of frames without any eglMakeCurrent() injections:\n");
+    for (const auto& pair : non_injected_ranges)
+    {
+        DBG_LOG("\t%d - %d\n", pair.first, pair.second);
     }
 
     common::CallTM eglTerminate("eglTerminate");

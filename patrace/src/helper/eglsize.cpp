@@ -1,4 +1,5 @@
 #include "eglsize.hpp"
+#include "shaderutility.hpp"
 #include <string>
 
 static int bisect_val(int min, int max, bool is_valid_val(int val))
@@ -99,42 +100,6 @@ static void _eglCreateImageKHR_get_image_size(EGLImageKHR image, image_info *inf
     _glDeleteFramebuffers(1, &fbo);
 }
 
-static void printShaderInfoLog(GLuint shader, std::string shader_name)
-{
-	int infologLen = 0;
-	int charsWritten = 0;
-	_glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infologLen);
-	if (infologLen > 0) {
-		GLchar *infoLog = new GLchar[infologLen];
-		if (infoLog == NULL)
-		{
-            DBG_LOG("ERROR: cannot create shader InfoLog cache\n");
-            return;
-		}
-		_glGetShaderInfoLog(shader, infologLen, &charsWritten, infoLog);
-        DBG_LOG("%s compilation info: %s\n", shader_name.c_str(), infoLog);
-		delete []infoLog;
-	}
-}
-
-static void printProgramInfoLog(GLuint program)
-{
-	int infologLen = 0;
-	int charsWritten = 0;
-	_glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infologLen);
-	if (infologLen > 0) {
-		GLchar *infoLog = new GLchar[infologLen];
-		if (infoLog == NULL)
-		{
-            DBG_LOG("ERROR: cannot create program InfoLog cache\n");
-            return;
-		}
-		glGetProgramInfoLog(program, infologLen, &charsWritten, infoLog);
-        DBG_LOG("program link info: %s\n", infoLog);
-		delete []infoLog;
-	}
-}
-
 static void get_texture_external_image(image_info *info)
 {
     GLuint fbo = 0;
@@ -192,7 +157,7 @@ static void get_texture_external_image(image_info *info)
     GLint vert_status, frag_status;
     _glGetShaderiv(vertex_shader_id, GL_COMPILE_STATUS, &vert_status);
     if (vert_status == GL_FALSE)
-        printShaderInfoLog(vertex_shader_id, "vertex shader");
+        printShaderInfoLog(vertex_shader_id, "texture_external_image vertex shader");
 
     //////////////////////////////////////////////////////////////////////////////////////
 
@@ -212,7 +177,7 @@ static void get_texture_external_image(image_info *info)
 
     _glGetShaderiv(fragment_shader_id, GL_COMPILE_STATUS, &frag_status);
     if (frag_status == GL_FALSE)
-        printShaderInfoLog(fragment_shader_id, "fragment shader");
+        printShaderInfoLog(fragment_shader_id, "texture_external_image fragment shader");
 
     //////////////////////////////////////////////////////////////////////////////////////
 
@@ -227,12 +192,12 @@ static void get_texture_external_image(image_info *info)
     GLint link_status;
     _glGetProgramiv(program_id, GL_LINK_STATUS, &link_status);
     if (link_status == GL_FALSE)
-        printProgramInfoLog(program_id);
+        printProgramInfoLog(program_id, "texture_external_image shader");
     _glUseProgram(program_id);
 
     //////////////////////////////////////////////////////////////////////////////////////
 
-    GLint u_Texture_location = _glGetUniformLocation(program_id, "u_Texture");    // get uniform location
+    GLint u_Texture_location = getUniLoc(program_id, "u_Texture");    // get uniform location
     _glUniform1i(u_Texture_location, 0);             // set uniform variables
 
     //////////////////////////////////////////////////////////////////////////////////////

@@ -76,6 +76,8 @@ namespace common {
                  strcmp(funcName, "glDrawArrays") == 0 ||
                  strcmp(funcName, "glDrawArraysInstanced") == 0 ||
                  strcmp(funcName, "glDrawElementsInstanced") == 0 ||
+                 strcmp(funcName, "glDrawElementsBaseVertex") == 0 ||
+                 strcmp(funcName, "glDrawElementsBaseVertexOES") == 0 ||
                  strcmp(funcName, "glDrawArraysIndirect") == 0 ||
                  strcmp(funcName, "glDrawElementsIndirect") == 0 ||
                  strcmp(funcName, "glDrawRangeElements") == 0 ||

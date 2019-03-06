@@ -258,7 +258,7 @@ int main(int argc, char** argv)
         std::string str((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
         TraceExecutor::initFromJson(str, std::string(traceDir), std::string(resultFile));
         GLWS::instance().Init();
-        while(gRetracer.RetraceUntilSwapBuffers()) {}
+        gRetracer.Retrace();
         return 0;
     } else {
         CmdOptions cmdOptions;
@@ -333,8 +333,7 @@ int main(int argc, char** argv)
         }
         else
         {
-            while(gRetracer.RetraceUntilSwapBuffers())
-                ;
+            gRetracer.Retrace();
         }
 
     }

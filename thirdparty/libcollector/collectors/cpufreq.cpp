@@ -7,7 +7,7 @@
 
 bool CPUFreqCollector::init()
 {
-    // Just in case, clean up...
+    // just in case...
     deinit();
     mCores.clear();
 
@@ -104,8 +104,7 @@ bool CPUFreqCollector::collect(int64_t /* now */)
             {
                 // Just read the current frequency
                 rewind(c.freq_file);
-                int r = fscanf(c.freq_file, "%ld", &freq);
-                (void)r; // elaborate way to silence compiler
+                fscanf(c.freq_file, "%ld", &freq);
                 sum = freq;
             }
             else

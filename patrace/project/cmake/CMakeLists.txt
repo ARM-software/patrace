@@ -6,7 +6,7 @@ set (PYTHON_EXECUTABLE python)
 message(STATUS "main ar: ${CMAKE_AR}")
 
 set (PATRACE_VERSION_MAJOR 2)
-set (PATRACE_VERSION_MINOR 12)
+set (PATRACE_VERSION_MINOR 13)
 set (PATRACE_VERSION_PATCH 0)
 
 IF(DEFINED ENV{SVN_REVISION})
@@ -97,7 +97,8 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 
     if (WINDOWSYSTEM MATCHES "wayland")
         pkg_check_modules(wayland REQUIRED wayland-client wayland-egl)
-        add_definitions (-DENABLE_WAYLAND)
+        # No official support for the Mali FBDEV defitions, so hack it with the Ozone ones
+        add_definitions (-DENABLE_WAYLAND -DUSE_OZONE)
         message(STATUS "windowsystem set as wayland: ${wayland_VERSION}, ${wayland_LIBRARIES}, ${wayland_CPPFLAGS}")
     endif()
 

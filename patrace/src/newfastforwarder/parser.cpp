@@ -87,7 +87,7 @@ bool Retracer::overrideWithCmdOptions( const CmdOptions &cmdOptions )
     return true;
 }
 
-bool Retracer::RetraceUntilSwapBuffers()
+bool Retracer::Retrace()
 {
     void* fptr;
     char* src;

@@ -346,17 +346,12 @@ bool InFile::GetNextCall(void*& fptr, common::BCall_vlen& call, char*& src)
     {
         // Call is in BCall_vlen format -- read it directly
         call = *(common::BCall_vlen*) mReadP;
-
         mDataPtr = src = mReadP + sizeof(common::BCall_vlen);
         mReadP += call.toNext;
     }
     else
     {
-        // Call is a BCall -- copy common parts to output BCall_vlen
-        // and set toNext to 0.
-        memcpy(&call, &tmpCall, sizeof(tmpCall));
-        call.toNext = 0;
-
+        call = tmpCall;
         mDataPtr = src = mReadP + sizeof(common::BCall);
         mReadP += callLen;
     }

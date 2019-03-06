@@ -140,6 +140,9 @@ int main(int argc, char **argv)
     int count_inside = 0; // injected inside frame range
     int first_frame = 0;
     int last_frame = -1;
+    int prev_injected = -1;
+    std::vector<std::pair<int, int>> non_injected_ranges;
+
     for (; argIndex < argc; ++argIndex)
     {
         const char *arg = argv[argIndex];
@@ -388,6 +391,7 @@ int main(int argc, char **argv)
             if (_curCallIndexInFrame >= _curFrame->GetLoadedCallCount()) // flush calls
             {
                 if (debug) DBG_LOG("-- writeout frame %u! %u threads --\n", _curFrameIndex, (unsigned)calls.size());
+                bool any_injected = false;
                 for (auto &thread : calls)
                 {
                     if (thread.size() == 0)
@@ -427,6 +431,7 @@ int main(int argc, char **argv)
                             writeout(outputFile, &makeCurrent);
                             injected = true;
                             countInjected++;
+                            any_injected = true;
                         }
                         out->mTid = 0;
                         writeout(outputFile, out);
@@ -437,6 +442,17 @@ int main(int argc, char **argv)
                 // This is because we need to know the 'default' context state to set at the start of each
                 // frame+thread, valid until we hit another, app-supplied eglMakeCurrent.
                 initial_contexts = contexts;
+
+                // Keep track of non-injected franges. If we had a number of frames without injections, track those.
+                // Ignore such ranges with less than 100 frames.
+                if (any_injected && prev_injected != -1 && static_cast<int>(_curFrameIndex) - prev_injected > 100)
+                {
+                    non_injected_ranges.push_back(std::make_pair(prev_injected, static_cast<int>(_curFrameIndex) - 1));
+                }
+                if (any_injected)
+                {
+                    prev_injected = _curFrameIndex;
+                }
             }
         }
     }
@@ -467,6 +483,18 @@ int main(int argc, char **argv)
     {
         DBG_LOG("Injected %d extra eglMakeCurrent() calls inside the defined frame range\n", count_inside);
         return -1;
+    }
+
+    prev_injected = std::max(0, prev_injected);
+    if (static_cast<int>(_curFrameIndex) - prev_injected > 100)
+    {
+        non_injected_ranges.push_back(std::make_pair(prev_injected, static_cast<int>(_curFrameIndex) - 1));
+    }
+
+    DBG_LOG("Wide ranges of frames without any eglMakeCurrent() injections:\n");
+    for (const auto& pair : non_injected_ranges)
+    {
+        DBG_LOG("\t%d - %d\n", pair.first, pair.second);
     }
 
     return 0;

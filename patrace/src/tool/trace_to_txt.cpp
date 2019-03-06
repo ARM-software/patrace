@@ -84,7 +84,7 @@ int main(int argc, const char* argv[])
         {
             out = arg;
         }
-        else if (!strcmp(arg, "-help"))
+        else if (!strcmp(arg, "-help") || !strcmp(arg, "-h"))
         {
             usage(argv[0]);
             return 0;

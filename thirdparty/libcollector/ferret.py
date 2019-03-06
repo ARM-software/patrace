@@ -199,8 +199,6 @@ if __name__ == "__main__":
 
     argParser = argparse.ArgumentParser(description='Post-process burrow/ferret CPU Load data.')
     argParser.add_argument( '--json', '-j', action='store_true' )
-    argParser.add_argument( '--start', '-s', type=float, default=-1.0)
-    argParser.add_argument( '--end', '-e', type=float, default=-1.0)
     argParser.add_argument( '--output', '-o', type=argparse.FileType('w'), default=sys.stdout )
     argParser.add_argument( 'input', nargs='+', type=str )
 
@@ -212,14 +210,14 @@ if __name__ == "__main__":
 
         assert traceName not in results, ("Duplicate trace file name", traceName)
 
-        initData = 0
         traceStart = traceEnd = None
         pidHistory = dict()
         traceProperties = dict()
 
         with open(traceName, 'r') as traceFile:
             for sample in process_trace( traceFile, traceProperties ):
-                if not initData:
+
+                if not traceStart:
                     tick = traceProperties['tick']
 
                     assert 'cpus' in traceProperties, traceName
@@ -231,15 +229,6 @@ if __name__ == "__main__":
                             assert a == b, "CPU sets must be identical"
 
                     cpuNrs = traceProperties['cpus']
-                    initData = 1
-
-                if args.start > 0 and sample['time'] < args.start:
-                    continue
-
-                if args.end > 0 and sample['time'] >= args.end:
-                    continue
-
-                if not traceStart:
                     traceStart = sample['time']
 
                 traceEnd = sample['time']

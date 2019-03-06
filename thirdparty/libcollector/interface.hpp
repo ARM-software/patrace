@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <atomic>
 #include <thread>
-#include <pthread.h>
 #include <chrono>
 
 #include <jsoncpp/json/value.h>
@@ -193,9 +192,6 @@ public:
     /// Stop collecting data
     void stop();
 
-    /// Check if any collector is running
-    bool is_running() const { return running; }
-
     /// Collect one data point. If result is specified, this is used to specify a custom
     /// result value.
     void collect(std::vector<int64_t> custom = std::vector<int64_t>());
@@ -206,7 +202,6 @@ public:
     const Json::Value& config() { return mConfig; }
 
 private:
-    bool running = false;
     Json::Value mConfig;
     std::vector<Collector*> mCollectors;
     std::vector<Collector*> mRunning;

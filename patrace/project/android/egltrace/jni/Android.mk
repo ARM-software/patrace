@@ -180,7 +180,8 @@ LOCAL_SRC_FILES 	:= \
     dispatch/eglproc_auto.cpp \
     helper/states.cpp \
     common/gl_utility.cpp \
-    helper/eglsize.cpp
+    helper/eglsize.cpp \
+    helper/shaderutility.cpp
 
 LOCAL_C_INCLUDES 	:= \
     $(LOCAL_PATH) \

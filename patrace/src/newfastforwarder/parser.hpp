@@ -57,7 +57,7 @@ public:
     bool OpenTraceFile(const char* filename);
     bool overrideWithCmdOptions( const CmdOptions &cmdOptions );
     void CloseTraceFile();
-    bool RetraceUntilSwapBuffers();
+    bool Retrace();
     void OnFrameComplete();
     void OnNewFrame();
     common::HeaderVersion getFileFormatVersion() const { return mFileFormatVersion; }

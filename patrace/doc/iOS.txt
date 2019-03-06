@@ -145,9 +145,9 @@ client):
   returned together with the results. If on-screen retracing is requested, the
   surface with and height is also checked to be sufficently large.
 
-  Next, iOSRetracer_retraceUntilSwapBufferr() is called. This makes sure
+  Next, iOSRetracer_retrace() is called. This makes sure
   everything is ready for the global Retracer object, and then calls
-  RetraceUntilSwapBuffers() on it. (What "making sure everything is ready"
+  Retrace() on it. (What "making sure everything is ready"
   means is covered when talking about GLKView below.) The return value is
   interpreted and returned so that PARetraceViewController can know if the
   retrace is finished or not.
@@ -173,9 +173,9 @@ drawbacks it is necessary to be aware of. Before each frame, the GLKView:
 - Presents the contents of the view's associated framebuffer to the screen.
 
 This is all done without the Retracer's knowledge, so all state it relies on
-therefore need to be reset before Retracer::RetraceUntilSwapBuffers() is
+therefore need to be reset before Retracer::Retrace() is
 called to draw the next frame. Because of this, before each frame
-iOSRetracer_retraceUntilSwapBuffers():
+iOSRetracer_retrace():
 
 - Restores the viewport as it was at the end of the last frame. (Unless this is
   the first frame.)
@@ -192,7 +192,7 @@ screen, there is no *SwapBuffers-call available to be called inside the
 retracer. The iOS GLWS-implementation (windowing system abstraction used
 inside the retracer) therefore simply does nothing on a call to
 Drawable::swapBuffers(). Because a call to swapBuffers is followed by the
-retracer returning control to the caller of RetraceUntilSwapBuffers() this is
+retracer returning control to the caller of Retrace() this is
 not a problem however, as the swap is done -- just not in that exact moment.
 This does mean that the optional timeBlockedOnSwap-measurement in the retracer
 does not return correct values on iOS however (as it assumes swapBuffers()

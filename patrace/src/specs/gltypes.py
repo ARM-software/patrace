@@ -120,12 +120,6 @@ GLpipeline = Handle("pipeline", GLuint)
 GLsampler = Handle("sampler", GLuint)
 GLfeedback = Handle("feedback", GLuint)
 
-# GL mappings are pointers to linear memory regions.
-#
-# The map length is not always available in the function prototype, and must be
-# reconstructed from other state.
-GLmap = LinearPointer(GLvoid, "length")
-
 GLsync = Handle("sync", GLsyncstruct)
 
 #GLenum = Enum("GLenum", [

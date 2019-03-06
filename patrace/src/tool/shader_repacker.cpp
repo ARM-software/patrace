@@ -66,7 +66,7 @@ void pack_shaders(ParseInterface& input, common::OutFile& outputFile, const std:
         {
             const StateTracker::Context& ctx = input.contexts.at(input.context_index);
             const GLuint shader_id = call->mArgs[0]->GetAsUInt();
-            int shader_index = ctx.shader_remapping.at(shader_id);
+            int shader_index = ctx.shaders.remap(shader_id);
             const StateTracker::Shader& shader = ctx.shaders.at(shader_index);
             std::string filename = keyword + shader_filename(shader, input.context_index, 0);
             FILE *fp = fopen(filename.c_str(), "r");
@@ -103,7 +103,7 @@ void pack_shaders(ParseInterface& input, common::OutFile& outputFile, const std:
     // Check what we found
     for (const auto& context : input.contexts)
     {
-        for (const auto& shader : context.shaders)
+        for (const auto& shader : context.shaders.all())
         {
             std::string filename = keyword + shader_filename(shader, context.index, 0);
             FILE *fp = fopen(filename.c_str(), "w");

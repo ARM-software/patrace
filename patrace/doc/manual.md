@@ -6,11 +6,9 @@ PATrace is software for capturing GLES calls of an application and replaying the
 Installation
 ------------
 
-You can build the latest trunk from source, first check it out:
+You can build the latest trunk from source. First check it out, then make sure you have fetched all submdules:
 
->     git clone ssh://mpd-gerrit.cambridge.arm.com:29418/pat/patrace
->     cd patrace
->     git submodule update --recursive --init
+> git submodule update --recursive --init
 
 **Note**: master branch should not be used in production systems. Trace files produced with the trunk build might be incompatible in the future. Trace files produced by release builds will always be supported in future releases.
 
@@ -32,13 +30,13 @@ If you need to run patrace under a no\_mali=1 Mali DDK (this is only available t
 
 If you need patrace python tools, you can then build and install the patrace python tools like this:
 
-> \# Create and activate a virtualenv
-> virtualenv ~/venv
-> . ~/venv/bin/activate
+> \# Create and activate a virtualenv  
+> virtualenv ~/venv  
+> . ~/venv/bin/activate  
 >
-> \# Install patracetools
-> pip install pypatrace-\*.tar.gz
-> pip install patracetools-\*.tar.gz
+> \# Install patracetools  
+> pip install pypatrace-\*.tar.gz  
+> pip install patracetools-\*.tar.gz  
 
 We recommend using and installing inside a python **virtualenv**.
 
@@ -46,25 +44,25 @@ We recommend using and installing inside a python **virtualenv**.
 
 For running on most ARMv7 embedded devices, such as Arndale or Firefly:
 
->     ./scripts/build.py patrace fbdev_arm_hardfloat release
+> ./scripts/build.py patrace fbdev_arm_hardfloat release
 
 For running on ARMv8 embedded devices, such as most Juno board configurations:
 
->     ./scripts/build.py patrace fbdev_aarch64 release
+> ./scripts/build.py patrace fbdev_aarch64 release
 
 For embedded devices that do not use hardfloat (rare these days):
 
->     ./scripts/build.py patrace fbdev_arm release
+> ./scripts/build.py patrace fbdev_arm release
 
 ### Building for Android
 
 Build dependencies: You must install the Android SDK and NDK with support for the **android** command as well as the **ndk-build** command (deprecated in later SDK versions). You can get the SDK tools at https://dl.google.com/android/adt/adt-bundle-linux-x86_64-20140702.zip and the NDK at https://dl.google.com/android/repository/android-ndk-r13b-linux-x86_64.zip. Add the NDK installation dir to your path environment variable, or to the NDK environment variable. Add the tools and platform-tools folders located in the android SDK installation folder to your path. Make sure you have java and ant installed:
 
->     apt-get install openjdk-7-jdk ant
+> apt-get install openjdk-7-jdk ant
 
 Building:
 
->     ./scripts/build.py patrace android release
+> ./scripts/build.py patrace android release
 
 If you have a different android target installed than what the build script expects, then you will get build errors. To fix this, grep for the ANDROID\_TARGET variable in the ./scripts directory and change it to your android target.
 
@@ -72,13 +70,13 @@ If you have a different android target installed than what the build script expe
 
 The Python tree can get stale and fail to rebuild. You can clean the Python build parts with:
 
->     git clean -fxd patrace/python
+> git clean -fxd patrace/python
 
 If you have strange errors and wish to reset the build system, try this:
 
-> rm -rf builds/\*
-> git clean -fxd patrace/python
-> git submodule update --init
+> rm -rf builds/\*  
+> git clean -fxd patrace/python  
+> git submodule update --init  
 
 If you do not wish to build the Python code (not doing so speeds up Linux builds considerably), you can do this by setting the environment variable
 
@@ -91,9 +89,9 @@ Tracing
 
 Make sure you have a rooted device where developer mode is enabled and connect it to your desktop. You then need to remount the system directory to install files there.
 
->     adb shell
->     su
->     mount -o rw,remount /system
+> adb shell  
+> su  
+> mount -o rw,remount /system  
 
 When it comes to installing the fakedriver, the method differs depending on which device you have. Android will load the first driver it finds that goes by the name libGLES\_\*.so that resides in
 
@@ -111,47 +109,47 @@ By convention, we call our fakedriver "libGLES\_wrapper.so".
 
 Example instructions for **Galaxy S7** (32-bit apps):
 
->     adb push fakedriver/libGLES_wrapper_arm.so /sdcard/
->     adb shell su -c mount -o rw,remount /system
->     adb shell su -c cp /sdcard/libGLES_wrapper_arm.so /system/lib/egl/libGLES.so
->     adb shell su -c rm /sdcard/libGLES_wrapper_arm.so
->     adb shell su -c chmod 755 /system/lib/egl/libGLES.so
->     adb shell su -c mount -o ro,remount /system
+> adb push fakedriver/libGLES_wrapper_arm.so /sdcard/  
+> adb shell su -c mount -o rw,remount /system  
+> adb shell su -c cp /sdcard/libGLES_wrapper_arm.so /system/lib/egl/libGLES.so  
+> adb shell su -c rm /sdcard/libGLES_wrapper_arm.so  
+> adb shell su -c chmod 755 /system/lib/egl/libGLES.so  
+> adb shell su -c mount -o ro,remount /system  
 
 ### Installing interceptor on Android
 
 Install the interceptor and configure it:
 
->     adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm.so /sdcard/
->     adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm64.so /sdcard/
->     adb shell
->     su
->     mount -o rw,remount /system
+> adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm.so /sdcard/  
+> adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm64.so /sdcard/  
+> adb shell  
+> su  
+> mount -o rw,remount /system  
 >
->     cp /sdcard/libinterceptor_patrace_arm.so /system/lib/egl/libinterceptor_patrace_arm.so
->     cp /sdcard/libinterceptor_patrace_arm64.so /system/lib64/egl/libinterceptor_patrace_arm64.so
+> cp /sdcard/libinterceptor_patrace_arm.so /system/lib/egl/libinterceptor_patrace_arm.so  
+> cp /sdcard/libinterceptor_patrace_arm64.so /system/lib64/egl/libinterceptor_patrace_arm64.so  
 >
->     chmod 755 /system/lib/egl/libinterceptor_patrace_arm.so
->     chmod 755 /system/lib64/egl/libinterceptor_patrace_arm64.so
+> chmod 755 /system/lib/egl/libinterceptor_patrace_arm.so  
+> chmod 755 /system/lib64/egl/libinterceptor_patrace_arm64.so  
 >
->     echo "/system/lib/egl/libinterceptor_patrace_arm.so" > /system/lib/egl/interceptor.cfg
->     echo "/system/lib64/egl/libinterceptor_patrace_arm64.so" > /system/lib64/egl/interceptor.cfg
+> echo "/system/lib/egl/libinterceptor_patrace_arm.so" > /system/lib/egl/interceptor.cfg  
+> echo "/system/lib64/egl/libinterceptor_patrace_arm64.so" > /system/lib64/egl/interceptor.cfg  
 >
->     chmod 644 /system/lib/egl/interceptor.cfg
->     chmod 644 /system/lib64/egl/interceptor.cfg
+> chmod 644 /system/lib/egl/interceptor.cfg  
+> chmod 644 /system/lib64/egl/interceptor.cfg  
 >
->     mkdir /data/apitrace
->     chmod 777 /data/apitrace
+> mkdir /data/apitrace  
+> chmod 777 /data/apitrace
 
 Sometimes you will need to store the traces on the SD card instead:
 
->     adb shell su -c mkdir /sdcard/patrace
->     adb shell su -c chmod 777 /sdcard/patrace
->     adb shell su -c ln -s /sdcard/Android/data /data/apitrace
+> adb shell su -c mkdir /sdcard/patrace  
+> adb shell su -c chmod 777 /sdcard/patrace  
+> adb shell su -c ln -s /sdcard/Android/data /data/apitrace  
 
 For Android before version 4.4, you need to update egl.cfg. Either update you egl.cfg manually, or use the provided one:
 
->     adb push patrace/project/android/fakedriver/egl.cfg /system/lib/egl/
+> adb push patrace/project/android/fakedriver/egl.cfg /system/lib/egl/
 
 ### Installing fakedriver on Android 8
 
@@ -163,42 +161,42 @@ You can check if your Android 8 device supports Treble in adb shell:
 
 Return value is "true" means your device supports Treble. Then you need to use the following steps to install fakedriver (32-bit apps):
 
->     adb push fakedriver/libGLES_wrapper_arm.so /sdcard/
+> adb push fakedriver/libGLES_wrapper_arm.so /sdcard/  
 >
->     adb shell
->     su
->     mount -o rw,remount /vendor
+> adb shell  
+> su  
+> mount -o rw,remount /vendor  
 >
->     cp /sdcard/libGLES_wrapper_arm.so /vendor/lib/egl/
->     rm /sdcard/libGLES_wrapper_arm.so
->     chmod 755 /vendor/lib/egl/libGLES_wrapper_arm.so
->     mv /vendor/lib/egl/libGLES_mali.so /vendor/lib/egl/lib_mali.so
->     mount -o ro,remount /vendor
+> cp /sdcard/libGLES_wrapper_arm.so /vendor/lib/egl/  
+> rm /sdcard/libGLES_wrapper_arm.so  
+> chmod 755 /vendor/lib/egl/libGLES_wrapper_arm.so  
+> mv /vendor/lib/egl/libGLES_mali.so /vendor/lib/egl/lib_mali.so  
+> mount -o ro,remount /vendor  
 
 ### Installing interceptor on Android 8
 
 Similarly, install the interceptor to /vendor/lib(64)/egl and configure it:
 
->     adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm.so /sdcard/
->     adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm64.so /sdcard/
->     adb shell
->     su
->     mount -o rw,remount /vendor
+> adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm.so /sdcard/  
+> adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm64.so /sdcard/  
+> adb shell  
+> su  
+> mount -o rw,remount /vendor  
 >
->     cp /sdcard/libinterceptor_patrace_arm.so /vendor/lib/egl/libinterceptor_patrace_arm.so
->     cp /sdcard/libinterceptor_patrace_arm64.so /vendor/lib64/egl/libinterceptor_patrace_arm64.so
+> cp /sdcard/libinterceptor_patrace_arm.so /vendor/lib/egl/libinterceptor_patrace_arm.so  
+> cp /sdcard/libinterceptor_patrace_arm64.so /vendor/lib64/egl/libinterceptor_patrace_arm64.so  
 >
->     chmod 755 /vendor/lib/egl/libinterceptor_patrace_arm.so
->     chmod 755 /vendor/lib64/egl/libinterceptor_patrace_arm64.so
+> chmod 755 /vendor/lib/egl/libinterceptor_patrace_arm.so  
+> chmod 755 /vendor/lib64/egl/libinterceptor_patrace_arm64.so  
 >
->     echo "/vendor/lib/egl/libinterceptor_patrace_arm.so" > /vendor/lib/egl/interceptor.cfg
->     echo "/vendor/lib64/egl/libinterceptor_patrace_arm64.so" > /vendor/lib64/egl/interceptor.cfg
+> echo "/vendor/lib/egl/libinterceptor_patrace_arm.so" > /vendor/lib/egl/interceptor.cfg  
+> echo "/vendor/lib64/egl/libinterceptor_patrace_arm64.so" > /vendor/lib64/egl/interceptor.cfg  
 >
->     chmod 644 /vendor/lib/egl/interceptor.cfg
->     chmod 644 /vendor/lib64/egl/interceptor.cfg
+> chmod 644 /vendor/lib/egl/interceptor.cfg  
+> chmod 644 /vendor/lib64/egl/interceptor.cfg  
 >
->     mkdir /data/apitrace
->     chmod 777 /data/apitrace
+> mkdir /data/apitrace  
+> chmod 777 /data/apitrace  
 
 ### Installing fakedriver on Android 9
 
@@ -210,8 +208,8 @@ You can check if your Android 8 device supports Treble in adb shell:
 
 Return value is "true" means your device supports Treble. So you need to do the following copying first:
 
->     cp /system/lib64/libstdc++.so /vendor/lib64/
->     cp /system/lib/libstdc++.so /vendor/lib/
+> cp /system/lib64/libstdc++.so /vendor/lib64/  
+> cp /system/lib/libstdc++.so /vendor/lib/  
 
 Then you can follow the steps in "Installing fakedriver on Android 8".
 
@@ -223,8 +221,8 @@ The same with "Installing interceptor on Android 8".
 
 The Android Vulkan loader uses 32-bit and 64-bit Vulkan drivers here:
 
->     /vendor/lib/hw/vulkan.<ro.product.platform>.so
->     /vendor/lib64/hw/vulkan.<ro.product.platform>.so
+> /vendor/lib/hw/vulkan.<ro.product.platform>.so  
+> /vendor/lib64/hw/vulkan.<ro.product.platform>.so  
 
 If these 2 files are symbolic links to real DDK(libGLES\_mali.so) and you renamed the real DDK for installing fakedriver, you need to recreate these symbolic links for Vulkan apps running.
 
@@ -240,9 +238,9 @@ Create the output trace directory in advance, which will be named /data/apitrace
 
 Example:
 
-> echo "`com.arm.mali.Timbuktu`" &gt;&gt; `/system/lib/egl/appList.cfg`chmod 644 /system/lib/egl/appList.cfg
-> mkdir -p /data/apitrace/`com.arm.mali.Timbuktu`
-> chmod 777 /data/apitrace/`com.arm.mali.Timbuktu`
+> echo "`com.arm.mali.Timbuktu`" &gt;&gt; `/system/lib/egl/appList.cfg`chmod 644 /system/lib/egl/appList.cfg  
+> mkdir -p /data/apitrace/`com.arm.mali.Timbuktu`  
+> chmod 777 /data/apitrace/`com.arm.mali.Timbuktu`  
 
 Make sure `/system/lib[64]/egl/appList.cfg` is world readable.
 
@@ -270,7 +268,7 @@ If the fakedriver doesn't seem to be picked up (nothing relevant printed in logc
 
 Put the libegltrace.so file you built somewhere where you can access it, then run:
 
->     LD_PRELOAD=/my/path/libegltrace.so OUT_TRACE_FILE=myGLB2 ./glbenchmark2
+> LD_PRELOAD=/my/path/libegltrace.so OUT_TRACE_FILE=myGLB2 ./glbenchmark2
 
 Use the OUT\_TRACE\_FILE variable to set the path and filename of the captured trace. The filename will be appended with an index followed by `.pat`. If `%u` appears in OUT\_TRACE\_FILE, it will be used as a placeholder for the index. E.g. `foo-%u-bar.pat`. If the OUT\_TRACE\_FILE variable is omitted, then the hard coded pattern, `trace.%u.pat`, will be used.
 
@@ -338,16 +336,16 @@ On the FPGA with dummy winsys, you need to specify some extra environment variab
 
 To launch the retracer from command line, you can use the following command:
 
->     adb shell am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es fileName /absolute/path/to/tracefile.pat
+> adb shell am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es fileName /absolute/path/to/tracefile.pat
 
 For a full set of available parameters, see Command Line Parameters in ADB Shell.
 
 To retrace some traces which contain external YUV textures on Android 7 or later, you need to add libui.so to /etc/public.libraries.txt out
 
->     adb shell
->     su
->     mount -o rw,remount /
->     echo libui.so >> /etc/public.libraries.txt
+> adb shell  
+> su  
+> mount -o rw,remount /  
+> echo libui.so >> /etc/public.libraries.txt  
 
 ### Retracing On Desktop Linux
 
@@ -359,7 +357,7 @@ For GLES support on Linux desktop environments there are three options:
 
 The preferred option is to use the latest Nvidia driver (see Tracing on desktop Linux). Using the MESA's GLES implementation is the least preferred option. Copy the trace file from the device and replay it with:
 
->     paretrace TRACE_FILE.pat
+> paretrace TRACE_FILE.pat
 
 The first time you run the file, it is recommended to add the "-debug" command line switch to see any error messages from the driver, which can reveal many issues.
 
@@ -378,7 +376,7 @@ Check out Midgard DDK and build it with e.g. `scons profile=x86-32-debug-dump`
 
 Run the trace using e.g.
 
->     LD_LIBRARY_PATH=path_to_driver_libraries MALI_SAVE_FRAMES_TO_FILE=1 paretrace input.pat
+> LD_LIBRARY_PATH=path_to_driver_libraries MALI_SAVE_FRAMES_TO_FILE=1 paretrace input.pat
 
 ### Parameter options
 
@@ -751,16 +749,16 @@ To do this, create a json parameter file similar to the one below (we will refer
 
 Then run paretrace as follows:
 
-> \# Linux
-> paretrace -jsonParameters parameters.json results.json .
+> \# Linux  
+> paretrace -jsonParameters parameters.json results.json .  
 >
 >
-> \# Android (using adb)
-> adb shell am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es jsonData parameters.json --es resultFile results.json
+> \# Android (using adb)  
+> adb shell am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es jsonData parameters.json --es resultFile results.json  
 >
 >
-> \# Android, using the (on device) android shell
-> am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es jsonData parameters.json --es resultFile results.json
+> \# Android, using the (on device) android shell  
+> am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es jsonData parameters.json --es resultFile results.json  
 
 
 Once the run finishes the most relevant CPU statistics will be printed to stdout.

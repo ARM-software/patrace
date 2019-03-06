@@ -1,10 +1,10 @@
 #if !defined(GLWS_EGL_WAYLAND_HPP)
 #define GLWS_EGL_WAYLAND_HPP
 
-#include <wayland-server.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <weston-egl-ext.h>
+#include <wayland-server.h>
 
 #include <wayland-client.h>
 #include <wayland-egl.h>

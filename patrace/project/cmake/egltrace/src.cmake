@@ -23,6 +23,7 @@ set(SRC_EGLTRACE
     ${SRC_ROOT}/dispatch/eglproc_trace.cpp
     ${SRC_ROOT}/helper/paramsize.cpp
     ${SRC_ROOT}/helper/eglsize.cpp
+    ${SRC_ROOT}/helper/shaderutility.cpp
     ${SRC_ROOT}/helper/states.cpp
     ${SRC_ROOT}/tracer/egltrace.cpp
     ${SRC_ROOT}/tracer/egltrace_auto.cpp

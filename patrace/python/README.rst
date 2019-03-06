@@ -17,8 +17,8 @@ Install
     . ~/venv/bin/activate
 
     # Install patracetools
-    pip install pypatrace-r2p12.tar.gz
-    pip install patracetools-r2p12.tar.gz
+    pip install pypatrace-r2p13.tar.gz
+    pip install patracetools-r2p13.tar.gz
 
 Usage
 =====

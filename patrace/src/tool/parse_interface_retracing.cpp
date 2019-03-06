@@ -333,8 +333,8 @@ common::CallTM* ParseInterfaceRetracing::next_call()
     if (mCall->mCallName == "glCompileShader")
     {
         GLuint shader = mCall->mArgs[0]->GetAsUInt();
-        int target_shader_index = contexts[context_index].shader_remapping[shader];
-        if (contexts[context_index].shaders.size() > (unsigned)target_shader_index) // this is for Egypt...
+        int target_shader_index = contexts[context_index].shaders.remap(shader);
+        if (contexts[context_index].shaders.all().size() > (unsigned)target_shader_index) // this is for Egypt...
         {
             GLint compiled = 0;
             glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
@@ -344,7 +344,7 @@ common::CallTM* ParseInterfaceRetracing::next_call()
     else if (mCall->mCallName == "glLinkProgram")
     {
         GLuint program = mCall->mArgs[0]->GetAsUInt();
-        int target_program_index = contexts[context_index].program_remapping[program];
+        int target_program_index = contexts[context_index].programs.remap(program);
         GLint linked = 0;
         glGetProgramiv(program, GL_LINK_STATUS, &linked);
         contexts[context_index].programs[target_program_index].link_status = linked;
