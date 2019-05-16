@@ -104,7 +104,8 @@ bool CPUFreqCollector::collect(int64_t /* now */)
             {
                 // Just read the current frequency
                 rewind(c.freq_file);
-                fscanf(c.freq_file, "%ld", &freq);
+                int r = fscanf(c.freq_file, "%ld", &freq);
+                (void)r; // elaborate way to silence compiler
                 sum = freq;
             }
             else

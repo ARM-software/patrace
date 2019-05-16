@@ -562,8 +562,8 @@ static void notify( int fd, int status )
 
     if( lastStatus != status )
     {
-        (void) write( fd, &status, sizeof(status) );
-
+        ssize_t s = write( fd, &status, sizeof(status) );
+        (void)s; // elaborate way to silence the compiler
         lastStatus = status;
     }
 }
