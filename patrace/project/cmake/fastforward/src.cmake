@@ -31,6 +31,7 @@ set(SRC_FASTFORWARD
     ${SRC_ROOT}/helper/paramsize.cpp
     ${SRC_ROOT}/helper/shadermod.cpp
     ${SRC_ROOT}/helper/shaderutility.cpp
+    ${SRC_ROOT}/helper/depth_dumper.cpp
     ${SRC_ROOT}/tool/utils.cpp
 )
 

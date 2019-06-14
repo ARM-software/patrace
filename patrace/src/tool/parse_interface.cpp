@@ -35,6 +35,7 @@ DrawParams ParseInterfaceBase::getDrawCallCount(common::CallTM *call)
     {
         ret.instances = call->mArgs[3]->GetAsUInt();
     }
+    assert(ret.instances >= 0);
 
     ret.mode = call->mArgs[0]->GetAsUInt();
     ret.primitives = calculate_primitives(ret.mode, ret.vertices, contexts[context_index].patchSize);

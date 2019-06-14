@@ -27,6 +27,7 @@
 #include <unordered_map>
 #include <sys/stat.h>
 #include <libgen.h>
+#include <time.h>
 
 using namespace common;
 using namespace std;
@@ -188,6 +189,13 @@ void BinAndMeta::writeHeader(bool cleanExit)
     }
     jsonRoot["tracer"] = PATRACE_VERSION;
     jsonRoot["tracer_extensions"] = tracerParams.SupportedExtensionsString;
+
+    // add date of trace capture
+    char tmpstr[40];
+    time_t t = time(nullptr);
+    struct tm* tmp = localtime(&t);
+    strftime(tmpstr, sizeof(tmpstr), "%Y-%m-%d", tmp);
+    jsonRoot["trace_date"] = tmpstr;
 
     Json::Value jsonThreadArray;
     int index = 0;
@@ -659,26 +667,6 @@ void after_glCreateProgram(unsigned char tid, GLuint program)
     mapPrgToBoundAttribs.insert(std::pair<unsigned int, unsigned int>(program, 0));
 }
 
-void _reportLinkErrors(GLuint program)
-{
-    GLint success = GL_TRUE;
-    glGetProgramiv(program, GL_LINK_STATUS, &success);
-
-    if(success == GL_FALSE)
-    {
-        DBG_LOG("PROGRAM LINK ERROR !!!\n");
-        GLsizei logLength = 0;
-        _glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength );
-        if(logLength)
-        {
-            char* log = new char[logLength];
-            _glGetProgramInfoLog(program, logLength, NULL, log);
-            DBG_LOG("Log:\n%s\n",log);
-            delete[] log;
-        }
-    }
-}
-
 GLuint replace_glCreateShaderProgramv(unsigned char tid, GLenum type, GLsizei count, const GLchar * const * strings)
 {
     // For vertex shaders, we need to replace it with our own, so that we can inject vertex attribute location calls
@@ -720,18 +708,33 @@ GLuint replace_glCreateShaderProgramv(unsigned char tid, GLenum type, GLsizei co
     }
 }
 
-void pre_glLinkProgram(unsigned char tid, unsigned int program)
+bool pre_glLinkProgram(unsigned char tid, unsigned int program)
 {
     std::map<unsigned int, unsigned int>& mapPrgToBoundAttribs = GetCurTraceContext(tid)->mapPrgToBoundAttribs;
     std::map<unsigned int, unsigned int>::iterator it = mapPrgToBoundAttribs.find(program);
-    if (it == mapPrgToBoundAttribs.end()) {
-        DBG_LOG("Error: The program name is not found in mapPrgToBoundAttribs!\n");
-        return;
+    if (it == mapPrgToBoundAttribs.end())
+    {
+        DBG_LOG("Error: The program name %u is not found in mapPrgToBoundAttribs!\n", program);
+        return false;
     }
 
     // 1. link the 'program' in order to figure out its active vertex attributes
     _glLinkProgram(program);
-    //_reportLinkErrors(program);
+    GLint success = GL_TRUE;
+    _glGetProgramiv(program, GL_LINK_STATUS, &success);
+    if (success == GL_FALSE)
+    {
+        GLsizei logLength = 0;
+        _glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
+        if (logLength)
+        {
+            std::vector<char> log(logLength);
+            _glGetProgramInfoLog(program, logLength, NULL, log.data());
+            DBG_LOG("Link failure program %u, log:\n%s\n", program, log.data());
+            return false;
+        }
+        else DBG_LOG("Link failure program %u - no error log available\n", program);
+    }
 
     // 2. figure out the number of the active vertex attributes
     GLint attribCnt = 0;
@@ -759,6 +762,7 @@ void pre_glLinkProgram(unsigned char tid, unsigned int program)
             glBindAttribLocation(program, attribLoc, attribName);
         }
     }
+    return true;
 }
 
 void after_glDeleteProgram(unsigned char tid, GLuint program)
@@ -845,7 +849,6 @@ void after_glLinkProgram(unsigned int program)
     _glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
     if (linkStatus == GL_FALSE)
     {
-        DBG_LOG("Link failure, cannot inject block lookups!\n");
         return; // skip rest
     }
     GLint activeUniformBlocks = 0;

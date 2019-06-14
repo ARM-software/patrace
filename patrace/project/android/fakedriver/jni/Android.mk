@@ -28,7 +28,7 @@ LOCAL_C_INCLUDES:= \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers
 
 LOCAL_CFLAGS    := -O3 -D__arm__ -D__gnu_linux__ $(PA_BUILD_64BIT) -fvisibility=hidden -Wno-attributes
-LOCAL_LDLIBS    := -lz -llog -ldl
+LOCAL_LDLIBS    := -nodefaultlibs -lc -lm -lz -llog -ldl
 LOCAL_CPPFLAGS  += -std=c++11
 LOCAL_CFLAGS_arm += -U__ARM_ARCH_5__ -U__ARM_ARCH_5T__ \
 	      -U__ARM_ARCH_5E__ -U__ARM_ARCH_5TE__ \
@@ -56,7 +56,7 @@ LOCAL_C_INCLUDES:= \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers
 
 LOCAL_CFLAGS    := -O3 -D__arm__ -D__gnu_linux__ $(PA_BUILD_64BIT) -fvisibility=hidden -Wno-attributes
-LOCAL_LDLIBS    := -lz -llog -ldl
+LOCAL_LDLIBS    := -nodefaultlibs -lc -lm -lz -llog -ldl
 LOCAL_CPPFLAGS  += -std=c++11
 LOCAL_CFLAGS_arm += -U__ARM_ARCH_5__ -U__ARM_ARCH_5T__ \
 	      -U__ARM_ARCH_5E__ -U__ARM_ARCH_5TE__ \
@@ -84,7 +84,7 @@ LOCAL_C_INCLUDES:= \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers
 
 LOCAL_CFLAGS    := -O3 -D__arm__ -D__gnu_linux__ $(PA_BUILD_64BIT) -fvisibility=hidden -Wno-attributes
-LOCAL_LDLIBS    := -lz -llog -ldl
+LOCAL_LDLIBS    := -nodefaultlibs -lc -lm -lz -llog -ldl
 LOCAL_SHARED_LIBRARIES := libEGL_wrapper_$(TARGET_ARCH)
 LOCAL_CPPFLAGS  += -std=c++11
 LOCAL_CFLAGS_arm += -U__ARM_ARCH_5__ -U__ARM_ARCH_5T__ \
@@ -116,7 +116,7 @@ LOCAL_C_INCLUDES:= \
     $(LOCAL_PATH)/fakedriver/egl
 
 LOCAL_CFLAGS    := -O3 -D__arm__ -D__gnu_linux__ $(PA_BUILD_64BIT) -fvisibility=hidden -Wno-attributes
-LOCAL_LDLIBS    := -lz -llog -ldl
+LOCAL_LDLIBS    := -nodefaultlibs -lc -lm -lz -llog -ldl
 LOCAL_CPPFLAGS  += -std=c++11
 LOCAL_CFLAGS_arm += -U__ARM_ARCH_5__ -U__ARM_ARCH_5T__ \
 	      -U__ARM_ARCH_5E__ -U__ARM_ARCH_5TE__ \

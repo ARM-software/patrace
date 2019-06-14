@@ -11,6 +11,19 @@
 #include <unistd.h>
 #include <fstream>
 #include <sstream>
+#include <assert.h>
+
+
+void splitString(const char* s, char delimiter, std::vector<std::string>& tokens)
+{
+    std::stringstream f(s);
+    std::string str;
+    while (std::getline(f, str, delimiter))
+    {
+        tokens.push_back(str);
+    }
+}
+
 
 static std::vector<std::string> splitString(const char* s, char delimiter)
 {
@@ -225,4 +238,36 @@ bool DDKHasInstrCompiledIn(const std::string &keyword)
 
     DBG_LOG("Couldn't locate %s - assuming instr support NOT compiled in.\n", soName.c_str());
     return false;
+}
+
+int32_t _stoi(const std::string& str)
+{
+    int32_t value;
+    std::stringstream sstr(str);
+    if(!(sstr >> value)) {
+        DBG_LOG("Failed to convert string: %s to a integer.\n", str.c_str());
+        assert(false);
+    }
+
+    return value;
+}
+
+
+uint64_t _stol(const std::string& str)
+{
+    uint64_t value;
+    std::stringstream sstr(str);
+    if(!(sstr >> value)) {
+        DBG_LOG("Failed to convert string: %s to a long long integer.\n", str.c_str());
+        assert(false);
+    }
+
+    return value;
+}
+
+
+bool file_exists(const std::string& name)
+{
+  struct stat buffer;   
+  return (stat(name.c_str(), &buffer) == 0); 
 }

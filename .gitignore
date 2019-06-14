@@ -76,6 +76,7 @@ install
 # Custom tools goes here
 .ropeproject
 tags
+Makefile
 
 # For python setup.py
 patrace/python/pypatrace/MANIFEST

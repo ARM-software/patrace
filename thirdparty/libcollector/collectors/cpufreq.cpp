@@ -7,7 +7,7 @@
 
 bool CPUFreqCollector::init()
 {
-    // just in case...
+    // Just in case, clean up...
     deinit();
     mCores.clear();
 

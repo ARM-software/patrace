@@ -53,6 +53,7 @@ public:
     GLSLShader preprocessor(std::string shader, int shaderType);
     std::string strip_comments(const std::string& s);
     std::string compressed(GLSLShader shader);
+    std::string inline_includes(const std::string& s);
 
     void self_test();
     int shaderType(const std::string& extension);

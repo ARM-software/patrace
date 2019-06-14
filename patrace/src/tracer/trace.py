@@ -466,7 +466,7 @@ class Tracer:
             print '    BCall_vlen *pCall = (BCall_vlen*)dest;'
         else:
             print '    BCall *pCall = (BCall*)dest;'
-        if func.name == 'eglCreateWindowSurface':
+        if func.name in ['eglCreateWindowSurface', 'glLinkProgram']: # replacement functions
             print '    pCall->funcId = %s2_id;' % (func.name)
         else:
             print '    pCall->funcId = %s_id;' % (func.name)
@@ -488,6 +488,8 @@ class Tracer:
             SerializeVisitor().visit(stdapi.Int, 'y', func)
             SerializeVisitor().visit(stdapi.Int, 'width', func)
             SerializeVisitor().visit(stdapi.Int, 'height', func)
+        if func.name == 'glLinkProgram':
+            SerializeVisitor().visit(stdapi.UChar, 'link_status', func)
         if func.type is not stdapi.Void:
             SerializeVisitor().visit(func.type, '_result', func)
         if func.name.startswith('gl') and func.name != 'glGetError':
@@ -844,7 +846,7 @@ class Tracer:
         if func.name in ['glUnmapBuffer', 'glUnmapBufferOES']:
             print '    pre_glUnmapBuffer(target);'
         if func.name == 'glLinkProgram':
-            print '    pre_glLinkProgram(tid, program);'
+            print '    bool link_status = pre_glLinkProgram(tid, program);'
         if func.name in ['eglSwapBuffers',
                          'eglSwapBuffersWithDamageKHR']:
             print '    pre_eglSwapBuffers();'

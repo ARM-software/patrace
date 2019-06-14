@@ -123,6 +123,11 @@ void retrace_eglCreateWindowSurface(char* src)
 
     d->winWidth  = opt.mWindowWidth;
     d->winHeight = opt.mWindowHeight;
+    if (opt.mDoOverrideResolution)
+    {
+        d->mOverrideResRatioW = opt.mOverrideResW / (float) opt.mWindowWidth;
+        d->mOverrideResRatioH = opt.mOverrideResH / (float) opt.mWindowHeight;
+    }
 
     if (gRetracer.mOptions.mForceSingleWindow && !gRetracer.mOptions.mMultiThread)
     {
@@ -179,8 +184,6 @@ static void retrace_eglCreateWindowSurface2(char* src)
         thread.mCurDrvVP.w = opt.mOverrideResW;
         thread.mCurDrvVP.h = opt.mOverrideResH;
         thread.mCurDrvSR = thread.mCurDrvVP;
-        opt.mOverrideResRatioW = opt.mOverrideResW / (float) winWidth;
-        opt.mOverrideResRatioH = opt.mOverrideResH / (float) winHeight;
         //DBG_LOG("Setting scissor to: %d %d\n", gRetracer.mState.mThreadArr[gRetracer.getCurTid()].mCurDrvSR.w, gRetracer.mState.mThreadArr[gRetracer.getCurTid()].mCurDrvSR.h);
     }
 
@@ -225,6 +228,11 @@ static void retrace_eglCreateWindowSurface2(char* src)
 
     d->winWidth  = winWidth;
     d->winHeight = winHeight;
+    if (opt.mDoOverrideResolution)
+    {
+        d->mOverrideResRatioW = opt.mOverrideResW / (float) winWidth;
+        d->mOverrideResRatioH = opt.mOverrideResH / (float) winHeight;
+    }
 
     if (gRetracer.mOptions.mForceSingleWindow && !gRetracer.mOptions.mMultiThread)
     {
@@ -455,6 +463,11 @@ void retrace_eglMakeCurrent(char* src)
                 RetraceOptions& opt = gRetracer.mOptions;
                 drawable->winWidth  = opt.mWindowWidth;
                 drawable->winHeight = opt.mWindowHeight;
+                if (opt.mDoOverrideResolution)
+                {
+                    drawable->mOverrideResRatioW = opt.mOverrideResW / (float) opt.mWindowWidth;
+                    drawable->mOverrideResRatioH = opt.mOverrideResH / (float) opt.mWindowHeight;
+                }
                 s.InsertDrawableMap(draw, drawable);
                 s.mSingleSurface = drawable;
             }
@@ -623,11 +636,10 @@ static void retrace_eglCreateImageKHR(char* src)
         context = 0;        // EGL_NO_CONTEXT
         retracer::Context &curContext = gRetracer.getCurrentContext();
         int id = curContext.getGraphicBufferMap().RValue(buffer);
-        int tid = gRetracer.getCurTid();
 #ifdef ANDROID
         GraphicBuffer *graphicBuffer;
         try {
-            graphicBuffer = gRetracer.mGraphicBuffers.at(tid).at(id);
+            graphicBuffer = curContext.mGraphicBuffers.at(id);
         }
         catch (std::out_of_range&) {
             DBG_LOG("Cannot find the corresponding GraphicBuffer for eglCreateImageKHR in call %d. "
@@ -640,7 +652,7 @@ static void retrace_eglCreateImageKHR(char* src)
         buffer_new = 0;     // NULL
         egl_image_fixture *fix;
         try {
-            fix = gRetracer.mGraphicBuffers.at(tid).at(id);
+            fix = curContext.mGraphicBuffers.at(id);
         }
         catch (std::out_of_range) {
             DBG_LOG("Cannot find the corresponding GraphicBuffer for eglCreateImageKHR in call %d. "

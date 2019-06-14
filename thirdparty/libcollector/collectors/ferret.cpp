@@ -10,12 +10,16 @@
 
 #include "ferret.hpp"
 
+#include <set>
+#include <fstream>
 #include <vector>
 #include <string>
+#include <sstream>
 #include <cstring>
 #include <thread>
 #include <unistd.h>
 #include <cassert>
+#include <algorithm>
 
 #include <fcntl.h>
 #include <dirent.h>
@@ -50,11 +54,36 @@ pid_stat_spec[] =
 };
 
 
+void get_cpu_cores( std::vector<int>& cores )
+{
+    const std::string prefix = "/sys/devices/system/cpu/cpu";
+    const std::string suffix = "/cpufreq/scaling_cur_freq";
+
+    for ( size_t i = 0; i < 256; ++i )
+    {
+        const std::string freqFile = prefix + _to_string( i ) + suffix;
+        if ( file_exists( freqFile ) )
+        {
+            cores.push_back(i);
+        }
+    }
+}
+
+/* Collector JSON args:
+ * cpus: List of CPUS to monitor, defaults to all (up to a maximum of 256 cores) if not specified.
+ * enable_postprocessing: If this is set to true, ferret will postprocess the results for convenience (giving derived CPU load stats).
+ * banned_threads: Any thread names in this list (thread name = comm name) will not be included in the postprocessing, so they will not contribute to the derived CPU stats.
+ * output_dir: Directory to store result files in. Must already exist.
+ * threaded: Run in threaded mode, default is true.
+ * process_names: Names of processes to monitor. Primarily used by burrow.
+ */
+
 FerretCollector::FerretCollector( const Json::Value& config,
                                   const std::string& name ) : Collector( config, name )
 {
     mClockTicks = sysconf( _SC_CLK_TCK );
     mPid = _to_string(getpid());
+    mEnablePostprocess = false;
 
     /*
      * Absorb configuration.
@@ -79,6 +108,36 @@ FerretCollector::FerretCollector( const Json::Value& config,
         {
             DBG_LOG( "%s: JSON member cpus is not an array.\n", mName.c_str() );
         }
+    } else {
+        DBG_LOG( "%s: No cpu filter specified, monitoring all cores by default.\n", mName.c_str() );
+        get_cpu_cores( mCpus );
+    }
+
+    if( mConfig.isMember( "enable_postprocessing" ) )
+    {
+        mEnablePostprocess = true;
+    }
+
+    if( mConfig.isMember( "banned_threads" ) )
+    {
+        Json::Value const& bannedThreads = mConfig[ "banned_threads" ];
+
+        if( bannedThreads.isArray() )
+        {
+            Json::Value const& bannedThreads = mConfig[ "banned_threads" ];
+
+            for( unsigned i = 0; i < bannedThreads.size() ; ++i )
+            {
+                mBannedThreads.push_back( bannedThreads[i].asString() );
+            }
+        }
+        else
+        {
+            DBG_LOG( "%s: JSON member banned_threads is not an array.\n", mName.c_str() );
+        }
+    } else if ( mEnablePostprocess ) {
+        DBG_LOG( "%s: Postprocessing enabled, but no process filter specified. Filtering only ferret threads by default (to mimnimize measurement pollution by instrumentation).\n", mName.c_str() );
+        mBannedThreads.push_back( "ferret" );
     }
 
     if( mConfig.isMember( "process_names" ) )
@@ -273,11 +332,7 @@ bool FerretCollector::start( void )
     const std::string extension = ".data";
     const std::string output = prefix + _to_string( increment++ ) + extension;
 
-    if( mCustomResult.empty() )
-    {
-        mCustomResult = Json::arrayValue;
-    }
-    mCustomResult.append( output );
+    mCustomResult["output"] = output;
 
     unlink( output.c_str() );
 
@@ -342,6 +397,12 @@ bool FerretCollector::stop()
     mCollecting = false;
 
     close( mTraceFd );
+
+    if( mEnablePostprocess )
+    {
+        // This is a c++ port of the ferret.py script (intended to make it possible to get CPU performance data without any postprocessing)
+        mCustomResult["postprocessed_results"] = postprocess_ferret_data( mCustomResult["output"].asString(), mBannedThreads );
+    }
 
     return !mCollecting;
 }
@@ -571,8 +632,17 @@ static void notify( int fd, int status )
 
 bool FerretCollector::collect( int64_t now )
 {
-    assert( mInitSuccess );
-    assert( mCollecting );
+    if ( !mInitSuccess )
+    {
+        DBG_LOG( "%s: Attempted to collect but initialization was not successful, aborting.\n", mName.c_str() );
+        assert( mInitSuccess );
+    }
+
+    if ( !mCollecting )
+    {
+        DBG_LOG( "%s: Attempted to collect but collector has not been started, aborting.\n", mName.c_str() );
+        assert( mCollecting );
+    }
 
     /* Detect time of first call.
      */
@@ -679,10 +749,9 @@ bool FerretCollector::collect( int64_t now )
     return mCollecting;
 }
 
-
 void FerretCollector::open_cpufreq_fds( void )
 {
-    for( auto cpu:mCpus )
+    for( auto cpu : mCpus )
     {
         const std::string prefix = "/sys/devices/system/cpu/cpu";
         const std::string suffix = "/cpufreq/scaling_cur_freq";
@@ -886,4 +955,477 @@ pid_t FerretCollector::poll_for_named_process( std::string const& name )
     closedir( dirp );
 
     return found;
+}
+
+
+// The rest is postprocessing utility
+FerretProcess::FerretProcess(
+    int schedTickHz,
+    const std::vector<int>& cpuNrs):
+        label(""),
+        first(0.0),
+        last(0.0),
+        jiffyPeriod(1.0 / double(schedTickHz)),
+        jiffies(0),
+        totJiffiesAllCpus(0)
+{
+    for ( int i : cpuNrs )
+    {
+        std::string cpu_index = _to_string(i);
+
+        mcyc[cpu_index] = 0;
+        totJiffies[cpu_index] = 0;
+        freqLogSums[cpu_index] = 0.0;
+        numFreqLogSums[cpu_index] = 0;
+    }
+}
+
+
+void FerretProcess::add(
+    const std::string& nlabel,
+    double ts,
+    int njiffies,
+    double freq,
+    int cpuNr
+) {
+    std::string cpu_index = _to_string(cpuNr);
+
+    label = nlabel;
+    if ( first == 0.0 )
+    {
+        first = ts;
+        jiffies = njiffies;
+    }
+
+    last = ts;
+
+    int diffJiffy = njiffies - jiffies;
+    jiffies = njiffies;
+
+    totJiffiesAllCpus += diffJiffy;
+    totJiffies[cpu_index] = totJiffies[cpu_index].asInt() + diffJiffy;
+
+    if ( freq )
+    {
+        mcyc[cpu_index] = mcyc[cpu_index].asDouble() + diffJiffy * jiffyPeriod * freq;
+        freqLogSums[cpu_index] = freqLogSums[cpu_index].asDouble() + std::log(freq);
+        numFreqLogSums[cpu_index] = numFreqLogSums[cpu_index].asInt() + 1;
+    }
+}
+
+
+double FerretProcess::duration() const
+{
+    return last - first;
+}
+
+
+int FerretProcess::active_jiffies() const
+{
+    return totJiffiesAllCpus;
+}
+
+
+Json::Value FerretProcess::summary(const std::string& pid) const
+{
+    Json::Value result;
+
+    double active = jiffyPeriod * active_jiffies();
+
+    if ( !active )
+    {
+        return result;
+    }
+
+    result["pid"] = pid;
+    result["name"] = label;
+    result["duration"] = duration();
+
+    Json::Value actives;
+    Json::Value::Members cpu_keys = totJiffies.getMemberNames();
+    double total_active = 0.0;
+    for ( auto& cpuNr : cpu_keys )
+    {
+        actives[cpuNr] = totJiffies[cpuNr].asInt() * jiffyPeriod;
+        total_active += totJiffies[cpuNr].asInt() * jiffyPeriod;
+    }
+
+    result["active_sum"] = total_active;
+    result["active"] = actives;
+
+    double total_cycles = 0.0;
+    for ( auto& cpuNr : cpu_keys )
+    {
+        total_cycles += mcyc[cpuNr].asDouble();
+    }
+
+    result["MCyc_sum"] = total_cycles;
+    result["MCyc"] = mcyc;
+
+    result["MHz"] = Json::Value();
+    for ( auto& cpuNr : cpu_keys )
+    {
+        size_t numFreqs = numFreqLogSums[cpuNr].asInt();
+
+        if ( numFreqs == 0 )
+        {
+            result["MHz"][cpuNr] = 0;
+            continue;
+        }
+
+        double freqSum = freqLogSums[cpuNr].asDouble();
+        result["MHz"][cpuNr] = std::exp( freqSum / numFreqs );
+    }
+
+    return result;
+}
+
+
+static void ferret_process_info(
+    Json::Value& traceProperties,
+    const std::vector<std::string>& rowData,
+    Json::Value& state
+) {
+    static std::map<std::string, int> infoTypeMap = {
+        {"_SC_CLK_TCK", 0},
+        {"CPUList", 1},
+        {"WatchList", 2},
+        {"Status", 3}
+    };
+
+    std::string infoType = rowData[1];
+
+    int typeID = infoTypeMap[infoType];
+
+    switch ( typeID )
+    {
+        case 0: {
+            traceProperties["tick"] = _stoi(rowData[2]);
+            break;
+        }
+        case 1: {
+            std::vector<int> cpu_idices;
+            std::set<int> duplication_checker;
+            for ( size_t i = 2; i < rowData.size(); ++i )
+            {
+                int cpu_number = _stoi(rowData[i]);
+                if ( duplication_checker.find(cpu_number) != duplication_checker.end() )
+                {
+                    DBG_LOG( "Duplicate CPU index %d specified in libcollector module ferret parameters.\n", cpu_number );
+                    assert( false );
+                }
+
+                duplication_checker.insert(cpu_number);
+                cpu_idices.push_back(cpu_number);
+            }
+
+            std::sort(cpu_idices.begin(), cpu_idices.end());
+
+            traceProperties["cpus"] = Json::Value(Json::arrayValue);
+
+            for ( int cpu_index : cpu_idices )
+            {
+                traceProperties["cpus"].append(cpu_index);
+            }
+
+            break;
+        }
+        case 2: {
+            traceProperties["watch"] = Json::Value(Json::arrayValue);
+
+            for ( size_t i = 2; i < rowData.size(); ++i )
+            {
+                traceProperties["watch"].append(rowData[i]);
+            }
+
+            break;
+        }
+        case 3: {
+            traceProperties["stat_fields"] = Json::Value(Json::arrayValue);
+
+            for ( size_t i = 2; i < rowData.size(); ++i )
+            {
+                traceProperties["stat_fields"].append(rowData[i]);
+            }
+            break;
+        }
+    }
+}
+
+
+static void ferret_process_time(
+    Json::Value& traceProperties,
+    const std::vector<std::string>& rowData,
+    Json::Value& state
+) {
+    double now = static_cast<double>( _stol( rowData[1] ) ) * 1.0e-6;
+    state.clear();
+    state["time"] = now;
+}
+
+
+static void ferret_process_status(
+    Json::Value& traceProperties,
+    const std::vector<std::string>& rowData,
+    Json::Value& state
+) {
+    Json::Value dataDict;
+    std::string pid_str;
+
+    for ( int i = 1; i < static_cast<int>(rowData.size()); ++i )
+    {
+        std::string stat_field = traceProperties["stat_fields"][i - 1].asString();
+
+        if ( stat_field ==  "comm")
+        {
+            std::string stripped_string = std::string(
+                rowData[i].begin() + 1,
+                rowData[i].end() - 1);
+
+            dataDict[stat_field] = stripped_string;
+        } else if ( stat_field == "pid" ) {
+            pid_str = rowData[i];
+            dataDict[stat_field] = _stoi(rowData[i]);
+        } else {
+            dataDict[stat_field] = _stoi(rowData[i]);
+        }
+    }
+
+    if ( !state.isMember("pid") )
+    {
+        state["pid"] = Json::Value();
+    }
+
+    state["pid"][pid_str] = dataDict;
+}
+
+
+static double freqScale(int freq)
+{
+    double ffreq = static_cast<double>(freq);
+    return ffreq / 1000.0;
+}
+
+
+static void ferret_process_cpu(
+    Json::Value& traceProperties,
+    const std::vector<std::string>& rowData,
+    Json::Value& state
+) {
+    std::vector<std::string> cpuNrs;
+    std::vector<double> cpuFreqs;
+    for ( size_t i = 1; i < rowData.size(); ++i )
+    {
+        if (i % 2)
+        {
+            cpuNrs.push_back(rowData[i]);
+        } else {
+            cpuFreqs.push_back( freqScale( _stoi( rowData[i] ) ) );
+        }
+    }
+
+    Json::Value cpu_data;
+
+    for ( size_t i = 0; i < cpuNrs.size(); ++i )
+    {
+        cpu_data[cpuNrs[i]] = cpuFreqs[i];
+    }
+
+    state["cpu"] = cpu_data;
+}
+
+
+static void ferret_process_skip(
+    Json::Value& traceProperties,
+    const std::vector<std::string>& rowData,
+    Json::Value& state
+) {}
+
+
+Json::Value postprocess_ferret_data(const std::string& outputFname, const std::vector<std::string>& banned_threads) {
+    DBG_LOG( "Running ferret postprocessing for output data in file: %s\n", outputFname.c_str() );
+    std::map<char, void(*)(Json::Value&, const std::vector<std::string>&, Json::Value&)> record_map = {
+        {'I', ferret_process_info},
+        {'T', ferret_process_time},
+        {'S', ferret_process_status},
+        {'F', ferret_process_cpu},
+        {'#', ferret_process_skip},
+        {'E', ferret_process_skip}
+    };
+
+    std::ifstream infile( outputFname );
+    if ( !infile.is_open() )
+    {
+        DBG_LOG( "Failed to open ferret data file: %s\n", outputFname.c_str() );
+        assert( false );
+    }
+
+    std::string row;
+    std::vector<std::string> tokens;
+
+    Json::Value state;
+    Json::Value traceProperties;
+
+    std::map<std::string, FerretProcess> pidHistory;
+
+    bool has_data = false;
+
+    bool initData = false;
+    bool started = false;
+    double traceStart = 0.0;
+    double traceEnd = 0.0;
+    std::vector<int> cpuNrs;
+    int tick = 100;
+
+    while ( std::getline( infile, row ) )
+    {
+        has_data = true;
+        tokens.clear();
+        splitString( row.c_str(), ' ', tokens );
+
+        char record_type = tokens[0][0];
+        if ( record_type == 'T' ) {
+            Json::Value sample = state;
+
+            if ( !sample.empty() )
+            {
+                if ( !initData )
+                {
+                    tick = traceProperties["tick"].asInt();
+
+                    if ( !traceProperties.isMember("cpus") )
+                    {
+                        DBG_LOG( "cpus not in trace properties, possibly broken ferret data!\n" );
+                        assert( false );
+                    }
+
+                    for ( Json::Value::ArrayIndex i = 0; i != traceProperties["cpus"].size(); ++i )
+                    {
+                        cpuNrs.push_back(traceProperties["cpus"][i].asInt());
+                    }
+
+                    initData = true;
+                }
+
+
+                if ( !started )
+                {
+                    traceStart = sample["time"].asDouble();
+                    started = true;
+                }
+
+                traceEnd = sample["time"].asDouble();
+
+                Json::Value::Members pids = sample["pid"].getMemberNames();
+                for ( auto pid : pids )
+                {
+                    Json::Value& pidInfo = sample["pid"][pid];
+                    const std::string& comm = pidInfo["comm"].asString();
+
+                    bool pid_banned = false;
+                    for (const std::string& banned_comm : banned_threads) {
+                        if (comm == banned_comm) {
+                            pid_banned = true;
+                            break;
+                        }
+                    }
+
+                    if (pid_banned) {
+                        continue;
+                    }
+
+                    int processor = pidInfo["processor"].asInt();
+
+                    if ( std::find(cpuNrs.begin(), cpuNrs.end(), processor) == cpuNrs.end() )
+                    {
+                        DBG_LOG( "Invalid CPU index in ferret sample: %d\n", processor);
+                        assert( false );
+                    }
+
+                    if ( pidHistory.find(pid) == pidHistory.end() )
+                    {
+                        pidHistory[pid] = FerretProcess(tick, cpuNrs);
+                    }
+
+                    
+                    int ustime = pidInfo["utime"].asInt() + pidInfo["stime"].asInt();
+
+                    std::string processor_string = _to_string(processor);
+                    double freq = sample["cpu"][processor_string].asDouble();
+
+                    pidHistory[pid].add(comm, sample["time"].asDouble(), ustime, freq, processor);
+                }
+            }
+        }
+
+        if ( record_map.find(record_type) == record_map.end() ) {
+            DBG_LOG( "Invalid record type: %c in ferret data file, possibly corrupt output!\n", record_type );
+            assert( false );
+        }
+
+        record_map[record_type]( traceProperties, tokens, state );
+    }
+
+    if ( !has_data )
+    {
+        DBG_LOG( "Ferret data file: %s was empty! Something went wrong when collecting data.\n", outputFname.c_str() );
+        assert( false );
+    }
+
+    int skipped = 0;
+
+    std::string result_name = "process_results";
+
+    Json::Value results;
+    results[result_name] = Json::arrayValue;
+
+    double max_active = 0.0;
+    double max_duration = 0.0;
+    double mcycle_sum = 0.0;
+    int sample_index = 0;
+    int max_index = 0;
+
+    for ( auto& pid_pair : pidHistory )
+    {
+        const std::string& pid = pid_pair.first;
+        FerretProcess& process = pid_pair.second;
+        Json::Value psummary = process.summary(pid);
+        if ( ( process.active_jiffies() > 0 ) && ( process.duration() > 0.01 * ( traceEnd - traceStart ) ) )
+        {
+            results[result_name].append( psummary );
+
+            mcycle_sum += psummary["MCyc_sum"].asDouble();
+
+            if ( psummary["MCyc_sum"].asDouble() > max_active )
+            {
+                max_active = psummary["MCyc_sum"].asDouble();
+                max_index = results[result_name].size() - 1;
+            }
+
+            if ( process.duration() > max_duration )
+            {
+                max_duration = process.duration();
+            }
+        } else {
+            std::string thread_name = psummary["name"].asString();
+            DBG_LOG(
+                "Skipping thread with PID %s and name %s. Active jiffies: %d, Duration: %f.\n",
+                pid.c_str(),
+                thread_name.c_str(),
+                process.active_jiffies(),
+                process.duration());
+
+            skipped += 1;
+        }
+
+        sample_index += 1;
+    }
+
+    results["main_thread_index"] = max_index;
+    results["main_thread_megacycles"] = max_active;
+    results["megacycles_sum"] = mcycle_sum;
+
+    DBG_LOG( "%d insignificant thread(s) skipped.\n", skipped );
+
+    return results;
 }

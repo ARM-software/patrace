@@ -7,29 +7,19 @@ PATrace provides python tools that can be used to modify trace files.
 Install
 =======
 
+First, make sure that you have built patrace according to the manual. A successful build produces two wheel packages:
+
 ::
 
-    # Install prerequisites
-    sudo apt-get install python-virtualenv build-essential python-dev libx11-dev libhdf5-serial-dev
-
-    # Create and activate a virtualenv
-    virtualenv ~/venv
-    . ~/venv/bin/activate
-
+    # Install pypatrace
+    pip install ./pypatrace/dist/pypatrace-*.whl
     # Install patracetools
-    pip install pypatrace-r2p13.tar.gz
-    pip install patracetools-r2p13.tar.gz
+    pip install ./patracetools/dist/patracetools-*.whl
 
 Usage
 =====
 
-Make sure you have activated your virtual env::
-
-    . ~/venv/bin/activate
-
-Now you will have a set of tools in your path.
-They all start with ``pat-``.
-You can list all of them with the help of autocompletion by typing ``pat-`` and then twice the TAB key.
+You will have a set of tools in your path that start with ``pat-``.
 
 
 Description

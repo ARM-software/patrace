@@ -36,6 +36,8 @@
 #include "retracer/retracer.hpp"
 
 #include "common/image.hpp"
+#include "helper/shaderutility.hpp"
+#include "helper/depth_dumper.hpp"
 
 namespace glstate {
 
@@ -70,6 +72,15 @@ GLint getColorAttachment(GLint drawBuffer)
     return attachment;
 }
 
+GLint getDepthAttachment()
+{
+    GLint attachment = GL_FALSE;
+    const Context *context = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getContext();
+    if(context && context->_profile >= PROFILE_ES3)
+        _glGetIntegerv(GL_DEPTH_TEST, &attachment);
+    return attachment;
+}
+
 static GLuint createAndCompileShader(const std::string& shaderSrc, GLuint type)
 {
     // Create the shader object
@@ -94,7 +105,195 @@ static GLuint createAndCompileShader(const std::string& shaderSrc, GLuint type)
 
 static bool isDepth = false;
 
-void getDimensions(int drawFramebuffer, GLenum attachment, int& width, int& height)
+void getDepth(int width, int height, GLvoid *pixels, DepthDumper &depthDumper, GLenum internalFormat)
+{
+    // malloc tex
+    GLint prev_texture_2d;
+    _glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_texture_2d);
+    GLuint tex;
+    _glGenTextures(1, &tex);
+    _glBindTexture(GL_TEXTURE_2D, tex);
+    _glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    _glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    _glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    _glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    _glTexStorage2D(GL_TEXTURE_2D, 1, internalFormat, width, height);
+
+    // set draw and read frame buffer
+    GLint prev_read_fbo, prev_draw_fbo;
+    _glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prev_read_fbo);
+    _glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prev_draw_fbo);
+    GLuint fb;
+    _glGenFramebuffers(1, &fb);
+    _glBindFramebuffer(GL_READ_FRAMEBUFFER, prev_draw_fbo);
+    _glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fb);
+    _glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex, 0);
+
+    // blitFramebuffer
+    _glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
+                       GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+
+    depthDumper.get_depth_texture_image(tex, width, height, pixels, DepthDumper::Tex2D, 0);
+
+    // recover state machine
+    _glBindFramebuffer(GL_READ_FRAMEBUFFER, prev_read_fbo);
+    _glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prev_draw_fbo);
+    _glBindTexture(GL_TEXTURE_2D, prev_texture_2d);
+
+    // release all resources
+    _glDeleteFramebuffers(1, &fb);
+    _glDeleteTextures(1, &tex);
+}
+
+void getTexRenderBufInfo(GLenum attachment, GLenum &readTexFormat, GLenum &readTexType, int &bytesPerPixel, int &channel, GLint &internalFormat,  GLint attachmentType)
+{
+    GLint redSize, greenSize, blueSize, alphaSize, depthSize, stencilSize;
+    _glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, attachment, GL_FRAMEBUFFER_ATTACHMENT_RED_SIZE, &redSize);
+    _glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, attachment, GL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE, &greenSize);
+    _glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, attachment, GL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE, &blueSize);
+    _glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, attachment, GL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE, &alphaSize);
+    _glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, attachment, GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &depthSize);
+    _glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, attachment, GL_FRAMEBUFFER_ATTACHMENT_STENCIL_SIZE, &stencilSize);
+
+    if (attachmentType == GL_RENDERBUFFER)
+    {
+        _glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_INTERNAL_FORMAT, &internalFormat);
+    }
+    else if (attachmentType == GL_TEXTURE)
+    {
+        GLint textureName;
+        _glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, attachment, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &textureName);
+        Context& context = gRetracer.getCurrentContext();
+        Texture t;
+        t.handle = context.getTextureMap().RValue(textureName);
+        t.update(0, 0);
+        _glGetTexLevelParameteriv(t.target, 0, GL_TEXTURE_INTERNAL_FORMAT, &internalFormat);
+    }
+
+    if (redSize && greenSize && blueSize)
+    {
+        isDepth = false;
+        if (alphaSize)
+            if (internalFormat == GL_RGBA16UI)
+                readTexFormat = GL_RGBA_INTEGER;
+            else
+                readTexFormat = GL_RGBA;
+        else
+            if (internalFormat == GL_RGB16UI)
+                readTexFormat = GL_RGB_INTEGER;
+            else
+                readTexFormat = GL_RGB;
+        if (redSize == 32 && greenSize == 32 && blueSize == 32 && alphaSize == 32) // GL_RGBA32F
+        {
+            readTexType = GL_FLOAT;
+            channel = 4;
+        }
+        else if (redSize == 16 && greenSize == 16 && blueSize == 16 && alphaSize == 16) // GL_RGBA16F
+        {
+            if (internalFormat == GL_RGBA16UI)
+                readTexType = GL_UNSIGNED_INT;
+            else
+                readTexType = GL_HALF_FLOAT;
+            channel = 4;
+        }
+        else if (redSize == 11 && greenSize == 11 && blueSize == 10) // GL_R11G11B10
+        {
+            readTexType = GL_UNSIGNED_INT_10F_11F_11F_REV;
+            channel = 4;        // 32bits, need a 4-channel png file to store it
+        }
+        else if (redSize == 10 && greenSize == 10 && blueSize == 10 && alphaSize == 2) // GL_RGB10_A2
+        {
+            readTexType = GL_UNSIGNED_INT_2_10_10_10_REV;
+            channel = 4;        // 32bits, need a 4-channel png file to store it
+        }
+        else if (redSize == 4 && greenSize == 4 && blueSize == 4 && alphaSize == 4) // GL_RGBA4
+        {
+            readTexType = GL_UNSIGNED_SHORT_4_4_4_4;
+            channel = 2;        // 16bits, need a 2-channel png file to store it
+        }
+        else if (redSize == 5 && greenSize == 5 && blueSize == 5 && alphaSize == 1) // GL_RGB5A_1
+        {
+            readTexType = GL_UNSIGNED_SHORT_5_5_5_1;
+            channel = 2;        // 16bits, need a 2-channel png file to store it
+        }
+        else if (redSize == 5 && greenSize == 6 && blueSize == 5) // GL_RGB565
+        {
+            readTexType = GL_UNSIGNED_SHORT_5_6_5;
+            channel = 2;        // 16bits, need a 2-channel png file to store it
+        }
+    }
+    else
+    {
+        if (internalFormat == GL_R16F)
+        {
+            readTexFormat = GL_RED;
+            readTexType = GL_HALF_FLOAT;
+            isDepth = false;
+            channel = 2;        // 16bits, need a 2-channel png file to store it
+        }
+        else if (internalFormat == GL_R32F)
+        {
+            readTexFormat = GL_RED;
+            readTexType = GL_FLOAT;
+            isDepth = false;
+            channel = 4;        // 32bits, need a 4-channel png file to store it
+        }
+        else if (internalFormat == GL_R8)
+        {
+            readTexFormat = GL_RED;
+            readTexType = GL_UNSIGNED_BYTE;
+            isDepth = false;
+            channel = 1;        // 8bits, need a 1-channel png file to store it
+        }
+        else if (internalFormat == GL_RG16F)
+        {
+            readTexFormat = GL_RG_EXT;
+            readTexType = GL_HALF_FLOAT;
+            isDepth = false;
+            channel = 4;        // 32bits, need a 4-channel png file to store it
+        }
+        else if (internalFormat == GL_DEPTH_COMPONENT24)
+        {
+            readTexFormat = GL_DEPTH_COMPONENT;
+            readTexType = GL_UNSIGNED_INT;
+            isDepth = true;
+            bytesPerPixel = 4;
+            channel = 4;        // 32bits, need a 4-channel png file to store it
+        }
+        else if (internalFormat == GL_DEPTH_COMPONENT32F)
+        {
+            readTexFormat = GL_DEPTH_COMPONENT;
+            readTexType = GL_FLOAT;
+            isDepth = true;
+            bytesPerPixel = 4;
+            channel = 4;        // 32bits, need a 4-channel png file to store it
+        }
+        else if (internalFormat == GL_DEPTH24_STENCIL8)
+        {
+            readTexFormat = GL_DEPTH_COMPONENT;
+            readTexType = GL_UNSIGNED_INT_24_8;
+            isDepth = true;
+            bytesPerPixel = 4;
+            channel = 4;        // 32bits, need a 4-channel png file to store it
+        }
+        else
+        {
+            isDepth = true;
+            bytesPerPixel = 4;
+            DBG_LOG("Couldn't figure out format to use for internalformat 0x%x\n", internalFormat);
+        }
+    }
+    if (!isDepth)
+        bytesPerPixel = (redSize + greenSize + blueSize + alphaSize) / 8;
+    GLint implReadFormat, implReadType;
+    _glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_FORMAT, &implReadFormat);
+    _glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_TYPE,   &implReadType);
+    DBG_LOG("readTexFormat = 0x%x, readTexType = 0x%x\n", readTexFormat, readTexType);
+    DBG_LOG("implTexFormat = 0x%x, implTexType = 0x%x\n", implReadFormat, implReadType);
+    DBG_LOG("isDepth = %d, bytesPerPixel = %d\n", isDepth, bytesPerPixel);
+}
+
+void getDimensions(int drawFramebuffer, GLenum attachment, int& width, int& height, GLenum &format, GLenum &type, int &bytesPerPixel, int &channel, int &internalFormat)
 {
     if (drawFramebuffer == 0)
     {
@@ -105,8 +304,9 @@ void getDimensions(int drawFramebuffer, GLenum attachment, int& width, int& heig
         }
         else
         {
-            width = gRetracer.mOptions.mWindowWidth;
-            height = retracer::gRetracer.mOptions.mWindowHeight;
+            retracer::Drawable* curDrawable = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getDrawable();
+            width = curDrawable->winWidth;
+            height = curDrawable->winHeight;
         }
     }
     else
@@ -123,54 +323,60 @@ void getDimensions(int drawFramebuffer, GLenum attachment, int& width, int& heig
             _glBindRenderbuffer(GL_RENDERBUFFER, attachmentName);
             _glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_WIDTH, &width);
             _glGetRenderbufferParameteriv(GL_RENDERBUFFER, GL_RENDERBUFFER_HEIGHT, &height);
+            getTexRenderBufInfo(attachment, format, type, bytesPerPixel, channel, internalFormat, attachmentType);
             _glBindRenderbuffer(GL_RENDERBUFFER, oRenderBuffer);
         }
         else if (attachmentType == GL_TEXTURE)
         {
             width = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].mCurAppVP.w;
             height = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].mCurAppVP.h;
+            getTexRenderBufInfo(attachment, format, type, bytesPerPixel, channel, internalFormat, attachmentType);
         }
         else
         {
             _glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &attachmentType);
             width = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].mCurAppVP.w;
             height = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].mCurAppVP.h;
+            getTexRenderBufInfo(attachment, format, type, bytesPerPixel, channel, internalFormat, attachmentType);
             isDepth = true;
             DBG_LOG("Hard-code to snapshot osr...\n");
         }
     }
 }
 
-image::Image* getDrawBufferImage(int attachment, int _width, int _height, GLenum format, GLenum type, int bytes_per_pixel)
+image::Image* getDrawBufferImage(int attachment, int _width, int _height, GLenum format, GLenum type, int bytes_per_pixel, int channel)
 {
     GLint draw_framebuffer = 0;
     const Context* context = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getContext();
-    if(context && context->_profile >= PROFILE_ES3)
+    if (context && context->_profile >= PROFILE_ES3 && draw_framebuffer != -1)
     {
         _glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw_framebuffer);
     }
 
     int width = _width;
     int height = _height;
+    GLint internalFormat;
     if (!width || !height)
     {
-        getDimensions(draw_framebuffer, attachment, width, height);
+        getDimensions(draw_framebuffer, attachment, width, height, format, type, bytes_per_pixel, channel, internalFormat);
     }
 
-    image::Image *image = new image::Image(width, height, bytes_per_pixel, true);
+    int width_multiplier = bytes_per_pixel / channel;   // if bytes_per_pixel > 4, we need more than one 4-channel pixels to store it.
+    DBG_LOG("bytes_per_pixel = %d, channel = %d, width_multiplier = %d\n", bytes_per_pixel, channel, width_multiplier);
+    image::Image *image = new image::Image(width * width_multiplier, height, channel, true);
     if (!image)
     {
+        DBG_LOG("Warning: image cannot be created!\n");
         return NULL;
     }
 
     while (glGetError() != GL_NO_ERROR) {}
 
     GLint oldReadBuffer;
-    if(context && context->_profile >= PROFILE_ES3)
+    if (context && context->_profile >= PROFILE_ES3)
     {
         _glGetIntegerv(GL_READ_BUFFER, &oldReadBuffer);
-
-        if(draw_framebuffer != 0)
+        if (draw_framebuffer != 0 && attachment != GL_DEPTH_ATTACHMENT)
         {
             _glReadBuffer(attachment);
         }
@@ -180,10 +386,17 @@ image::Image* getDrawBufferImage(int attachment, int _width, int _height, GLenum
     _glGetIntegerv(GL_PACK_ALIGNMENT, &oldAlignment);
     _glPixelStorei(GL_PACK_ALIGNMENT, 1);
 
-    if (!isDepth)
+    if (!isDepth) {
         _glReadPixels(0, 0, width, height, format, type, image->pixels);
-    else {
-        _glReadPixels(0, 0, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, image->pixels);
+    }
+    else {      // depth attachment, can't use glReadPixels on arm GPUs
+#ifdef ENABLE_X11
+        _glReadPixels(0, 0, width, height, format, type, image->pixels);
+#else   // ENABLE_X11 not being defined
+        DepthDumper depthDumper;
+        depthDumper.initializeDepthCopyer();
+        getDepth(width, height, image->pixels, depthDumper, internalFormat);
+#endif  // ENABLE_X11 end
         isDepth = false;
     }
     _glPixelStorei(GL_PACK_ALIGNMENT, oldAlignment);

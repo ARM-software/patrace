@@ -14,6 +14,56 @@
 #include "collector_utility.hpp"
 #include "interface.hpp"
 
+/** Utility class used for postprocessing.
+ * Implements most of the functionality also found in the ferret.py script.
+ */
+class FerretProcess
+{
+public:
+    FerretProcess() {}
+
+    FerretProcess(
+        int schedTickHz,
+        const std::vector<int>& cpuNr);
+
+    void add(
+        const std::string& label,
+        double ts,
+        int jiffies,
+        double freq,
+        int cpuNr);
+
+    double duration() const;
+    int active_jiffies() const;
+    Json::Value summary(const std::string& pid) const;
+
+private:
+    std::string label;
+    double first;
+    double last;
+    double jiffyPeriod;
+    int jiffies;
+    int totJiffiesAllCpus;
+
+    Json::Value maxCpuFreqs;
+    Json::Value mcyc;
+    Json::Value totJiffies;
+    Json::Value freqLogSums;
+    Json::Value numFreqLogSums;
+};
+
+
+/** Utility function used for postprocessing.
+ *
+ * Implements the main function in the ferret.py script.
+ *
+ * @return Json::Value with per. thread statistics.
+ */
+Json::Value postprocess_ferret_data(
+    const std::string& outputFname,
+    const std::vector<std::string>& bannedThreads);
+
+
 class FerretCollector : public Collector
 {
 public:
@@ -181,6 +231,10 @@ private:
      */
     bool mInitSuccess = false;
 
+    /** If this is true, postprocessing is enabled member is valid.
+     */
+    bool mEnablePostprocess = false;
+
     /** The OS scheduler ticks per second.
      */
     long mClockTicks;
@@ -188,6 +242,10 @@ private:
     /** The CPU numbers to monitor.
      */
     std::vector<int> mCpus;
+
+    /** A list of thread (comm) names to exclude during postprocessing.
+     */
+    std::vector<std::string> mBannedThreads;
 
     /** The file output path.
      */

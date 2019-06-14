@@ -10,6 +10,7 @@
 #include <retracer/value_map.hpp>
 #include <retracer/retrace_options.hpp> // enum Profile
 #include "dispatch/eglimports.hpp"
+#include "graphic_buffer/GraphicBuffer.hpp"
 #include <map>
 #include <stdint.h>
 #include "dma_buffer/dma_buffer.hpp"
@@ -64,6 +65,8 @@ public:
     int winWidth;
     int winHeight;
     bool visible;
+    float mOverrideResRatioW = 0.0f;
+    float mOverrideResRatioH = 0.0f;
 
     Drawable(int w, int h) :
         width(w),
@@ -171,6 +174,8 @@ public:
         }
 
         refcnt = 1;
+        mAndroidToLinuxPixelMap[HAL_PIXEL_FORMAT_YV12] = DRM_FORMAT_YVU420;
+        mAndroidToLinuxPixelMap[MALI_GRALLOC_FORMAT_INTERNAL_NV12] = DRM_FORMAT_NV12;
     }
 
     virtual ~Context();
@@ -244,6 +249,12 @@ public:
     unsigned int      _current_framebuffer;
     bool              _firstTimeMakeCurrent;
     OffscreenManager* _offscrMgr;
+#ifdef ANDROID
+    std::vector<GraphicBuffer *> mGraphicBuffers;
+#else
+    std::vector<egl_image_fixture *> mGraphicBuffers;
+#endif
+    std::unordered_map<PixelFormat, unsigned int, std::hash<int> > mAndroidToLinuxPixelMap;
 
 private:
     Context* _shareContext;

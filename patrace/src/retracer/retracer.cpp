@@ -93,28 +93,6 @@ void WorkThread::workQueuePush(Work *work)
     }
 }
 
-Work* WorkThread::workQueuePop()
-{
-    Work* work = workQueue.pop();
-    return work;
-}
-
-WorkThread::WorkThreadStatus WorkThread::getStatus()
-{
-    WorkThreadStatus s = UNKNOWN;
-    _access();
-    s = status;
-    _exit();
-    return s;
-}
-
-void WorkThread::setStatus(WorkThread::WorkThreadStatus s)
-{
-    _access();
-    status = s;
-    _exit();
-}
-
 void WorkThread::run()
 {
     setStatus(IDLE);
@@ -214,7 +192,7 @@ void Work::onFinished()
 void Work::setStatus(Work::WorkStatus s)
 {
     // This function can be used to calculate the execute time of each work stage in the future.
-    _access();
+    workMutex.lock();
     status = s;
     if (isMeasureTime)
     {
@@ -230,55 +208,6 @@ void Work::setStatus(Work::WorkStatus s)
                 break;
         }
     }
-    _exit();
-}
-
-Work::WorkStatus Work::getStatus()
-{
-    WorkStatus s = UNKNOWN;
-    _access();
-    s = status;
-    _exit();
-    return s;
-}
-
-void Work::release()
-{
-    unsigned left = 0;
-    _access();
-    left = --ref;
-    _exit();
-
-    if (left == 0)
-    {
-        delete this;
-    }
-}
-
-void Work::retain()
-{
-    _access();
-    ref++;
-    _exit();
-}
-
-int  Work::getRefCount()
-{
-    unsigned left = 0;
-    _access();
-    left = ref;
-    _exit();
-
-    return left;
-}
-
-void Work::_access()
-{
-    workMutex.lock();
-}
-
-void Work::_exit()
-{
     workMutex.unlock();
 }
 
@@ -307,6 +236,11 @@ void PerfWork::run()
     {
         gRetracer.PerfEnd();
     }
+}
+
+void StepWork::run()
+{
+    gRetracer.StepShot(getCallID(), getFrameID());
 }
 
 Retracer::Retracer()
@@ -346,9 +280,6 @@ Retracer::Retracer()
     staticDump["uniforms"] = Json::arrayValue;
 
     createWorkThreadPool();
-
-    mAndroidToLinuxPixelMap[HAL_PIXEL_FORMAT_YV12] = DRM_FORMAT_YVU420;
-    mAndroidToLinuxPixelMap[MALI_GRALLOC_FORMAT_INTERNAL_NV12] = DRM_FORMAT_NV12;
 }
 
 Retracer::~Retracer()
@@ -383,19 +314,6 @@ Retracer::~Retracer()
     }
 
     delete mCollectors;
-
-#ifndef ANDROID
-    // delete all dma buffers
-    for (auto iter : mGraphicBuffers)
-    {
-        for (auto iter2 : iter.second) {
-            if (iter2 != NULL) {
-                unmap_fixture_memory_bufs(iter2);
-                delete iter2;
-            }
-        }
-    }
-#endif
 
 #ifndef NDEBUG
     if(mVBODataSize)
@@ -783,83 +701,71 @@ static void CheckError(const char *callName, unsigned int callNo)
 
 bool Retracer::RetraceForward(unsigned int frameNum, unsigned int drawNum, bool dumpFrameBuffer)
 {
+    UnCompressedChunk *callChunk;
+
     while (frameNum || drawNum)
     {
         void* fptr;
         char* src;
-        if (!mFile.GetNextCall(fptr, mCurCall, src))
+        if (!mFile.GetNextCall(fptr, mCurCall, src, callChunk))
         {
+            wakeupAllWorkThreads();
+            waitWorkThreadPoolIdle();
+
+            GLWS::instance().Cleanup();
+
             CloseTraceFile();
             return false;
         }
 
-        const char *callName = mFile.ExIdToName(mCurCall.funcId);
-
-        if (getCurTid() == mOptions.mRetraceTid)
+        if (!mOptions.mMultiThread && getCurTid() != mOptions.mRetraceTid)
         {
-            if (fptr) {
-                (*(RetraceFunc)fptr)(src);
-                CheckError(callName, mCurCallNo);
-            } else {
-                DBG_LOG("    Unsupported function : callNo %d\n", mCurCallNo);
-            }
+            mCurCallNo++;
+            continue;
         }
 
-        if (getCurTid() == mOptions.mRetraceTid)
+        const char *callName = mFile.ExIdToName(mCurCall.funcId);
+        const bool isSwapBuffers = (mCurCall.funcId == mExIdEglSwapBuffers || mCurCall.funcId == mExIdEglSwapBuffersWithDamage);
+
+        if (fptr)
         {
-            if (strncmp(callName, "eglSwapBuffers", strlen("eglSwapBuffers")) == 0)
+            if (!mOptions.mMultiThread)
             {
-                if (frameNum) frameNum--;
+                (*(RetraceFunc)fptr)(src);
+                CheckError(callName, mCurCallNo);
             }
-
-            if (dumpFrameBuffer && frameNum == 0 && drawNum == 0)
+            else
             {
-                DBG_LOG("[Frame/Draw/Call %d/%d/%d] %s\n", mCurFrameNo, mCurDrawNo, mCurCallNo, callName);
+                Work* work = new Work(mCurCall.tid, mDispatchFrameNo, mCurCallNo, fptr, src, callName, callChunk);
+                DispatchWork(work);
+                WorkThread* wThread = findWorkThread(mCurCall.tid);
+                wThread->waitIdle();
+            }
+            if (isSwapBuffers && mCurCall.tid==mOptions.mRetraceTid)
+            {
+                mDispatchFrameNo++;
+            }
+        }
+        else
+        {
+            DBG_LOG("    Unsupported function : callNo %d\n", mCurCallNo);
+        }
 
-                if (eglGetCurrentContext() != EGL_NO_CONTEXT && getCurTid() == mOptions.mRetraceTid)
-                {
-                    GLint maxAttachments = getMaxColorAttachments();
-                    GLint maxDrawBuffers = getMaxDrawBuffers();
-                    for(int i=0; i<maxDrawBuffers; i++)
-                    {
-                        GLint colorAttachment = getColorAttachment(i);
-                        if(colorAttachment != GL_NONE)
-                        {
-                            image::Image *src = getDrawBufferImage(colorAttachment);
-                            if (src == NULL)
-                            {
-                                DBG_LOG("Failed to dump bound framebuffer\n");
-                                break;
-                            }
+        if (isSwapBuffers && mCurCall.tid==mOptions.mRetraceTid)
+        {
+            if (frameNum) frameNum--;
+        }
 
-                            std::string filenameToBeUsed;
-                            int attachmentIndex = colorAttachment - GL_COLOR_ATTACHMENT0;
-                            bool validAttachmentIndex = attachmentIndex >= 0 && attachmentIndex < maxAttachments;
-                            if (!validAttachmentIndex)
-                            {
-                                attachmentIndex = 0;
-                            }
-
-                            std::stringstream ss;
-                            ss << "framebuffer" << "_c" << attachmentIndex << ".png";
-                            filenameToBeUsed = ss.str();
-
-                            if (src->writePNG(filenameToBeUsed.c_str()))
-                            {
-                                DBG_LOG("Dump bound framebuffer to %s\n", filenameToBeUsed.c_str());
-                            }
-                            else
-                            {
-                                DBG_LOG("Failed to dump bound framebuffer to %s\n", filenameToBeUsed.c_str());
-                            }
-                            delete src;
-                        }
-                    }
-                }
-                else
-                {
-                    DBG_LOG("EGL context has not been created\n");
-                }
+        if ((dumpFrameBuffer && frameNum == 0 && drawNum == 0) || (drawNum == 0 && frameNum == 0))
+        {
+            if (!mOptions.mMultiThread)
+            {
+                StepShot(mCurCallNo, mDispatchFrameNo);
+            }
+            else
+            {
+                StepWork* work = new StepWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo, NULL, NULL, callName, NULL);
+                DispatchWork(work);
             }
         }
 
@@ -957,6 +863,56 @@ void Retracer::dumpUniformBuffers(unsigned int callNo)
     }
 }
 
+void Retracer::StepShot(unsigned int callNo, unsigned int frameNo, const char *filename)
+{
+    DBG_LOG("[%d] [Frame/Draw/Call %d/%d/%d] %s.\n", getCurTid(), frameNo, GetCurDrawId(), callNo, GetCurCallName());
+
+    if (eglGetCurrentContext() != EGL_NO_CONTEXT)
+    {
+        GLint maxAttachments = getMaxColorAttachments();
+        GLint maxDrawBuffers = getMaxDrawBuffers();
+        for(int i=0; i<maxDrawBuffers; i++)
+        {
+            GLint colorAttachment = getColorAttachment(i);
+            if(colorAttachment != GL_NONE)
+            {
+                image::Image *src = getDrawBufferImage(colorAttachment);
+                if (src == NULL)
+                {
+                    DBG_LOG("Failed to dump bound framebuffer\n");
+                    break;
+                }
+
+                std::string filenameToBeUsed;
+                int attachmentIndex = colorAttachment - GL_COLOR_ATTACHMENT0;
+                bool validAttachmentIndex = attachmentIndex >= 0 && attachmentIndex < maxAttachments;
+                if (!validAttachmentIndex)
+                {
+                    attachmentIndex = 0;
+                }
+
+                std::stringstream ss;
+                ss << "framebuffer" << "_c" << attachmentIndex << ".png";
+                filenameToBeUsed = ss.str();
+
+                if (src->writePNG(filenameToBeUsed.c_str()))
+                {
+                    DBG_LOG("Dump bound framebuffer to %s\n", filenameToBeUsed.c_str());
+                }
+                else
+                {
+                    DBG_LOG("Failed to dump bound framebuffer to %s\n", filenameToBeUsed.c_str());
+                }
+                delete src;
+            }
+        }
+    }
+    else
+    {
+        DBG_LOG("EGL context has not been created\n");
+    }
+}
+
 void Retracer::TakeSnapshot(unsigned int callNo, unsigned int frameNo, const char *filename)
 {
     // Only take snapshots inside the measurement range
@@ -973,11 +929,13 @@ void Retracer::TakeSnapshot(unsigned int callNo, unsigned int frameNo, const cha
 
     GLint maxAttachments = getMaxColorAttachments();
     GLint maxDrawBuffers = getMaxDrawBuffers();
-    for(int i=0; i<maxDrawBuffers; i++)
+    bool colorAttach = false;
+    for (int i=0; i<maxDrawBuffers; i++)
     {
         GLint colorAttachment = getColorAttachment(i);
         if(colorAttachment != GL_NONE)
         {
+            colorAttach = true;
             int readFboId = 0, drawFboId = 0;
             _glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFboId);
             _glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFboId);
@@ -1045,6 +1003,69 @@ void Retracer::TakeSnapshot(unsigned int callNo, unsigned int frameNo, const cha
 
             delete src;
         }
+    }
+    if (!colorAttach)   // no color attachment, there might be a depth attachment
+    {
+        DBG_LOG("no color attachment, there might be a depth attachment\n");
+        int readFboId = 0, drawFboId = 0;
+        _glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFboId);
+        _glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFboId);
+#if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
+        const unsigned int ON_SCREEN_FBO = 1;
+#else
+        const unsigned int ON_SCREEN_FBO = 0;
+#endif
+        if (gRetracer.mOptions.mForceOffscreen) {
+            _glBindFramebuffer(GL_DRAW_FRAMEBUFFER, ON_SCREEN_FBO);
+            gRetracer.mpOffscrMgr->BindOffscreenReadFBO();
+        }
+        else {
+            _glBindFramebuffer(GL_READ_FRAMEBUFFER, drawFboId);
+        }
+        image::Image *src = getDrawBufferImage(GL_DEPTH_ATTACHMENT);
+        _glBindFramebuffer(GL_READ_FRAMEBUFFER, readFboId);
+        _glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFboId);
+        if (src == NULL)
+        {
+            DBG_LOG("Failed to take snapshot for call no: %d\n", callNo);
+            return;
+        }
+
+        std::string filenameToBeUsed;
+        if (filename)
+        {
+            filenameToBeUsed = filename;
+        }
+        else // no incoming filename, we must generate one
+        {
+            std::stringstream ss;
+            if (mOptions.mSnapshotFrameNames)
+            {
+                ss << mOptions.mSnapshotPrefix << std::setw(4) << std::setfill('0') << frameNo << ".png";
+            }
+            else
+            {
+                ss << mOptions.mSnapshotPrefix << std::setw(10) << std::setfill('0') << callNo << "_depth.png";
+            }
+            filenameToBeUsed = ss.str();
+        }
+
+        if (src->writePNG(filenameToBeUsed.c_str()))
+        {
+            DBG_LOG("Snapshot (frame %d, call %d) : %s\n", frameNo, callNo, filenameToBeUsed.c_str());
+
+            // Register the snapshot to be uploaded
+            if (mOptions.mUploadSnapshots)
+            {
+                mSnapshotPaths.push_back(filenameToBeUsed);
+            }
+        }
+        else
+        {
+            DBG_LOG("Failed to write snapshot : %s\n", filenameToBeUsed.c_str());
+        }
+
+        delete src;
     }
 
     std::vector<Texture> textures = getTexturesToDump();
@@ -1846,6 +1867,8 @@ void pre_glDraw()
     Rectangle& curDrvVP = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].mCurDrvVP;
     Rectangle& curDrvSR = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].mCurDrvSR;
 
+    retracer::Drawable * curDrawable = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getDrawable();
+
 #if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
     if (curFB > 1)
 #else
@@ -1868,12 +1891,12 @@ void pre_glDraw()
     {
         // on-screen framebuffer is "bound"
 
-        if (curDrvVP != curAppVP.Stretch(gRetracer.mOptions.mOverrideResRatioW, gRetracer.mOptions.mOverrideResRatioH)) {
-            curDrvVP = curAppVP.Stretch(gRetracer.mOptions.mOverrideResRatioW, gRetracer.mOptions.mOverrideResRatioH);
+        if (curDrvVP != curAppVP.Stretch(curDrawable->mOverrideResRatioW, curDrawable->mOverrideResRatioH)) {
+            curDrvVP = curAppVP.Stretch(curDrawable->mOverrideResRatioW, curDrawable->mOverrideResRatioH);
             glViewport(curDrvVP.x, curDrvVP.y, curDrvVP.w, curDrvVP.h);
         }
-        if (curDrvSR != curAppSR.Stretch(gRetracer.mOptions.mOverrideResRatioW, gRetracer.mOptions.mOverrideResRatioH)) {
-            curDrvSR = curAppSR.Stretch(gRetracer.mOptions.mOverrideResRatioW, gRetracer.mOptions.mOverrideResRatioH);
+        if (curDrvSR != curAppSR.Stretch(curDrawable->mOverrideResRatioW, curDrawable->mOverrideResRatioH)) {
+            curDrvSR = curAppSR.Stretch(curDrawable->mOverrideResRatioW, curDrawable->mOverrideResRatioH);
             glScissor(curDrvSR.x, curDrvSR.y, curDrvSR.w, curDrvSR.h);
         }
     }
@@ -1898,11 +1921,18 @@ void post_glCompileShader(GLuint shader, GLuint originalShaderName)
     }
 }
 
-void post_glLinkProgram(GLuint program, GLuint originalProgramName)
+void post_glLinkProgram(GLuint program, GLuint originalProgramName, int status)
 {
     GLint linkStatus;
     _glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
-    if (linkStatus == GL_FALSE)
+    if (linkStatus == GL_TRUE && status == 0)
+    {
+        // A bit of an odd case: Shader failed during tracing, but succeeds during replay. This can absolutely
+        // happen without being an error (because feature checks can resolve differently on different platforms),
+        // but warn about it anyway, because it _may_ give unexpected results in some cases.
+        DBG_LOG("There was error in linking program %u in trace, but none on replay\n", program);
+    }
+    else if (linkStatus == GL_FALSE && (status == -1 || status == 1))
     {
         GLint infoLogLength;
         GLint len = -1;

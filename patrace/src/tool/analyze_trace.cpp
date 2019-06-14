@@ -4,6 +4,7 @@
 #include <vector>
 #include <list>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <algorithm>
 #include <utility>
@@ -302,6 +303,7 @@ static std::map<std::string, PerUnit> createPerDraw()
     v["program_binding"].csv_description = "Program binding calls";
     v["textures"].csv_description = "Texture sources";
     v["renderpass"].csv_description = "Renderpass index";
+    v["primitive_type"].csv_description = "Primitive type";
     return v;
 }
 
@@ -469,7 +471,7 @@ class AnalyzeTrace
 private:
     std::map<std::string, PerUnit> perframe = createPerFrame();
     std::map<std::string, PerUnit> perdraw = createPerDraw();
-    std::map<int, std::unordered_set<int>> textures_by_renderpass;
+    std::map<int, std::set<int>> textures_by_renderpass;
     std::vector<int> features;
     int clears = 0;
     int compute = 0;
@@ -1369,6 +1371,7 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
             drawtypes[mode]++;
             if (renderpassframes.count(frames))
             {
+                perdraw["primitive_type"].values.back() = mode;
                 perdraw["primitives"].values.back() = params.primitives;
                 perdraw["vertices"].values.back() = params.vertices;
                 perdraw["vertices.unique"].values.back() = params.unique_vertices;

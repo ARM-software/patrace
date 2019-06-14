@@ -157,7 +157,7 @@ DrawParams ParseInterfaceRetracing::getDrawCallCount(common::CallTM *call)
 
     if (call->mCallName == "glDrawElementsIndirect")
     {
-        IndirectDrawElements params;
+        IndirectDrawElements params = {};
         GLvoid *bufptr = reinterpret_cast<GLvoid*>(call->mArgs[2]->GetAsUInt64());
         if (getIndirectBuffer(&params, sizeof(params), bufptr))
         {
@@ -167,7 +167,7 @@ DrawParams ParseInterfaceRetracing::getDrawCallCount(common::CallTM *call)
     }
     else if (call->mCallName == "glDrawArraysIndirect")
     {
-        IndirectDrawArrays params;
+        IndirectDrawArrays params = {};
         GLvoid *bufptr = reinterpret_cast<GLvoid*>(call->mArgs[1]->GetAsUInt64());
         if (getIndirectBuffer(&params, sizeof(params), bufptr))
         {
@@ -175,6 +175,7 @@ DrawParams ParseInterfaceRetracing::getDrawCallCount(common::CallTM *call)
             ret.instances = params.primCount;
         }
     }
+    assert(ret.instances >= 0);
 
     if (ret.vertices == 0) // which is fully legal
     {

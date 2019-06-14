@@ -868,6 +868,11 @@ class Retracer(object):
             print '        }'
             print '    }'
 
+        if func.name == 'glLinkProgram2':
+            print '    {indent}glLinkProgram(programNew);'.format(indent=indent)
+            print '    {indent}post_glLinkProgram(programNew, program, (int)status);'.format(indent=indent)
+            return
+
         args = [arg.name + "New" if arg.has_new_value else arg.name
                 for arg in func.args]
         arg_names = ", ".join(args)
@@ -879,51 +884,9 @@ class Retracer(object):
         if func.name in ['glViewport', 'glScissor']:
             print '    }'
 
-        if func.name == 'glLinkProgram':
-            print '    if (unlikely(gRetracer.mOptions.mDumpStatic))'
-            print '    {'
-            print '        GLint linkStatus = 0;'
-            print '        _glGetProgramiv(programNew, GL_LINK_STATUS, &linkStatus);'
-            print '        if (linkStatus == GL_TRUE)'
-            print '        {'
-            print '            Json::Value entry = Json::arrayValue;'
-            print '            GLchar tmp[128];'
-            print '            GLint activeUniforms = 0;'
-            print '            _glGetProgramiv(programNew, GL_ACTIVE_UNIFORMS, &activeUniforms);'
-            print '            for (int i = 0; i < activeUniforms; ++i)'
-            print '            {'
-            print '                GLsizei length = 0;'
-            print '                GLint size = 0;'
-            print '                GLenum type = GL_NONE;'
-            print '                Json::Value value = Json::arrayValue;'
-            print '                memset(tmp, 0, sizeof(tmp));'
-            print '                _glGetActiveUniform(programNew, i, sizeof(tmp) - 1, &length, &size, &type, tmp);'
-            print '                if (type == GL_SAMPLER_2D || type == GL_SAMPLER_3D || type == GL_SAMPLER_CUBE || type == GL_SAMPLER_2D_SHADOW'
-            print '                    || type == GL_SAMPLER_2D_ARRAY || type == GL_SAMPLER_2D_ARRAY_SHADOW || type == GL_SAMPLER_CUBE_SHADOW'
-            print '                    || type == GL_INT_SAMPLER_2D || type == GL_INT_SAMPLER_3D || type == GL_INT_SAMPLER_2D_ARRAY'
-            print '                    || type == GL_UNSIGNED_INT_SAMPLER_2D || type == GL_UNSIGNED_INT_SAMPLER_3D || type == GL_UNSIGNED_INT_SAMPLER_CUBE'
-            print '                    || type == GL_UNSIGNED_INT_SAMPLER_2D_ARRAY)'
-            print '                {'
-            print '                    GLint location = _glGetUniformLocation(programNew, tmp);'
-            print '                    for (int j = 0; location >= 0 && j < size; ++j)'
-            print '                    {'
-            print '                        GLint param = 0;'
-            print '                        _glGetUniformiv(programNew, location + j, &param); // arrays are guaranteed to be in sequential location'
-            print '                        value.append(param);'
-            print '                    }'
-            print '                    entry[i]["value"] = value;'
-            print '                }'
-            print '                entry[i]["name"] = tmp;'
-            print '                entry[i]["size"] = size;'
-            print '                entry[i]["type"] = type;'
-            print '            }'
-            print '            gRetracer.staticDump["uniforms"].append(entry);'
-            print '        }'
-            print '    }'
-
         if func.name in post_funcs:
             if func.name == 'glLinkProgram':
-                args = "programNew, program"
+                args = "programNew, program, -1" # -1 to signify that we do not have this info
             elif func.name == 'glCompileShader':
                 args = "shaderNew, shader"
             else:

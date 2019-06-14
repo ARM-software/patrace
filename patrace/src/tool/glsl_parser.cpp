@@ -711,6 +711,60 @@ GLSLShader GLSLParser::preprocessor(std::string shader, int shaderType)
     return ret;
 }
 
+std::string GLSLParser::inline_includes(const std::string& s)
+{
+    std::string r;
+    std::istringstream lines(s);
+    std::string orig_line;
+    mLineNo = 1;
+    while (std::getline(lines, orig_line))
+    {
+        int i = 0;
+        std::string line = orig_line;
+        while (line[i] != '\0' && (line[i] == '\t' || line[i] == ' ')) i++; // skip whitespace
+        if (line[i] == '#') // found a preprocessor directive
+        {
+            i++; // skip the #
+            std::string directive = scan_token(line, i).str;
+            if (directive == "include")
+            {
+                while (line[i] != '\0' && (line[i] == '\t' || line[i] == ' ' || line[i] == '"' || line[i] == '<')) i++; // skip noise
+                std::string filename = scan_rest(line, i); // filename
+                filename = filename.substr(0, filename.size() - 1);
+                FILE* fp = fopen(filename.c_str(), "r");
+                if (!fp)
+                {
+                    fprintf(stderr, "Include file not found \"%s\" on line %d\n", filename.c_str(), mLineNo);
+                    return "";
+                }
+                std::string data;
+                fseek(fp, 0, SEEK_END);
+                data.resize(ftell(fp));
+                fseek(fp, 0, SEEK_SET);
+                size_t result = fread(&data[0], data.size(), 1, fp);
+                if (result != 1)
+                {
+                    fprintf(stderr, "Failed to read \"%s\": %s\n", filename.c_str(), strerror(ferror(fp)));
+                    return "";
+                }
+                fclose(fp);
+                r += inline_includes(data); // recursive call
+                r += '\n';
+            }
+            else
+            {
+                r += orig_line;
+            }
+        }
+        else
+        {
+            r += orig_line;
+        }
+        mLineNo++;
+    }
+    return r;
+}
+
 // Implements GLSL spec 3.10 steps 4, 6 and 7. Step 5 can be ignored.
 // GLSL does not allow nested comments, and has no trigraphs
 std::string GLSLParser::strip_comments(const std::string& s)

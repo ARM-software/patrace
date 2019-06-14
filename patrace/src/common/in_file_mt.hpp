@@ -7,8 +7,8 @@
 #include <common/os_time.hpp>
 #include <common/in_file.hpp>
 
+#include <atomic>
 #include <snappy.h>
-#include <mutex>
 #include <queue>
 #include <sstream>
 
@@ -20,14 +20,10 @@ extern char*        gCompBuf;
 template<typename T>
 class ReserveQueue : public os::MTQueue <T>
 {
-
 public:
-
     enum
     {
-
         RESERVED_QUEUE_SIZE = 2,
-
     };
     ReserveQueue() :
         _terminate(false)
@@ -79,7 +75,6 @@ public:
     }
 
     ~UnCompressedChunk() {
-        mMutex.unlock();
         mLen = 0;
         mCapacity = 0;
         delete [] mData;
@@ -112,40 +107,29 @@ public:
 
     inline void retain()
     {
-        mMutex.lock();
-        mRef++;
-        mMutex.unlock();
+        mRef.fetch_add(1, std::memory_order_acquire);
     }
+
     inline void release()
     {
-        int left = 0;
-        mMutex.lock();
-        left = --mRef;
-        mMutex.unlock();
+        int left = mRef.fetch_sub(1, std::memory_order_release);
         if (left <= 0)
             delete this;
     }
+
     int  getRefCount()
     {
-        int left = 0;
-        mMutex.lock();
-        left = mRef;
-        mMutex.unlock();
-        return  left;
+        return mRef;
     }
+
     ChunkStatus getStatus()
     {
-        ChunkStatus s = UNKNOW;
-        mMutex.lock();
-        s = status;
-        mMutex.unlock();
-        return s;
+        return status;
     }
+
     void setStatus(ChunkStatus s)
     {
-        mMutex.lock();
         status = s;
-        mMutex.unlock();
     }
 
     char*                   mData;
@@ -175,9 +159,8 @@ private:
         return length;
     }
 
-    int                         mRef;
-    os::Mutex                   mMutex;
-    ChunkStatus                 status;
+    std::atomic_int mRef;
+    std::atomic<ChunkStatus> status;
 };
 
 
@@ -227,18 +210,12 @@ public:
 
     inline void setStatus(ReadingThreadStatus s)
     {
-        _access();
         mStatus = s;
-        _exit();
     }
 
     inline ReadingThreadStatus getStatus()
     {
-        ReadingThreadStatus s = UNKOWN;
-        _access();
-        s = mStatus;
-        _exit();
-        return s;
+        return mStatus;
     }
 
     void releaseChunkQueues();
@@ -266,7 +243,7 @@ private:
     unsigned int        mMaxSigId;
 
     bool                mIsOpen;
-    ReadingThreadStatus mStatus;
+    std::atomic<ReadingThreadStatus> mStatus;
 
     // double buffer, for backend thread loading
     os::MTQueue<UnCompressedChunk*> callChunkQueue;

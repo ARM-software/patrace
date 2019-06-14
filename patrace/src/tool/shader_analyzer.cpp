@@ -19,6 +19,7 @@ static void printHelp()
         "  --strip       Strip comments\n"
         "  --analyze     Print analysis\n"
         "  --debug       Enable debug output\n"
+        "  --inline      Inline data from any (non-standard) #include directives\n"
         "  --selftest    Run internal self-tests\n"
         "  --test        Test parser on a shader, printing only file name and shader type\n"
         "  -h            Print help\n"
@@ -62,6 +63,7 @@ int main(int argc, char **argv)
     int argIndex = 1;
     Mode mode = NONE;
     bool debug = false;
+    bool inline_includes = false;
 
     for (; argIndex < argc; ++argIndex)
     {
@@ -79,6 +81,10 @@ int main(int argc, char **argv)
         else if (arg == "--debug")
         {
             debug = true;
+        }
+        else if (arg == "--inline")
+        {
+            inline_includes = true;
         }
         else if (arg == "--test")
         {
@@ -153,6 +159,10 @@ int main(int argc, char **argv)
     if (mode == TEST)
     {
         printf("%s [type=0x%04x]\n", filename.c_str(), (unsigned)shaderType);
+    }
+    if (inline_includes)
+    {
+        data = parser.inline_includes(data);
     }
     std::string pass1 = parser.strip_comments(data);
 

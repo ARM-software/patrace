@@ -60,28 +60,28 @@ public:
     virtual void run();
     void onFinished();
     void setStatus(WorkStatus s);
-    WorkStatus getStatus();
-    void release();
-    void retain();
-    int  getRefCount();
+    WorkStatus getStatus() { return status; }
+    void release() { int left = ref.fetch_sub(1); if (left == 0) delete this; }
+    void retain() { ref++; }
+    int  getRefCount() { return ref; }
     void dump();
+
     inline uint64_t GetExecutionTime()
     {
         return (end_time - start_time);
     }
+
     inline common::UnCompressedChunk* getChunkHandler()
     {
         return _chunk;
     }
+
     inline void SetMeasureTime(bool v)
     {
         isMeasureTime = v;
     }
 
 private:
-    void _access();
-    void _exit();
-
     int _tid;
     unsigned _frameId;
     unsigned _callId;
@@ -91,10 +91,10 @@ private:
     uint64_t    start_time;
     uint64_t    end_time;
     bool        isMeasureTime;
-    WorkStatus    status;
+    std::atomic<WorkStatus> status;
     common::UnCompressedChunk * _chunk;
-    int           ref;
-    os::Mutex     workMutex;
+    std::atomic_int ref;
+    os::Mutex workMutex;
 };
 
 class SnapshotWork : public Work
@@ -124,6 +124,15 @@ public:
     void run();
 };
 
+class StepWork : public Work
+{
+public:
+    StepWork(int tid, unsigned frameId, unsigned callID, void* fptr, char* src, const char* name, common::UnCompressedChunk *chunk = NULL)
+        : Work(tid, frameId, callID, fptr, src, name, chunk) {}
+    ~StepWork() {}
+    void run();
+};
+
 class WorkThread : public os::Thread
 {
 public:
@@ -140,10 +149,10 @@ public:
     WorkThread(common::InFile *file);
     ~WorkThread();
     void workQueuePush(Work *work);
-    Work* workQueuePop();
+    Work* workQueuePop() { return workQueue.pop(); }
     virtual void run();
-    WorkThreadStatus getStatus();
-    void setStatus(WorkThreadStatus s);
+    WorkThreadStatus getStatus() { return status; }
+    void setStatus(WorkThreadStatus s) { status = s; }
     void terminate();
     void workQueueWakeup();
     void waitIdle();
@@ -160,7 +169,7 @@ private:
     common::InFile *file;
     os::MTQueue<Work *> workQueue;
     os::Condition workThreadCond;
-    WorkThreadStatus status;
+    std::atomic<WorkThreadStatus> status;
     Work* curWork;
 };
 
@@ -203,6 +212,7 @@ public:
     std::string changeAttributesToConstants(const std::string& source, const std::vector<VertexArrayInfo>& attributesToRemove);
     std::vector<Texture> getTexturesToDump();
     void TakeSnapshot(unsigned int callNo, unsigned int frameNo, const char *filename = NULL);
+    void StepShot(unsigned int callNo, unsigned int frameNo, const char *filename = NULL);
     void dumpUniformBuffers(unsigned int callno);
     void createWorkThreadPool();
     void destroyWorkThreadPool();
@@ -246,12 +256,6 @@ public:
 
     OffscreenManager*   mpOffscrMgr;
     common::ClientSideBufferObjectSet mCSBuffers;
-#ifdef ANDROID
-    std::unordered_map<int, std::vector<GraphicBuffer *> > mGraphicBuffers;
-#else
-    std::unordered_map<int, std::vector<egl_image_fixture *> > mGraphicBuffers;
-#endif
-    std::unordered_map<PixelFormat, unsigned int, std::hash<int> > mAndroidToLinuxPixelMap;
 
     Quad*               mpQuad;
 
@@ -481,7 +485,7 @@ inline bool Retracer::hasCurrentContext()
 extern Retracer gRetracer;
 
 void pre_glDraw();
-void post_glLinkProgram(GLuint shader, GLuint originalShaderName);
+void post_glLinkProgram(GLuint shader, GLuint originalShaderName, int status);
 void post_glCompileShader(GLuint program, GLuint originalProgramName);
 void hardcode_glBindFramebuffer(int target, unsigned int framebuffer);
 void hardcode_glDeleteBuffers(int n, unsigned int* oldBuffers);

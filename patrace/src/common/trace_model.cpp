@@ -629,8 +629,46 @@ std::string ValueTM::ToC(const CallTM *call, bool asSourceCode)
         if (asSourceCode) sstream<<'u';
         break;
     case Uint_Type:
-        sstream<<mUint;
-        if (asSourceCode) sstream<<'u';
+        if (funcName == "glClear")          // special case
+        {
+            sstream << std::hex << "0x" << mUint << "=(";
+            bool firstEnum = true;
+            if (mUint & GL_COLOR_BUFFER_BIT)
+            {
+                firstEnum = false;
+                sstream << "GL_COLOR_BUFFER_BIT";
+                mUint -= GL_COLOR_BUFFER_BIT;
+            }
+            if (mUint & GL_DEPTH_BUFFER_BIT)
+            {
+                if (!firstEnum)
+                    sstream << " | ";
+                firstEnum = false;
+                sstream << "GL_DEPTH_BUFFER_BIT";
+                mUint -= GL_DEPTH_BUFFER_BIT;
+            }
+            if (mUint & GL_STENCIL_BUFFER_BIT)
+            {
+                if (!firstEnum)
+                    sstream << " | ";
+                firstEnum = false;
+                sstream << "GL_STENCIL_BUFFER_BIT";
+                mUint -= GL_STENCIL_BUFFER_BIT;
+            }
+            if (mUint)      // still some other bits, problematic
+            {
+                if (!firstEnum)
+                    sstream << " | ";
+                firstEnum = false;
+                sstream << std::hex << "0x" << mUint;
+            }
+            sstream << ")";
+        }
+        else
+        {
+            sstream<<mUint;
+            if (asSourceCode) sstream<<'u';
+        }
         break;
     case Enum_Type:
         enumTmp = EnumString(mEnum, funcName);

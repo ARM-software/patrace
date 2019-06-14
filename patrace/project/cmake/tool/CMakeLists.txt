@@ -288,6 +288,8 @@ add_executable(analyze_trace
     ${SRC_ROOT}/retracer/trace_executor.cpp
     ${SRC_ROOT}/retracer/dma_buffer/dma_buffer.cpp
     ${SRC_ROOT}/helper/states.cpp
+    ${SRC_ROOT}/helper/shaderutility.cpp
+    ${SRC_ROOT}/helper/depth_dumper.cpp
     ${SRC_ROOT}/helper/paramsize.cpp
     ${SRC_ROOT}/helper/shadermod.cpp
     ${SRC_ROOT}/tool/utils.cpp

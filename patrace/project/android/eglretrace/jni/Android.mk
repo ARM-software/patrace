@@ -141,7 +141,7 @@ LOCAL_C_INCLUDES := \
                     $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty/jsoncpp/json \
                     $(LOCAL_PATH)/../..
 
-LOCAL_LDLIBS    := -L$(SYSROOT)/usr/lib -llog -latomic
+LOCAL_LDLIBS    := -L$(SYSROOT)/usr/lib -nodefaultlibs -lc -lm -ldl -llog -latomic
 LOCAL_STATIC_LIBRARIES := android_native_app_glue collector_android
 
 include $(BUILD_EXECUTABLE)
@@ -237,6 +237,8 @@ LOCAL_SRC_FILES     := \
     retracer/glstate_images.cpp \
     retracer/trace_executor.cpp \
     helper/states.cpp \
+    helper/shaderutility.cpp \
+    helper/depth_dumper.cpp \
     common/gl_utility.cpp \
     helper/shadermod.cpp \
     ../project/android/eglretrace/jni/NativeAPI.cpp
@@ -255,6 +257,6 @@ LOCAL_CFLAGS        := -Wall -frtti -DRETRACE $(PA_BUILD_64BIT) -Wno-attributes 
 LOCAL_CPPFLAGS      += -std=c++11
 
 LOCAL_STATIC_LIBRARIES := common graphicbuffer snappy md5 jsoncpp png collector_android
-LOCAL_LDLIBS        := -llog -landroid -ldl -lz -pthread
+LOCAL_LDLIBS        := -nodefaultlibs -lc -lm -llog -landroid -ldl -lz -pthread
 
 include $(BUILD_SHARED_LIBRARY)

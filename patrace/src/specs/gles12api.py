@@ -52,6 +52,7 @@ commands.add('glDeleteGraphicBuffer_ARM')
 commands.add('paMandatoryExtensions')
 commands.add('glAssertBuffer_ARM')
 commands.add('glStateDump_ARM')
+commands.add('glLinkProgram2')
 
 GLfixed = Alias("GLfixed", Int32)
 GLclampx = Alias("GLclampx", Int32)
@@ -995,6 +996,9 @@ gles_functions = [
     GlFunction(Void, "glFrustumfOES", [(GLfloat, "l"), (GLfloat, "r"), (GLfloat, "b"), (GLfloat, "t"), (GLfloat, "n"), (GLfloat, "f")]),
     GlFunction(Void, "glGetClipPlanefOES", [(GLenum, "plane"), Out(Array(GLfloat, 4), "equation")], sideeffects=False),
     GlFunction(Void, "glOrthofOES", [(GLfloat, "l"), (GLfloat, "r"), (GLfloat, "b"), (GLfloat, "t"), (GLfloat, "n"), (GLfloat, "f")]),
+
+    # Need function to replace glLinkProgram in order to store link status during tracing together with the call itself
+    GlFunction(Void, "glLinkProgram2", [(GLprogram, "program"), (GLboolean, "status")]),
 ]
 
 glesapi = API('GLES')

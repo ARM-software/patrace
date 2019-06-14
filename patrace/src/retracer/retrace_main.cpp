@@ -36,6 +36,7 @@ usage(const char *argv0) {
         "  -singleframe Draw only one frame for each buffer swap (offscreen only)\n"
         "  -skipwork WARMUP_FRAMES Discard GPU work outside frame range with given number of warmup frames. Requires GLES3.\n"
         "  -debug Output debug messages\n"
+        "  -infojson Dump the header of the trace file in json format, then exit\n"
         "  -callstats Output call statistics\n"
         "  -overrideEGL Red Green Blue Alpha Depth Stencil, example: overrideEGL 5 6 5 0 16 8, for 16 bit color and 16 bit depth and 8 bit stencil\n"
         "  -strict Use strict EGL mode (fail unless the specified EGL configuration is valid)\n"

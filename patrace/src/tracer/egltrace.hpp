@@ -211,7 +211,7 @@ void after_glCreateProgram(unsigned char tid, GLuint program);
 void pre_glFlushMappedBufferRange(GLenum target, GLintptr offset, GLsizeiptr length);
 void pre_glUnmapBuffer(GLenum target);
 void after_glUnmapBuffer(GLenum target);
-void pre_glLinkProgram(unsigned char tid, unsigned int program);
+bool pre_glLinkProgram(unsigned char tid, unsigned int program);
 GLuint replace_glCreateShaderProgramv(unsigned char tid, GLenum type, GLsizei count, const GLchar * const * strings);
 void after_glDeleteProgram(unsigned char tid, GLuint program);
 void after_glDraw();

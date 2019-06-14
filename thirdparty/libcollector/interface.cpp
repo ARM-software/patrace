@@ -346,8 +346,17 @@ void Collection::start(const std::vector<std::string>& headers)
         {
             c->finished = false;
             c->thread = std::thread(&Collector::loop, c);
+            int failure = pthread_setname_np(
+                c->thread.native_handle(),
+                c->name().c_str());
+
+            if (failure) {
+                DBG_LOG("%s: Failed to set collector thread name, will inherit from parent process.\n", c->name().c_str());
+            }
         }
     }
+
+    running = true;
 }
 
 void Collection::stop()
@@ -375,6 +384,8 @@ void Collection::stop()
         }
     }
     mRunning = tmp;
+
+    running = false;
 }
 
 void Collection::collect(std::vector<int64_t> custom)

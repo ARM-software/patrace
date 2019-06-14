@@ -160,6 +160,15 @@ EglContext::~EglContext()
         _offscrMgr = NULL;
     }
     eglDestroyContext(mEglDisplay, mContext);
+#ifndef ANDROID
+    // delete all dma buffers
+    for (auto iter2 : mGraphicBuffers) {
+        if (iter2 != NULL) {
+            unmap_fixture_memory_bufs(iter2);
+            delete iter2;
+        }
+    }
+#endif
 }
 
 GlwsEgl::GlwsEgl()

@@ -8,7 +8,7 @@ Installation
 
 You can build the latest trunk from source. First check it out, then make sure you have fetched all submdules:
 
-> git submodule update --recursive --init
+    git submodule update --recursive --init
 
 **Note**: master branch should not be used in production systems. Trace files produced with the trunk build might be incompatible in the future. Trace files produced by release builds will always be supported in future releases.
 
@@ -16,71 +16,65 @@ You can build the latest trunk from source. First check it out, then make sure y
 
 Building for desktop Linux is useful if you want to replay trace files on your desktop using the GLES emulator or if you want to inspect the trace files using TraceView, which is a trace browsing GUI. Install these build dependencies:
 
-> apt-get install build-essential cmake libx11-dev libwxgtk2.8-dev swig python-dev python-setuptools libtiff4-dev default-jdk g++-multilib gcc-multilib libhdf5-serial-dev libpq-dev libpq5 subversion python-virtualenv qt5-default
-
-you may need to install newer version of libwxgtk
+    apt-get install build-essential cmake libx11-dev libwxgtk3.0-dev swig python-dev python-setuptools libtiff-dev default-jdk g++-multilib gcc-multilib libhdf5-serial-dev libpq-dev libpq5 subversion python-virtualenv qt5-default
 
 Then build with the build.py script:
 
-> ./scripts/build.py patrace x11_x64 release
+    ./scripts/build.py patrace x11_x64 release
 
-If you need to run patrace under a no\_mali=1 Mali DDK (this is only available to ARM and ARM Mali partners), then you need to build for fbdev instead:
+If you need to run patrace under a `no_mali=1` Mali DDK (this is only available to ARM and ARM Mali partners), then you need to build for fbdev instead:
 
-> scripts/build.py patrace fbdev\_x64 release
+    scripts/build.py patrace fbdev_x64 release
 
-If you need patrace python tools, you can then build and install the patrace python tools like this:
+If you need patrace python tools, you can install them like this:
 
-> \# Create and activate a virtualenv  
-> virtualenv ~/venv  
-> . ~/venv/bin/activate  
->
-> \# Install patracetools  
-> pip install pypatrace-\*.tar.gz  
-> pip install patracetools-\*.tar.gz  
+    cd patrace/python
+    pip install ./pypatrace/dist/pypatrace-*.whl
+    pip install ./patracetools/dist/patracetools-*.whl
 
-We recommend using and installing inside a python **virtualenv**.
+We recommend using and installing these packages inside a python **virtualenv**.
 
 ### Building for ARM Linux fbdev
 
 For running on most ARMv7 embedded devices, such as Arndale or Firefly:
 
-> ./scripts/build.py patrace fbdev_arm_hardfloat release
+    ./scripts/build.py patrace fbdev_arm_hardfloat release
 
 For running on ARMv8 embedded devices, such as most Juno board configurations:
 
-> ./scripts/build.py patrace fbdev_aarch64 release
+    ./scripts/build.py patrace fbdev_aarch64 release
 
 For embedded devices that do not use hardfloat (rare these days):
 
-> ./scripts/build.py patrace fbdev_arm release
+    ./scripts/build.py patrace fbdev_arm release
 
 ### Building for Android
 
 Build dependencies: You must install the Android SDK and NDK with support for the **android** command as well as the **ndk-build** command (deprecated in later SDK versions). You can get the SDK tools at https://dl.google.com/android/adt/adt-bundle-linux-x86_64-20140702.zip and the NDK at https://dl.google.com/android/repository/android-ndk-r13b-linux-x86_64.zip. Add the NDK installation dir to your path environment variable, or to the NDK environment variable. Add the tools and platform-tools folders located in the android SDK installation folder to your path. Make sure you have java and ant installed:
 
-> apt-get install openjdk-7-jdk ant
+    apt-get install openjdk-7-jdk ant
 
 Building:
 
-> ./scripts/build.py patrace android release
+    ./scripts/build.py patrace android release
 
-If you have a different android target installed than what the build script expects, then you will get build errors. To fix this, grep for the ANDROID\_TARGET variable in the ./scripts directory and change it to your android target.
+If you have a different android target installed than what the build script expects, then you will get build errors. To fix this, grep for the `ANDROID_TARGET` variable in the ./scripts directory and change it to your android target.
 
 ### Build Known Issues
 
 The Python tree can get stale and fail to rebuild. You can clean the Python build parts with:
 
-> git clean -fxd patrace/python
+    git clean -fxd patrace/python
 
 If you have strange errors and wish to reset the build system, try this:
 
-> rm -rf builds/\*  
-> git clean -fxd patrace/python  
-> git submodule update --init  
+    rm -rf builds/*
+    git clean -fxd patrace/python  
+    git submodule update --init  
 
 If you do not wish to build the Python code (not doing so speeds up Linux builds considerably), you can do this by setting the environment variable
 
-> NO\_PYTHON\_BUILD=y
+    NO_PYTHON_BUILD=y
 
 Tracing
 -------
@@ -89,67 +83,67 @@ Tracing
 
 Make sure you have a rooted device where developer mode is enabled and connect it to your desktop. You then need to remount the system directory to install files there.
 
-> adb shell  
-> su  
-> mount -o rw,remount /system  
+    adb shell  
+    su  
+    mount -o rw,remount /system  
 
-When it comes to installing the fakedriver, the method differs depending on which device you have. Android will load the first driver it finds that goes by the name libGLES\_\*.so that resides in
+When it comes to installing the fakedriver, the method differs depending on which device you have. Android will load the first driver it finds that goes by the name `libGLES_*.so` that resides in
 
-> /system/lib/egl/
+    /system/lib/egl/
 
 for 32-bit and
 
-> /system/lib64/egl/
+    /system/lib64/egl/
 
-for 64-bit applications, with a fallback to /system/vendor/lib\[64\]/egl. If a vendor driver resides in this location, move it to the corresponding /system/vendor/lib\[64\]/egl directory to make sure Android loads the fakedriver rather than the system driver.
+for 64-bit applications, with a fallback to `/system/vendor/lib[64]/egl`. If a vendor driver resides in this location, move it to the corresponding `/system/vendor/lib[64]/egl` directory to make sure Android loads the fakedriver rather than the system driver.
 
-We have some hardcoded driver names that we check, if these do not work, try renaming the vendor drivers to "wrapped\_libGLES.so" and place it in the /system/vendor/lib\[64\]/egl directory. (Note that if you do this, and then remove the fakedriver without renaming the system driver back, the phone will suddenly become unusable!)
+We have some hardcoded driver names that we check, if these do not work, try renaming the vendor drivers to `wrapped_libGLES.so` and place it in the `/system/vendor/lib[64]/egl` directory. (Note that if you do this, and then remove the fakedriver without renaming the system driver back, the phone will suddenly become unusable!)
 
-By convention, we call our fakedriver "libGLES\_wrapper.so".
+By convention, we call our fakedriver `libGLES_wrapper.so`.
 
 Example instructions for **Galaxy S7** (32-bit apps):
 
-> adb push fakedriver/libGLES_wrapper_arm.so /sdcard/  
-> adb shell su -c mount -o rw,remount /system  
-> adb shell su -c cp /sdcard/libGLES_wrapper_arm.so /system/lib/egl/libGLES.so  
-> adb shell su -c rm /sdcard/libGLES_wrapper_arm.so  
-> adb shell su -c chmod 755 /system/lib/egl/libGLES.so  
-> adb shell su -c mount -o ro,remount /system  
+    adb push fakedriver/libGLES_wrapper_arm.so /sdcard/  
+    adb shell su -c mount -o rw,remount /system  
+    adb shell su -c cp /sdcard/libGLES_wrapper_arm.so /system/lib/egl/libGLES.so  
+    adb shell su -c rm /sdcard/libGLES_wrapper_arm.so  
+    adb shell su -c chmod 755 /system/lib/egl/libGLES.so  
+    adb shell su -c mount -o ro,remount /system  
 
 ### Installing interceptor on Android
 
 Install the interceptor and configure it:
 
-> adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm.so /sdcard/  
-> adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm64.so /sdcard/  
-> adb shell  
-> su  
-> mount -o rw,remount /system  
->
-> cp /sdcard/libinterceptor_patrace_arm.so /system/lib/egl/libinterceptor_patrace_arm.so  
-> cp /sdcard/libinterceptor_patrace_arm64.so /system/lib64/egl/libinterceptor_patrace_arm64.so  
->
-> chmod 755 /system/lib/egl/libinterceptor_patrace_arm.so  
-> chmod 755 /system/lib64/egl/libinterceptor_patrace_arm64.so  
->
-> echo "/system/lib/egl/libinterceptor_patrace_arm.so" > /system/lib/egl/interceptor.cfg  
-> echo "/system/lib64/egl/libinterceptor_patrace_arm64.so" > /system/lib64/egl/interceptor.cfg  
->
-> chmod 644 /system/lib/egl/interceptor.cfg  
-> chmod 644 /system/lib64/egl/interceptor.cfg  
->
-> mkdir /data/apitrace  
-> chmod 777 /data/apitrace
+    adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm.so /sdcard/  
+    adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm64.so /sdcard/  
+    adb shell  
+    su  
+    mount -o rw,remount /system  
+
+    cp /sdcard/libinterceptor_patrace_arm.so /system/lib/egl/libinterceptor_patrace_arm.so  
+    cp /sdcard/libinterceptor_patrace_arm64.so /system/lib64/egl/libinterceptor_patrace_arm64.so  
+
+    chmod 755 /system/lib/egl/libinterceptor_patrace_arm.so  
+    chmod 755 /system/lib64/egl/libinterceptor_patrace_arm64.so  
+
+    echo "/system/lib/egl/libinterceptor_patrace_arm.so" > /system/lib/egl/interceptor.cfg  
+    echo "/system/lib64/egl/libinterceptor_patrace_arm64.so" > /system/lib64/egl/interceptor.cfg  
+
+    chmod 644 /system/lib/egl/interceptor.cfg  
+    chmod 644 /system/lib64/egl/interceptor.cfg  
+
+    mkdir /data/apitrace  
+    chmod 777 /data/apitrace
 
 Sometimes you will need to store the traces on the SD card instead:
 
-> adb shell su -c mkdir /sdcard/patrace  
-> adb shell su -c chmod 777 /sdcard/patrace  
-> adb shell su -c ln -s /sdcard/Android/data /data/apitrace  
+    adb shell su -c mkdir /sdcard/patrace  
+    adb shell su -c chmod 777 /sdcard/patrace  
+    adb shell su -c ln -s /sdcard/Android/data /data/apitrace  
 
-For Android before version 4.4, you need to update egl.cfg. Either update you egl.cfg manually, or use the provided one:
+For Android before version 4.4, you need to update `egl.cfg`. Either update you `egl.cfg` manually, or use the provided one:
 
-> adb push patrace/project/android/fakedriver/egl.cfg /system/lib/egl/
+    adb push patrace/project/android/fakedriver/egl.cfg /system/lib/egl/
 
 ### Installing fakedriver on Android 8
 
@@ -157,46 +151,46 @@ Tracing on an Android 8 device is similar with the above. But some Project Trebl
 
 You can check if your Android 8 device supports Treble in adb shell:
 
-> getprop ro.treble.enabled
+    getprop ro.treble.enabled
 
 Return value is "true" means your device supports Treble. Then you need to use the following steps to install fakedriver (32-bit apps):
 
-> adb push fakedriver/libGLES_wrapper_arm.so /sdcard/  
->
-> adb shell  
-> su  
-> mount -o rw,remount /vendor  
->
-> cp /sdcard/libGLES_wrapper_arm.so /vendor/lib/egl/  
-> rm /sdcard/libGLES_wrapper_arm.so  
-> chmod 755 /vendor/lib/egl/libGLES_wrapper_arm.so  
-> mv /vendor/lib/egl/libGLES_mali.so /vendor/lib/egl/lib_mali.so  
-> mount -o ro,remount /vendor  
+    adb push fakedriver/libGLES_wrapper_arm.so /sdcard/  
+
+    adb shell  
+    su  
+    mount -o rw,remount /vendor  
+
+    cp /sdcard/libGLES_wrapper_arm.so /vendor/lib/egl/  
+    rm /sdcard/libGLES_wrapper_arm.so  
+    chmod 755 /vendor/lib/egl/libGLES_wrapper_arm.so  
+    mv /vendor/lib/egl/libGLES_mali.so /vendor/lib/egl/lib_mali.so  
+    mount -o ro,remount /vendor  
 
 ### Installing interceptor on Android 8
 
 Similarly, install the interceptor to /vendor/lib(64)/egl and configure it:
 
-> adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm.so /sdcard/  
-> adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm64.so /sdcard/  
-> adb shell  
-> su  
-> mount -o rw,remount /vendor  
->
-> cp /sdcard/libinterceptor_patrace_arm.so /vendor/lib/egl/libinterceptor_patrace_arm.so  
-> cp /sdcard/libinterceptor_patrace_arm64.so /vendor/lib64/egl/libinterceptor_patrace_arm64.so  
->
-> chmod 755 /vendor/lib/egl/libinterceptor_patrace_arm.so  
-> chmod 755 /vendor/lib64/egl/libinterceptor_patrace_arm64.so  
->
-> echo "/vendor/lib/egl/libinterceptor_patrace_arm.so" > /vendor/lib/egl/interceptor.cfg  
-> echo "/vendor/lib64/egl/libinterceptor_patrace_arm64.so" > /vendor/lib64/egl/interceptor.cfg  
->
-> chmod 644 /vendor/lib/egl/interceptor.cfg  
-> chmod 644 /vendor/lib64/egl/interceptor.cfg  
->
-> mkdir /data/apitrace  
-> chmod 777 /data/apitrace  
+    adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm.so /sdcard/  
+    adb push install/patrace/android/release/egltrace/libinterceptor_patrace_arm64.so /sdcard/  
+    adb shell  
+    su  
+    mount -o rw,remount /vendor  
+
+    cp /sdcard/libinterceptor_patrace_arm.so /vendor/lib/egl/libinterceptor_patrace_arm.so  
+    cp /sdcard/libinterceptor_patrace_arm64.so /vendor/lib64/egl/libinterceptor_patrace_arm64.so  
+
+    chmod 755 /vendor/lib/egl/libinterceptor_patrace_arm.so  
+    chmod 755 /vendor/lib64/egl/libinterceptor_patrace_arm64.so  
+
+    echo "/vendor/lib/egl/libinterceptor_patrace_arm.so" > /vendor/lib/egl/interceptor.cfg  
+    echo "/vendor/lib64/egl/libinterceptor_patrace_arm64.so" > /vendor/lib64/egl/interceptor.cfg  
+
+    chmod 644 /vendor/lib/egl/interceptor.cfg  
+    chmod 644 /vendor/lib64/egl/interceptor.cfg  
+
+    mkdir /data/apitrace  
+    chmod 777 /data/apitrace  
 
 ### Installing fakedriver on Android 9
 
@@ -204,12 +198,12 @@ Tracing on an Android 9 device is similar with tracing on Android 8. But some Pr
 
 You can check if your Android 8 device supports Treble in adb shell:
 
-> getprop ro.treble.enabled
+    getprop ro.treble.enabled
 
 Return value is "true" means your device supports Treble. So you need to do the following copying first:
 
-> cp /system/lib64/libstdc++.so /vendor/lib64/  
-> cp /system/lib/libstdc++.so /vendor/lib/  
+    cp /system/lib64/libstdc++.so /vendor/lib64/  
+    cp /system/lib/libstdc++.so /vendor/lib/  
 
 Then you can follow the steps in "Installing fakedriver on Android 8".
 
@@ -221,10 +215,10 @@ The same with "Installing interceptor on Android 8".
 
 The Android Vulkan loader uses 32-bit and 64-bit Vulkan drivers here:
 
-> /vendor/lib/hw/vulkan.<ro.product.platform>.so  
-> /vendor/lib64/hw/vulkan.<ro.product.platform>.so  
+    /vendor/lib/hw/vulkan.<ro.product.platform>.so  
+    /vendor/lib64/hw/vulkan.<ro.product.platform>.so  
 
-If these 2 files are symbolic links to real DDK(libGLES\_mali.so) and you renamed the real DDK for installing fakedriver, you need to recreate these symbolic links for Vulkan apps running.
+If these 2 files are symbolic links to real DDK(`libGLES_mali.so`) and you renamed the real DDK for installing fakedriver, you need to recreate these symbolic links for Vulkan apps running.
 
 ### Tracing on Android
 
@@ -238,9 +232,10 @@ Create the output trace directory in advance, which will be named /data/apitrace
 
 Example:
 
-> echo "`com.arm.mali.Timbuktu`" &gt;&gt; `/system/lib/egl/appList.cfg`chmod 644 /system/lib/egl/appList.cfg  
-> mkdir -p /data/apitrace/`com.arm.mali.Timbuktu`  
-> chmod 777 /data/apitrace/`com.arm.mali.Timbuktu`  
+    echo com.arm.mali.Timbuktu >> /system/lib/egl/appList.cfg
+    chmod 644 /system/lib/egl/appList.cfg  
+    mkdir -p /data/apitrace/com.arm.mali.Timbuktu
+    chmod 777 /data/apitrace/com.arm.mali.Timbuktu
 
 Make sure `/system/lib[64]/egl/appList.cfg` is world readable.
 
@@ -258,27 +253,27 @@ It is possible to trace non-native resolutions on Android by switching window re
 
 #### Tracing on Samsung S8
 
-More restrictions have been added on Android. You will need to pre-create the target trace directory, adnd use chcon to set the Selinux file permissions on it, for example "chcon u:object\_r:app\_data\_file:s0:c512,c768 /data/apitrace/com.futuremark.dmandroid", in addition to setting the permissions to 777. You can also no longer 'adb pull' the file directly from this directory, but have to go by the way of /sdcard/.
+More restrictions have been added on Android. You will need to pre-create the target trace directory, adnd use chcon to set the Selinux file permissions on it, for example `chcon u:object_r:app_data_file:s0:c512,c768 /data/apitrace/com.futuremark.dmandroid`, in addition to setting the permissions to 777. You can also no longer 'adb pull' the file directly from this directory, but have to go by the way of /sdcard/.
 
 #### Tracing on Android with Treble enabled
 
-If the fakedriver doesn't seem to be picked up (nothing relevant printed in logcat), it might be because Android has Treble enabled. If so, put libs under `vendor/` and rename libGLES\_mali.so to `lib_mali.so`.
+If the fakedriver doesn't seem to be picked up (nothing relevant printed in logcat), it might be because Android has Treble enabled. If so, put libs under `vendor/` and rename `libGLES_mali.so` to `lib_mali.so`.
 
 ### Tracing on Linux
 
 Put the libegltrace.so file you built somewhere where you can access it, then run:
 
-> LD_PRELOAD=/my/path/libegltrace.so OUT_TRACE_FILE=myGLB2 ./glbenchmark2
+    LD_PRELOAD=/my/path/libegltrace.so OUT_TRACE_FILE=myGLB2 ./glbenchmark2
 
-Use the OUT\_TRACE\_FILE variable to set the path and filename of the captured trace. The filename will be appended with an index followed by `.pat`. If `%u` appears in OUT\_TRACE\_FILE, it will be used as a placeholder for the index. E.g. `foo-%u-bar.pat`. If the OUT\_TRACE\_FILE variable is omitted, then the hard coded pattern, `trace.%u.pat`, will be used.
+Use the `OUT_TRACE_FILE` variable to set the path and filename of the captured trace. The filename will be appended with an index followed by `.pat`. If `%u` appears in `OUT_TRACE_FILE`, it will be used as a placeholder for the index. E.g. `foo-%u-bar.pat`. If the `OUT_TRACE_FILE` variable is omitted, then the hard coded pattern, `trace.%u.pat`, will be used.
 
-You may also specify the environment variables TRACE\_LIBEGL, TRACE\_LIBGLES1 and TRACE\_LIBGLES2 to tell the tracer exactly where the various GLES DDK files are found. If you use these, you may be able to use LD\_LIBRARY\_PATH to the fakedriver instead of LD\_PRELOAD of the tracer directly. In this latter case, set INTERCEPTOR\_LIB to point to your tracer library.
+You may also specify the environment variables `TRACE_LIBEGL`, `TRACE_LIBGLES1` and `TRACE_LIBGLES2` to tell the tracer exactly where the various GLES DDK files are found. If you use these, you may be able to use `LD_LIBRARY_PATH` to the fakedriver instead of `LD_PRELOAD` of the tracer directly. In this latter case, set `INTERCEPTOR_LIB` to point to your tracer library.
 
 The fakedriver may be hard to use on desktop Linux. We have poor experience using the Mali emulator as well, and recommend using a proper GLES capable driver.
 
 ### Tracer configuration file
 
-The tracer can be configured through a special configuration file $PWD/tracerparams.cfg that contains configuration lines containing one keyword and one value which is usually "true" or "false".The following parameters can be specified in it:
+The tracer can be configured through a special configuration file `$PWD/tracerparams.cfg` that contains configuration lines containing one keyword and one value which is usually "true" or "false".The following parameters can be specified in it:
 
 -   EnableErrorCheck - Turn on or off saving errors to the trace file
 -   UniformBufferOffsetAlignment - Change UBO alignment. By default this is set to the lowest common denominator for all relevant platforms.
@@ -295,7 +290,7 @@ The most useful keyword is 'FilterSupportedExtension', which, if set to 'true', 
 
 ### Special features of PaTrace Tracer
 
-You may enable or disable extensions, this is useful to create traces that don't use certain extensions. Limiting the extensions an app 'sees' is useful when you want to create a tracefile that is compatible with devices that don't support a given extension. How it works; when an app calls glGetString(GL\_EXTENSIONS), only the ones enabled in /system/lib/egl/tracerparams.cfg will be returned to the app. Unfortunately, some applications ignore or don't use this information, and may use certain extensions, anyways.The tracer will ignore some extensions like the binary shader extensions by default. You can override this by explicitly listing the extensions to use in tracerparams.cfg, as described 
+You may enable or disable extensions, this is useful to create traces that don't use certain extensions. Limiting the extensions an app 'sees' is useful when you want to create a tracefile that is compatible with devices that don't support a given extension. How it works; when an app calls `glGetString(GL_EXTENSIONS)`, only the ones enabled in `/system/lib/egl/tracerparams.cfg` will be returned to the app. Unfortunately, some applications ignore or don't use this information, and may use certain extensions, anyways.The tracer will ignore some extensions like the binary shader extensions by default. You can override this by explicitly listing the extensions to use in `tracerparams.cfg`, as described 
 above.The full list of extensions that the device supports will be saved in the trace header.
 
 We never want binary shaders in the resulting trace file, since it can then only be retraced on the same platform. Since binary shaders are supported in GLES3, merely disabling the binary shader extensions may not be enough. You may have to go into Android app settings, and flush all app caches before you run the app to make sure the shader caches are cleared, 
@@ -305,7 +300,7 @@ before tracing it.
 
 1.  If the traced content uses multiple threads and/or multiple contexts, retracing may fail. Try running the pat-remap-egl python script that comes with patrace. See python tool installation instructions above.
 2.  Did you remember to close the application correctly? See tracing instructions above.
-3.  The tracer does not write directly to disk; instead it has a in-memory cache that is flushed to disk when full. The cache is currently hardcoded to 70MB, but can be decreased or increased. It was increased from 20MB to 70MB when it was discovered that a game allocating large textures (almost 4k by 4k) used more space that the maxium size of the cache. The downside of increasing the cache size is that we have a limited amount of memory on the devices we create traces on. The cache size is defined in patrace/src/tracer/egltrace.hpp::TraceOut::WRITE\_BUF::LEN
+3.  The tracer does not write directly to disk; instead it has a in-memory cache that is flushed to disk when full. The cache is currently hardcoded to 70MB, but can be decreased or increased. It was increased from 20MB to 70MB when it was discovered that a game allocating large textures (almost 4k by 4k) used more space that the maxium size of the cache. The downside of increasing the cache size is that we have a limited amount of memory on the devices we create traces on. The cache size is defined in `patrace/src/tracer/egltrace.hpp::TraceOut::WRITE_BUF::LEN`
 
 Retracing
 ---------
@@ -324,7 +319,7 @@ Detailed call statistics about the time spent in each API call can be gathered w
 
 ### Retracing on FPGA
 
-On the FPGA with dummy winsys, you need to specify some extra environment variables. MALI\_EGL\_DUMMY\_DISPLAY\_WIDTH and MALI\_EGL\_DUMMY\_DISPLAY\_HEIGHT should be set to "4096". Set LD\_LIBRARY\_PATH to point to the location of your compiled DDK.
+On the FPGA with dummy winsys, you need to specify some extra environment variables. `MALI_EGL_DUMMY_DISPLAY_WIDTH` and `MALI_EGL_DUMMY_DISPLAY_HEIGHT` should be set to "4096". Set `LD_LIBRARY_PATH` to point to the location of your compiled DDK.
 
 ### Retracing on Android
 
@@ -336,16 +331,16 @@ On the FPGA with dummy winsys, you need to specify some extra environment variab
 
 To launch the retracer from command line, you can use the following command:
 
-> adb shell am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es fileName /absolute/path/to/tracefile.pat
+    adb shell am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es fileName /absolute/path/to/tracefile.pat
 
 For a full set of available parameters, see Command Line Parameters in ADB Shell.
 
 To retrace some traces which contain external YUV textures on Android 7 or later, you need to add libui.so to /etc/public.libraries.txt out
 
-> adb shell  
-> su  
-> mount -o rw,remount /  
-> echo libui.so >> /etc/public.libraries.txt  
+    adb shell  
+    su  
+    mount -o rw,remount /  
+    echo libui.so >> /etc/public.libraries.txt  
 
 ### Retracing On Desktop Linux
 
@@ -357,7 +352,7 @@ For GLES support on Linux desktop environments there are three options:
 
 The preferred option is to use the latest Nvidia driver (see Tracing on desktop Linux). Using the MESA's GLES implementation is the least preferred option. Copy the trace file from the device and replay it with:
 
-> paretrace TRACE_FILE.pat
+    paretrace TRACE_FILE.pat
 
 The first time you run the file, it is recommended to add the "-debug" command line switch to see any error messages from the driver, which can reveal many issues.
 
@@ -376,7 +371,7 @@ Check out Midgard DDK and build it with e.g. `scons profile=x86-32-debug-dump`
 
 Run the trace using e.g.
 
-> LD_LIBRARY_PATH=path_to_driver_libraries MALI_SAVE_FRAMES_TO_FILE=1 paretrace input.pat
+    LD_LIBRARY_PATH=path_to_driver_libraries MALI_SAVE_FRAMES_TO_FILE=1 paretrace input.pat
 
 ### Parameter options
 
@@ -386,79 +381,79 @@ There are three different ways to tell the retracer which parameters that should
 
 | Parameter                                    | Description                                                                                                                                                                                                                            |
 |----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| -tid THREADID                                | only the function calls invoked by the given thread ID will be retraced                                                                                                                                                                |
-| -s CALL\_SET                                 | take snapshot for the calls in the specific call set. Example "\*/frame" for one snapshot for each frame, or "250/frame" to take a snapshot just of frame 250.                                                                         |
-| -step                                        | use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call (only supported on desktop linux)                                                                                                               |
-| -ores W H                                    | override resolution of onscreen rendering (FBO's are not affected)                                                                                                                                                                     |
-| -msaa SAMPLES                                | enable multi sample anti alias                                                                                                                                                                                                         |
-| -preload START STOP                          | preload the trace file frames from START to STOP. START must be greater than zero. Implies -framerange.                                                                                                                                |
-| -framerange FRAME\_START FRAME\_END          | start fps timer at frame start, stop timer and playback at frame end. Frame start can be 0, but you usually want to measure the middle-to-end part of a trace, so you're not measuring time spent for EGL init and loading screens.    |
-| -debug                                       | Output debug messages                                                                                                                                                                                                                  |
-| -skipwork WARMUP\_FRAMES                     | Discard GPU work outside frame range with given number of warmup frames. Requires GLES3. Works by calling glDiscardFramebuffer() before GLES sync point, and skipping compute calls.                                                   |
-| -singlewindow                                | Force everything to render in a single window                                                                                                                                                                                          |
-| -singleframe                                 | Draw only one frame for each buffer swap (offscreen only)                                                                                                                                                                              |
-| -jsonParameters FILE RESULT\_FILE TRACE\_DIR | path to a JSON file containing the parameters, the output result file and base trace path                                                                                                                                              |
-| -info                                        | Show default EGL Config for playback (stored in trace file header). Do not play trace.                                                                                                                                                 |
-| -infojson                                    | Show JSON header. Do not play trace.                                                                                                                                                                                                   |
-| -instr                                       | Output the supported instrumentation modes as a JSON file. Do not play trace.                                                                                                                                                          |
-| -offscreen                                   | Run in offscreen mode                                                                                                                                                                                                                  |
-| -overrideEGL                                 | Red Green Blue Alpha Depth Stencil, example: overrideEGL 5 6 5 0 16 8, for 16 bit color and 16 bit depth and 8 bit stencil                                                                                                             |
-| -strict                                      | Use strict EGL mode (fail unless the specified EGL configuration is valid)                                                                                                                                                             |
-| -skip CALL\_SET                              | skip calls in the specific call set                                                                                                                                                                                                    |
-| -libEGL\_path=                               |                                                                                                                                                                                                                                        |
-| -libGLESv1\_path=                            |                                                                                                                                                                                                                                        |
-| -libGLESv2\_path=                            |                                                                                                                                                                                                                                        |
-| -version                                     | Output the version of this program                                                                                                                                                                                                     |
-| -callstats                                   | (since r2p4) Output GLES API call statistics to disk, time spent in API calls measured in nanoseconds.                                                                                                                                 |
-| -collect                                     | (since r2p4) Collect performance information and save it to disk. It enables some default libcollector collectors. For fine-grained control over libcollector behaviour, use the JSON interface instead.                               |
-| -perf FRAME\_START FRAME\_END                | (since r2p5) Create perf callstacks of the selected frame range and save it to disk. It calls "perf record -g" in a separate thread once your selected frame range begins.                                                             |
-| -perfpath filepath                           | (since r2p5) Path to your perf binary. Mostly useful on embedded systems.                                                                                                                                                              |
-| -perffreq freq                               | (since r2p5) Your perf polling frequency. The default is 1000. Can usually go up to 25000.                                                                                                                                             |
-| -perfout filepath                            | (since r2p5) Destination file for your -perf data                                                                                                                                                                                      |
-| -noscreen                                    | (since r2p4) Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.                                |
-| -flush                                       | (since r2p5) Will try hard to flush all pending CPU and GPU work before starting the selected framerange. This should usually not be necessary.                                                                                        |
-| -multithread                                 | Enable to run the calls in all the threads recorded in the pat file. These calls will be dispatched to corresponding work threads and run simultaneously. The execution sequence of calls between different threads is not guaranteed. |
-| -insequence                                  | This option should be used after -multithread. It guarantees the calls in different work threads run in the sequence as recorded in the pat file.                                                                                      |
+| `-tid THREADID`                              | only the function calls invoked by the given thread ID will be retraced                                                                                                                                                                |
+| `-s CALL_SET`                                | take snapshot for the calls in the specific call set. Example `*/frame` for one snapshot for each frame, or `250/frame` to take a snapshot just of frame 250.                                                                         |
+| `-step`                                      | use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call (only supported on desktop linux)                                                                                                               |
+| `-ores W H`                                  | override resolution of onscreen rendering (FBO's are not affected)                                                                                                                                                                     |
+| `-msaa SAMPLES`                              | enable multi sample anti alias                                                                                                                                                                                                         |
+| `-preload START STOP`                        | preload the trace file frames from START to STOP. START must be greater than zero. Implies -framerange.                                                                                                                                |
+| `-framerange FRAME_START FRAME_END`          | start fps timer at frame start, stop timer and playback at frame end. Frame start can be 0, but you usually want to measure the middle-to-end part of a trace, so you're not measuring time spent for EGL init and loading screens.    |
+| `-debug`                                     | Output debug messages                                                                                                                                                                                                                  |
+| `-skipwork WARMUP_FRAMES`                    | Discard GPU work outside frame range with given number of warmup frames. Requires GLES3. Works by calling glDiscardFramebuffer() before GLES sync point, and skipping compute calls.                                                   |
+| `-singlewindow`                              | Force everything to render in a single window                                                                                                                                                                                          |
+| `-singleframe`                               | Draw only one frame for each buffer swap (offscreen only)                                                                                                                                                                              |
+| `-jsonParameters FILE RESULT_FILE TRACE_DIR` | path to a JSON file containing the parameters, the output result file and base trace path                                                                                                                                              |
+| `-info`                                      | Show default EGL Config for playback (stored in trace file header). Do not play trace.                                                                                                                                                 |
+| `-infojson`                                  | Show JSON header. Do not play trace.                                                                                                                                                                                                   |
+| `-instr`                                     | Output the supported instrumentation modes as a JSON file. Do not play trace.                                                                                                                                                          |
+| `-offscreen`                                 | Run in offscreen mode                                                                                                                                                                                                                  |
+| `-overrideEGL`                               | Red Green Blue Alpha Depth Stencil, example: overrideEGL 5 6 5 0 16 8, for 16 bit color and 16 bit depth and 8 bit stencil                                                                                                             |
+| `-strict`                                    | Use strict EGL mode (fail unless the specified EGL configuration is valid)                                                                                                                                                             |
+| `-skip CALL_SET`                             | skip calls in the specific call set                                                                                                                                                                                                    |
+| `-libEGL_path=`                              |                                                                                                                                                                                                                                        |
+| `-libGLESv1_path=`                           |                                                                                                                                                                                                                                        |
+| `-libGLESv2_path=`                           |                                                                                                                                                                                                                                        |
+| `-version`                                   | Output the version of this program                                                                                                                                                                                                     |
+| `-callstats`                                 | (since r2p4) Output GLES API call statistics to disk, time spent in API calls measured in nanoseconds.                                                                                                                                 |
+| `-collect`                                   | (since r2p4) Collect performance information and save it to disk. It enables some default libcollector collectors. For fine-grained control over libcollector behaviour, use the JSON interface instead.                               |
+| `-perf FRAME_START FRAME_END`                | (since r2p5) Create perf callstacks of the selected frame range and save it to disk. It calls "perf record -g" in a separate thread once your selected frame range begins.                                                             |
+| `-perfpath filepath`                         | (since r2p5) Path to your perf binary. Mostly useful on embedded systems.                                                                                                                                                              |
+| `-perffreq freq`                             | (since r2p5) Your perf polling frequency. The default is 1000. Can usually go up to 25000.                                                                                                                                             |
+| `-perfout filepath`                          | (since r2p5) Destination file for your -perf data                                                                                                                                                                                      |
+| `-noscreen`                                  | (since r2p4) Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.                                |
+| `-flush`                                     | (since r2p5) Will try hard to flush all pending CPU and GPU work before starting the selected framerange. This should usually not be necessary.                                                                                        |
+| `-multithread`                               | Enable to run the calls in all the threads recorded in the pat file. These calls will be dispatched to corresponding work threads and run simultaneously. The execution sequence of calls between different threads is not guaranteed. |
+| `-insequence`                                | This option should be used after -multithread. It guarantees the calls in different work threads run in the sequence as recorded in the pat file.                                                                                      |
 
-CALL\_SET = interval ( '/' frequency )
-interval = '\*' | number | start\_number '-' end\_number
-frequency = divisor | "frame" | "draw"
+    CALL_SET = interval ( '/' frequency )
+    interval = '*' | number | start_number '-' end_number
+    frequency = divisor | "frame" | "draw"
 
 #### Command Line Parameters in ADB Shell
 
 | Command                    | Description                                                                                                                                                                                                                                                                                                                                                                  |
 |----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| --es fileName              | /path/to/tracefile                                                                                                                                                                                                                                                                                                                                                           |
-| --ei tid                   | thread ID to retrace                                                                                                                                                                                                                                                                                                                                                         |
-| --ei oresW                 | width                                                                                                                                                                                                                                                                                                                                                                        |
-| --ei oresH                 | height                                                                                                                                                                                                                                                                                                                                                                       |
+| `--es fileName`            | /path/to/tracefile                                                                                                                                                                                                                                                                                                                                                           |
+| `--ei tid`                 | thread ID to retrace                                                                                                                                                                                                                                                                                                                                                         |
+| `--ei oresW`               | width                                                                                                                                                                                                                                                                                                                                                                        |
+| `--ei oresH`               | height                                                                                                                                                                                                                                                                                                                                                                       |
 |                            | Overriding resolution (oresW, oresH). This affects performance, scales the viewport to smaller or larger resolution, which results in a smaller or larger number of fragments shaded. Does not affect the trace-ed apps internal FBOs. Scale is relative to winW and winH, scaleRatioW = oresW / winW and same for height. If oresW=1 and winW=1, you won't see any scaling. |
-| --ei winW                  | width                                                                                                                                                                                                                                                                                                                                                                        |
-| --ei winH                  | height                                                                                                                                                                                                                                                                                                                                                                       |
+| `--ei winW`                | width                                                                                                                                                                                                                                                                                                                                                                        |
+| `--ei winH`                | height                                                                                                                                                                                                                                                                                                                                                                       |
 |                            | Window size, affects snapshot dimensions. When overriding resolution, you usually want keep window size (winW,winH) the same as when tracing the application, as scaling is relative to winW,winH.                                                                                                                                                                           |
-| --ez forceOffscreen        | true/false. When enabled, 100 frames will be rendered per visible frame, and rendering is no longer vsync limited. Frames are visible as 10x10 tiles.                                                                                                                                                                                                                        |
-| --es snapshotPrefix        | /path/to/snapshots/prefix- Must contain full path and a prefix, resulting screenshots will be named prefix-callnumber.png                                                                                                                                                                                                                                                    |
-| --es snapshotCallset       | call begin - call end / frequency, example: '10-100/draw' or '10-100/frame' or '10-100' (snapshot after every call in range!)                                                                                                                                                                                                                                                |
-| --ei frame\_start          | Start measure fps from this frame. First allowed frame number is 1 (not 0)                                                                                                                                                                                                                                                                                                   |
-| --ei frame\_end            | Stop fps measure, and stop playback                                                                                                                                                                                                                                                                                                                                          |
-| --ez preload               | Loads calls for frames between frame\_start and frame\_end into memory. Useful when playback is IO-bound.                                                                                                                                                                                                                                                                    |
+| `--ez forceOffscreen`      | true/false. When enabled, 100 frames will be rendered per visible frame, and rendering is no longer vsync limited. Frames are visible as 10x10 tiles.                                                                                                                                                                                                                        |
+| `--es snapshotPrefix`      | /path/to/snapshots/prefix- Must contain full path and a prefix, resulting screenshots will be named prefix-callnumber.png                                                                                                                                                                                                                                                    |
+| `--es snapshotCallset`     | call begin - call end / frequency, example: '10-100/draw' or '10-100/frame' or '10-100' (snapshot after every call in range!)                                                                                                                                                                                                                                                |
+| `--ei frame_start`         | Start measure fps from this frame. First allowed frame number is 1 (not 0)                                                                                                                                                                                                                                                                                                   |
+| `--ei frame_end`           | Stop fps measure, and stop playback                                                                                                                                                                                                                                                                                                                                          |
+| `--ez preload`             | Loads calls for frames between `frame_start` and `frame_end` into memory. Useful when playback is IO-bound.                                                                                                                                                                                                                                                                  |
 |                            | The following options may be used to override onscreen EGL config stored in trace header.                                                                                                                                                                                                                                                                                    |
-| --ei colorBitsRed          | bits                                                                                                                                                                                                                                                                                                                                                                         |
-| --ei colorBitsGreen        | bits                                                                                                                                                                                                                                                                                                                                                                         |
-| --ei colorBitsBlue         | bits                                                                                                                                                                                                                                                                                                                                                                         |
-| --ei colorBitsAlpha        | bits                                                                                                                                                                                                                                                                                                                                                                         |
-| --ei depthBits             | bits                                                                                                                                                                                                                                                                                                                                                                         |
-| --ei stencilBits           | bits                                                                                                                                                                                                                                                                                                                                                                         |
-| --ez antialiasing          | true/false Enable 4x MSAA.                                                                                                                                                                                                                                                                                                                                                   |
-| --es jsonData              | path to a JSON file containing parameters, e.g. /data/apitrace/input.json. Only works together with traceFilePath and resultFile, any other options don't work anymore                                                                                                                                                                                                       |
-| --es traceFilePath         | base path to trace file storage, e.g. /data/apitrace                                                                                                                                                                                                                                                                                                                         |
-| --es resultFile            | path to output result file, e.g. /data/apitrace/result.json                                                                                                                                                                                                                                                                                                                  |
-| --ez multithread           | Enable/Disable(default) Multithread execution mode.                                                                                                                                                                                                                                                                                                                          |
-| --ez insequence            | Add after --ez multithread, true/false(default) to garantee all calls run in the sequence as recorded in the pat file.                                                                                                                                                                                                                                                       |
-| --ez enOverlay             | If true(default), enable overlay all the surfaces when there is more then one surface created. If false, all the surfaces will be splited horizontally in a slider container.                                                                                                                                                                                                |
-| --ei transparent           | The alpha value of each surface, when using Overlay layout. The defualt is 100(opaque).                                                                                                                                                                                                                                                                                      |
-| --ez force\_single\_window | Ture/False(default) to force render all the calls onto a single surface. This can't be true with multithread mode enabled.                                                                                                                                                                                                                                                   |
-| --ez enFullScreen          | Ture/False(defualt) to hide the system navigator and control bars.                                                                                                                                                                                                                                                                                                           |
+| `--ei colorBitsRed`        | bits                                                                                                                                                                                                                                                                                                                                                                         |
+| `--ei colorBitsGreen`      | bits                                                                                                                                                                                                                                                                                                                                                                         |
+| `--ei colorBitsBlue`       | bits                                                                                                                                                                                                                                                                                                                                                                         |
+| `--ei colorBitsAlpha`      | bits                                                                                                                                                                                                                                                                                                                                                                         |
+| `--ei depthBits`           | bits                                                                                                                                                                                                                                                                                                                                                                         |
+| `--ei stencilBits`         | bits                                                                                                                                                                                                                                                                                                                                                                         |
+| `--ez antialiasing`        | true/false Enable 4x MSAA.                                                                                                                                                                                                                                                                                                                                                   |
+| `--es jsonData`            | path to a JSON file containing parameters, e.g. /data/apitrace/input.json. Only works together with traceFilePath and resultFile, any other options don't work anymore                                                                                                                                                                                                       |
+| `--es traceFilePath`       | base path to trace file storage, e.g. /data/apitrace                                                                                                                                                                                                                                                                                                                         |
+| `--es resultFile`          | path to output result file, e.g. /data/apitrace/result.json                                                                                                                                                                                                                                                                                                                  |
+| `--ez multithread`         | Enable/Disable(default) Multithread execution mode.                                                                                                                                                                                                                                                                                                                          |
+| `--ez insequence`          | Add after --ez multithread, true/false(default) to garantee all calls run in the sequence as recorded in the pat file.                                                                                                                                                                                                                                                       |
+| `--ez enOverlay`           | If true(default), enable overlay all the surfaces when there is more then one surface created. If false, all the surfaces will be splited horizontally in a slider container.                                                                                                                                                                                                |
+| `--ei transparent`         | The alpha value of each surface, when using Overlay layout. The defualt is 100(opaque).                                                                                                                                                                                                                                                                                      |
+| `--ez force_single_window` | Ture/False(default) to force render all the calls onto a single surface. This can't be true with multithread mode enabled.                                                                                                                                                                                                                                                   |
+| `--ez enFullScreen`        | Ture/False(defualt) to hide the system navigator and control bars.                                                                                                                                                                                                                                                                                                           |
 
 #### Parameters from JSON file
 
@@ -585,7 +580,7 @@ Open an adb shell:
 
     adb shell
 
-Start the app that you want to trace on Android. Make sure that it is traced with libinterceptor\_patrace.so.Find the app's process id by using `ps` in the adb shell.Start the gdb server on the Android device:
+Start the app that you want to trace on Android. Make sure that it is traced with `libinterceptor_patrace.so`. Find the app's process id by using `ps` in the adb shell.Start the gdb server on the Android device:
 
     /data/local/gdbserver :5039 --attach <YOUR-APP'S-PROCESS-ID>
 
@@ -681,47 +676,46 @@ Existing collectors:
 
 | Name                 | What it does                                                                                                                                                                            | Unit             | Options                             
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------|-------------------------------------|
-| perf                 | Gets CPU cycles from perf                                                                                                                                                               | Cycles           |                                     
-| perf\_record         | Generates perf callstack data on disk for the relevant frame range.                                                                                                                     <br>**EXPERIMENTAL**                                                                                                                                                                         | -                |                                     |
-| battery\_temperature | Gets the battery temperature                                                                                                                                                            | Celsius          |                                     |                                                                                          |
-| cpufreq              | CPU frequencies. Each sample is the average frequency used since the last sampling point for each core. Then you also get the max of every core in "highest\_avg" for your convenience. | Hz               |                                     
-| memfreq              | Memory frequency                                                                                                                                                                        |  Hz              |                                     |                                                                                          |
-| memfreqdisplay       | Memory frequency                                                                                                                                                                        |  Hz |                                     |                                                                                          |
-| memfreqint           | Memory frequency                                                                                                                                                           |  Hz |                                     |                                                                                          |
-| gpu\_active\_time    | Time GPU has been active                                                                                                                                                                |                  |                                     |                                                                                          |
-| gpu\_suspended\_time | Time GPU has been suspended                                                                                                                                                             |                  |                                     |                                                                                          |
-| cpufreqtrans         | Number of frequency transitions the CPU has made                                                                                                                                        | Transitions      |                                     |
-| debug                | **EXPERIMENTAL**                                                                                                                                                                        |                  |                                     |                                                                                          |
-| streamline           | Adds streamline markers to the execution                                                                                                                                                |  None            |                                     |
-| memory               | Track amount of memory used                                                                                                                                                             | Kilobytes        |                                     | 
-| cputemp              | CPU temperature                                                                                                                                                                         |                  |                                     | 
-| gpufreq              | GPU frequency                                                                                                                                                                           |                  | 'path' : path to GPU frequency file |
-| procfs               | Information from /procfs filesystem                                                                                                                                                     | Various          |                                     | 
-| rusage               | Information from getrusage() system call                                                                                                                                                | Various          |                                     | 
-| power                | TBD                                                                                                                                                                                     |                  | TBD                                 | 
-| ferret               | Monitors CPU usage by polling system files. Gives coarse per thread CPU load statistics (cycles consumed, frequencies during the rune etc.) | Various | 'cpus': List of cpus to monitor. Example: cpus: [0, 2, 3, 5, 7], will monitor core 0, 2, 3, 5 and 7. All work done on the other cores will be ignored.<br>This defaults to all cores on the system if not set.<br><br>'enable_postprocessing': Boolean value. If this is set, the sampled results will be postprocessed at shutdown. Giving per. thread derived statistics like estimated CPU fps etc. Defaults to false.<br><br>'banned_threads': Only used when 'enable_postprocessing' is set to true. This is a list of thread names to exclude when generating derived statistics. Defaults to: 'banned_threads': ["ferret"], this will exclude the CPU overhead added by the ferret instrumentation.<br><br>'output_dir': Path to an existing directory where sample data will be stored. |
+| `perf`               | Gets CPU cycles from perf                                                                                                                                                               | Cycles           |                                     
+| `perf_record`        | Generates perf callstack data on disk for the relevant frame range.                                                                                                                     <br>**EXPERIMENTAL**                                                                                                                                                                         | -                |                                     |
+| `battery_temperature`| Gets the battery temperature                                                                                                                                                            | Celsius          |                                     |                                                                                          |
+| `cpufreq`            | CPU frequencies. Each sample is the average frequency used since the last sampling point for each core. Then you also get the max of every core in `highest_avg` for your convenience. | Hz               |                                     
+| `memfreq`            | Memory frequency                                                                                                                                                                        |  Hz              |                                     |                                                                                          |
+| `memfreqdisplay`     | Memory frequency                                                                                                                                                                        |  Hz |                                     |                                                                                          |
+| `memfreqint`         | Memory frequency                                                                                                                                                           |  Hz |                                     |                                                                                          |
+| `gpu_active_time`    | Time GPU has been active                                                                                                                                                                |                  |                                     |                                                                                          |
+| `gpu_suspended_time` | Time GPU has been suspended                                                                                                                                                             |                  |                                     |                                                                                          |
+| `cpufreqtrans`       | Number of frequency transitions the CPU has made                                                                                                                                        | Transitions      |                                     |
+| `debug`              | **EXPERIMENTAL**                                                                                                                                                                        |                  |                                     |                                                                                          |
+| `streamline`         | Adds streamline markers to the execution                                                                                                                                                |  None            |                                     |
+| `memory`             | Track amount of memory used                                                                                                                                                             | Kilobytes        |                                     | 
+| `cputemp`            | CPU temperature                                                                                                                                                                         |                  |                                     | 
+| `gpufreq`            | GPU frequency                                                                                                                                                                           |                  | 'path' : path to GPU frequency file |
+| `procfs`             | Information from /procfs filesystem                                                                                                                                                     | Various          |                                     | 
+| `rusage`             | Information from getrusage() system call                                                                                                                                                | Various          |                                     | 
+| `power`              | TBD                                                                                                                                                                                     |                  | TBD                                 | 
+| `ferret`             | Monitors CPU usage by polling system files. Gives coarse per thread CPU load statistics (cycles consumed, frequencies during the rune etc.) | Various | 'cpus': List of cpus to monitor. Example: cpus: [0, 2, 3, 5, 7], will monitor core 0, 2, 3, 5 and 7. All work done on the other cores will be ignored.<br>This defaults to all cores on the system if not set.<br><br>'enable_postprocessing': Boolean value. If this is set, the sampled results will be postprocessed at shutdown. Giving per. thread derived statistics like estimated CPU fps etc. Defaults to false.<br><br>'banned_threads': Only used when 'enable_postprocessing' is set to true. This is a list of thread names to exclude when generating derived statistics. Defaults to: 'banned_threads': ["ferret"], this will exclude the CPU overhead added by the ferret instrumentation.<br><br>'output_dir': Path to an existing directory where sample data will be stored. |
 
 Example
 -------
 
 The above names should be added as keys under the "collectors" dictionary in the input.json file:
 
-```
-{
-	"collectors": {
-		"cpufreq": {},
-        "gpufreq": {
-        "path": "/sys/kernel/gpu/gpu\_clock" },
-        "perf": {},
-        "procfs": {},
-        "rusage": {}
-    },
-    "file": "driver2.orig.gles3.pat",
-    "frames": "1-191",
-    "offscreen": true,
-    "preload": true
-}
-```
+    {
+        "collectors": {
+            "cpufreq": {},
+                "gpufreq": {
+                    "path": "/sys/kernel/gpu/gpu_clock"
+                },
+                "perf": {},
+                "procfs": {},
+                "rusage": {}
+        },
+        "file": "driver2.orig.gles3.pat",
+        "frames": "1-191",
+        "offscreen": true,
+        "preload": true
+    }
 
 
 Generating CPU load statistics
@@ -731,41 +725,39 @@ You can get statistics for the CPU load (driver overhead) when running a trace b
 
 To do this, create a json parameter file similar to the one below (we will refer to it as parameters.json):
 
-```
-{
-    "collectors": {
-        "ferret": {
-            "enable_postprocessing": true,
-            "output_dir": "<my_out_dir>"
-        }
-    },
-    "file": <opath_to_my_trace_file>,
-    "frames": "<start_frame>-<end_frame>",
-    "offscreen": true,
-    "preload": true
-}
-```
+    {
+        "collectors": {
+            "ferret": {
+                "enable_postprocessing": true,
+                "output_dir": "<my_out_dir>"
+            }
+        },
+        "file": <opath_to_my_trace_file>,
+        "frames": "<start_frame>-<end_frame>",
+        "offscreen": true,
+        "preload": true
+    }
 
 
 Then run paretrace as follows:
 
-> \# Linux  
-> paretrace -jsonParameters parameters.json results.json .  
->
->
-> \# Android (using adb)  
-> adb shell am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es jsonData parameters.json --es resultFile results.json  
->
->
-> \# Android, using the (on device) android shell  
-> am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es jsonData parameters.json --es resultFile results.json  
+    # Linux  
+    paretrace -jsonParameters parameters.json results.json .  
+
+
+    # Android (using adb)  
+    adb shell am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es jsonData parameters.json --es resultFile results.json  
+
+
+    # Android, using the (on device) android shell  
+    am start -n com.arm.pa.paretrace/.Activities.RetraceActivity --es jsonData parameters.json --es resultFile results.json  
 
 
 Once the run finishes the most relevant CPU statistics will be printed to stdout.
 
 Detailed derived statistics will be available in the results.json file.
 
-In depth (per. sample) data can be found in the <my\_out\_dir> folder specified in the parameters.json file.
+In depth (per. sample) data can be found in the `<my_out_dir>` folder specified in the parameters.json file.
 
 
 
@@ -789,7 +781,7 @@ If the content in question has a low CPU load, running for several minutes might
 
 In general, if the "active" times across all threads (as seen in the results.json file) is less than 0.2 for more than 4 cores (on a system with a clock tick time of 10ms) you should increase the runtime of your application until this is not the case.
 
-A good rule of thumb is to ensure that all active times on all cores for all relevant threads is greater than the one divided by the clock ticks per seconf (1 / \_SC_CLK_TCK on linux) times 20.
+A good rule of thumb is to ensure that all active times on all cores for all relevant threads is greater than the one divided by the clock ticks per seconf (`1 / _SC_CLK_TCK` on linux) times 20.
 
 Note that this is rarely an issue for modern content. Ensuring a runtime of 30+ seconds will result in good data most of the time.
 

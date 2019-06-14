@@ -1,5 +1,8 @@
 package com.arm.pa.paretrace.Activities;
 
+import java.util.HashMap;
+import java.lang.Integer;
+
 import android.app.Activity;
 import android.content.Intent;
 import android.content.Context;
@@ -43,6 +46,7 @@ public class RetraceActivity extends Activity
                 }
             };
 
+    private HashMap<Integer, View> textureViewIdToViewMap = new HashMap<Integer, View>();
     private GLThread mGLThread = null;
     private GLViewContainer mViewContainer = null;
     private HorizontalScrollView scroll = null;
@@ -115,6 +119,7 @@ public class RetraceActivity extends Activity
             GLTextureView view = new GLTextureView(this, width, height);
             Log.i(TAG, "Create a new texture view:" + " width:" + width + " height:" + height);
             mViewContainer.addView(view, view.getLayout());
+            textureViewIdToViewMap.put(mViewContainer.getChildCount()-1, view);
         }
         else {
             Log.w(TAG, "View container has been destroyed!");
@@ -128,7 +133,7 @@ public class RetraceActivity extends Activity
             setContentView(view, view.getLayout());
         }
         else if (mViewContainer != null) {
-            View view = mViewContainer.getChildAt(textureViewId);
+            View view = textureViewIdToViewMap.get(textureViewId);
             LayoutParams params = view.getLayoutParams();
             params.width = width;
             params.height = height;
@@ -307,8 +312,9 @@ public class RetraceActivity extends Activity
         }
 
         public void onSurfaceTextureUpdated(SurfaceTexture surface) {
-            if (enOverlay)
+            if (enOverlay) {
                 bringToFront();
+            }
         }
     }
 

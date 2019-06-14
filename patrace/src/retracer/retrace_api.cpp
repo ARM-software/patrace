@@ -104,15 +104,15 @@ void glDeleteClientSideBuffer(unsigned int _name) {
 }
 
 unsigned int glGenGraphicBuffer_ARM(unsigned int _width, unsigned int _height, int _pix_format, unsigned int _usage) {
+    Context& context = gRetracer.getCurrentContext();
 #ifdef ANDROID
     GraphicBuffer *graphicBuffer = new GraphicBuffer(_width, _height, (PixelFormat)_pix_format, _usage);
-    int tid = gRetracer.getCurTid();
-    gRetracer.mGraphicBuffers[tid].push_back(graphicBuffer);
+    context.mGraphicBuffers.push_back(graphicBuffer);
 
-    return gRetracer.mGraphicBuffers[tid].size() - 1;
+    return context.mGraphicBuffers.size() - 1;
 #else
-    auto iter = gRetracer.mAndroidToLinuxPixelMap.find(static_cast<PixelFormat>(_pix_format));
-    if (iter == gRetracer.mAndroidToLinuxPixelMap.end()) {
+    auto iter = context.mAndroidToLinuxPixelMap.find(static_cast<PixelFormat>(_pix_format));
+    if (iter == context.mAndroidToLinuxPixelMap.end()) {
         gRetracer.reportAndAbort("Cannot find the corresponding PixelFormat of %x\n", _pix_format);
     }
     unsigned int linux_pix_format = iter->second;
@@ -139,19 +139,17 @@ unsigned int glGenGraphicBuffer_ARM(unsigned int _width, unsigned int _height, i
     }
     egl_image_fixture *fix = new egl_image_fixture(format);
     fill_image_attributes(fix, format, linux_pix_format, _width, _height, fix->attrib_size, fix->attribs);
-    int tid = gRetracer.getCurTid();
-    gRetracer.mGraphicBuffers[tid].push_back(fix);
+    context.mGraphicBuffers.push_back(fix);
 
-    return gRetracer.mGraphicBuffers[tid].size() - 1;
+    return context.mGraphicBuffers.size() - 1;
 #endif
 }
 
 void glGraphicBufferData_ARM(unsigned int _name, int _size, const char * _data) {
     Context& context = gRetracer.getCurrentContext();
     int id = context.getGraphicBufferMap().RValue(_name);
-    int tid = gRetracer.getCurTid();
 #ifdef ANDROID
-    GraphicBuffer *graphicBuffer = gRetracer.mGraphicBuffers[tid][id];
+    GraphicBuffer *graphicBuffer = context.mGraphicBuffers[id];
 
     // Writing data
     void *writePtr = 0;
@@ -159,7 +157,7 @@ void glGraphicBufferData_ARM(unsigned int _name, int _size, const char * _data) 
     memcpy(writePtr, _data, _size);
     graphicBuffer->unlock();
 #else
-    egl_image_fixture *fix = gRetracer.mGraphicBuffers[tid][id];
+    egl_image_fixture *fix = context.mGraphicBuffers[id];
     refresh_dma_data(fix, _size, (const unsigned char *)_data);
 #endif
 }
@@ -168,12 +166,11 @@ void glDeleteGraphicBuffer_ARM(unsigned int _name) {
 #ifndef ANDROID
     Context& context = gRetracer.getCurrentContext();
     int id = context.getGraphicBufferMap().RValue(_name);
-    int tid = gRetracer.getCurTid();
-    egl_image_fixture *fix = gRetracer.mGraphicBuffers[tid][id];
+    egl_image_fixture *fix = context.mGraphicBuffers[id];
     unmap_fixture_memory_bufs(fix);
     close_fixture_memory_bufs(fix);
     delete fix;
-    gRetracer.mGraphicBuffers[tid][id] = NULL;
+    context.mGraphicBuffers[id] = NULL;
 #endif
 }
 

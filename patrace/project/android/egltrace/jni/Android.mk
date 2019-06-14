@@ -199,6 +199,6 @@ LOCAL_CFLAGS_arm   += -U__ARM_ARCH_5__ -U__ARM_ARCH_5T__ \
 	      -march=armv7-a -mfpu=vfp
 
 LOCAL_STATIC_LIBRARIES := common graphicbuffer snappy md5 jsoncpp png
-LOCAL_LDLIBS        := -llog -ldl -lz
+LOCAL_LDLIBS        := -nodefaultlibs -lc -lm -llog -ldl -lz
 
 include $(BUILD_SHARED_LIBRARY)

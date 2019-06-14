@@ -48,7 +48,6 @@ static void printVersion()
 }
 
 void clientSideBufferRemap(unsigned int idx, common::CallTM * call);
-void graphicBufferRemap(unsigned int idx, common::CallTM * call);
 unsigned int remap_handle(unsigned int idx, unsigned int name);
 
 struct thread_state
@@ -534,7 +533,6 @@ int main(int argc, char **argv)
         }
 
         clientSideBufferRemap(idx, call);
-        graphicBufferRemap(idx, call);
 
         if (call->mCallName == "eglMakeCurrent")
         {
@@ -865,33 +863,6 @@ void clientSideBufferRemap(unsigned int idx, common::CallTM * call)
             name = call->mArgs[5]->mOpaqueIns->mClientSideBufferName;
             call->mArgs[5]->mOpaqueIns->mClientSideBufferName = remap_handle(idx, name);
         }
-    }
-}
-
-void graphicBufferRemap(unsigned int idx, common::CallTM * call)
-{
-    if(idx > MAX_THREAD_IDX)
-    {
-        DBG_LOG("ERROR: The thread index is bigger than max number!\n");
-        exit(1);
-    }
-    if (call->mCallName == "glGenGraphicBuffer_ARM")
-    {
-        unsigned int ret = call->mRet.GetAsUInt();
-        unsigned int newIdx = remap_handle(idx, ret);
-        call->mRet.SetAsUInt(newIdx);
-    }
-    if (call->mCallName == "glGraphicBufferData_ARM")
-    {
-        unsigned int name = call->mArgs[0]->GetAsUInt();
-        unsigned int newIdx = remap_handle(idx, name);
-        call->mArgs[0]->SetAsUInt(newIdx);
-    }
-    if (call->mCallName == "eglCreateImageKHR")
-    {
-        unsigned int name = call->mArgs[3]->GetAsUInt();
-        unsigned int newIdx = remap_handle(idx, name);
-        call->mArgs[3]->SetAsUInt(newIdx);
     }
 }
 
