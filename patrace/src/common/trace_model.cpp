@@ -126,8 +126,15 @@ void ValueTM::CopyFrom(const ValueTM &other)
     }
     else if (other.mType == Pointer_Type)
     {
-        mPointer = new ValueTM;
-        *mPointer = *(other.mPointer);
+        if (other.mPointer)
+        {
+            mPointer = new ValueTM;
+            *mPointer = *(other.mPointer);
+        }
+        else
+        {
+            mPointer = NULL;
+        }
     }
     else if (other.mType == Unused_Pointer_Type)
     {
