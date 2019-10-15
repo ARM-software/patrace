@@ -22,7 +22,7 @@ usage(const char *argv0) {
         "Replay TRACE.\n"
         "\n"
         "  -tid THREADID the function calls invoked by thread <THREADID> will be retraced\n"
-        "  -s CALL_SET take snapshot for the calls in the specific call set\n"
+        "  -s CALL_SET take snapshot for the calls in the specific call set. Please try to post process the captured snapshot with imagemagick to turn off alpha value if it shows black.\n"
         "  -step use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call (only supported on desktop linux)\n"
         "  -ores W H override resolution of onscreen rendering (FBO's are not affected)\n"
         "  -msaa SAMPLES enable multi sample anti alias\n"
@@ -35,22 +35,26 @@ usage(const char *argv0) {
         "  -singlewindow Force everything to render in a single window\n"
         "  -singleframe Draw only one frame for each buffer swap (offscreen only)\n"
         "  -skipwork WARMUP_FRAMES Discard GPU work outside frame range with given number of warmup frames. Requires GLES3.\n"
-        "  -debug Output debug messages\n"
+        "  -debug output debug messages\n"
+        "  -debugfull output all of the current invoked gl functions, with callNo, frameNo and skipped or discarded information\n"
         "  -infojson Dump the header of the trace file in json format, then exit\n"
-        "  -callstats Output call statistics\n"
+        "  -callstats output call statistics to callstats.csv on disk, including the calling number and running time\n"
         "  -overrideEGL Red Green Blue Alpha Depth Stencil, example: overrideEGL 5 6 5 0 16 8, for 16 bit color and 16 bit depth and 8 bit stencil\n"
         "  -strict Use strict EGL mode (fail unless the specified EGL configuration is valid)\n"
         "  -strictcolor Same as -strict, but only checks color channels (RGBA). Useful for dumping when we want to be sure returned EGL is same as requested\n"
         "  -skip CALL_SET skip calls in the specific call set\n"
         "  -collect Collect performance counters\n"
         "  -flush Before starting running the defined measurement range, make sure we flush all pending driver work\n"
+        "  -multithread Run all threads in the trace\n"
 #ifndef __APPLE__
-        "  -perf START stop Run Linux perf on selected frame range\n"
+        "  -perf START END run Linux perf on selected frame range and save it to disk\n"
         "  -perfpath PATH Set path to perf binary\n"
         "  -perffreq FREQ Set frequency for perf\n"
         "  -perfout FILENAME Set output filename for perf\n"
 #endif
         "  -noscreen Render without visual output (using pbuffer render target)\n"
+        "  -flushonswap Call explicit flush before every call to swap the backbuffer\n"
+        "  -cpumask Set explicit CPU mask (written as a string of ones and zeroes)\n"
         "  -libEGL_path=<path.to.libEGL.so>\n"
         "  -libGLESv1_path=<path.to.libGLESv1_CM.so>\n"
         "  -libGLESv2_path=<path.to.libGLESv2.so>\n"
@@ -139,6 +143,8 @@ bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
         } else if (!strcmp(arg, "--help") || !strcmp(arg, "-h")) {
             usage(argv[0]);
             return false;
+        } else if (!strcmp(arg, "-cpumask")) {
+            cmdOpts.cpuMask = argv[++i];
         } else if (!strcmp(arg, "-framerange")) {
             cmdOpts.beginMeasureFrame = readValidValue(argv[++i]);
             cmdOpts.endMeasureFrame = readValidValue(argv[++i]);
@@ -162,6 +168,8 @@ bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
             cmdOpts.collectors = true;
         } else if (!strcmp(arg, "-collect_streamline")) {
             cmdOpts.collectors_streamline = true;
+        } else if (!strcmp(arg, "-flushonswap")) {
+            cmdOpts.finishBeforeSwap = true;
         } else if (!strcmp(arg, "-flush")) {
             cmdOpts.flushWork = true;
         } else if (!strcmp(arg, "-drawlog")) {
@@ -177,7 +185,7 @@ bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
         } else if (!strcmp(arg, "-multithread")) {
             cmdOpts.multiThread = true;
         } else if (!strcmp(arg, "-insequence")) {
-            cmdOpts.forceInSequence = true;
+            // nothing, this is always the case now
         } else if (!strcmp(arg, "-singleframe")) {
             cmdOpts.singleFrameOffscreen = true;
         } else if (!strcmp(arg, "-overrideEGL")) {

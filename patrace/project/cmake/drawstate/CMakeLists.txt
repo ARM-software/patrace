@@ -31,13 +31,13 @@ target_link_libraries(drawstate
     dl
     common
     common_eglstate
+    ${CMAKE_BINARY_DIR}/libcollector/libcollector.a
     ${SNAPPY_LIBRARIES}
     md5
     ${LIBRARY_MM_SYSTEM}
     ${PNG_LIBRARIES}
     ${ZLIB_LIBRARIES}
     jsoncpp
-    ${CMAKE_CURRENT_BINARY_DIR}/../libcollector/libcollector.a
 )
 add_dependencies(drawstate
     retrace_gles_auto_src_generation

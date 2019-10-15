@@ -62,7 +62,7 @@ public:
         CALLING,
         SWITCHING,
         PENDING,
-        UNKNOW,
+        UNKNOWN
     };
 
     UnCompressedChunk():
@@ -75,6 +75,7 @@ public:
     }
 
     ~UnCompressedChunk() {
+        mMutex.unlock();
         mLen = 0;
         mCapacity = 0;
         delete [] mData;
@@ -93,43 +94,64 @@ public:
             stream.read(gCompBuf, compressedLength);
 
             mLen = 0;
-            ::snappy::GetUncompressedLength(gCompBuf, (size_t)compressedLength,
-                (size_t*)&mLen);
+            if (!snappy::GetUncompressedLength(gCompBuf, (size_t)compressedLength, (size_t*)&mLen) && compressedLength > 0)
+            {
+                DBG_LOG("Failed to parse chunk of size %u - file is corrupt - aborting!\n", compressedLength);
+                abort();
+            }
             if (mCapacity < mLen) {
                 delete [] mData;
                 mCapacity = mLen;
                 mData = new char [mLen];
             }
-            ::snappy::RawUncompress(gCompBuf, compressedLength,
-                mData);
+            if (!snappy::RawUncompress(gCompBuf, compressedLength, mData) && compressedLength > 0)
+            {
+                DBG_LOG("Failed to decompress chunk of size %u - file is corrupt - aborting!\n", compressedLength);
+                abort();
+            }
         }
     }
 
     inline void retain()
     {
-        mRef.fetch_add(1, std::memory_order_acquire);
+        mMutex.lock();
+        mRef++;
+        mMutex.unlock();
     }
 
     inline void release()
     {
-        int left = mRef.fetch_sub(1, std::memory_order_release);
+        int left = 0;
+        mMutex.lock();
+        left = --mRef;
+        mMutex.unlock();
         if (left <= 0)
             delete this;
     }
 
     int  getRefCount()
     {
-        return mRef;
+        int left = 0;
+        mMutex.lock();
+        left = mRef;
+        mMutex.unlock();
+        return left;
     }
 
     ChunkStatus getStatus()
     {
-        return status;
+        ChunkStatus s = UNKNOWN;
+        mMutex.lock();
+        s = status;
+        mMutex.unlock();
+        return s;
     }
 
     void setStatus(ChunkStatus s)
     {
+        mMutex.lock();
         status = s;
+        mMutex.unlock();
     }
 
     char*                   mData;
@@ -159,8 +181,9 @@ private:
         return length;
     }
 
-    std::atomic_int mRef;
-    std::atomic<ChunkStatus> status;
+    int mRef;
+    os::Mutex mMutex;
+    ChunkStatus status;
 };
 
 
@@ -178,7 +201,7 @@ public:
         READING,
         TERMINATE,
         END,
-        UNKOWN,
+        UNKNOWN
     };
 
     InFile();
@@ -210,12 +233,18 @@ public:
 
     inline void setStatus(ReadingThreadStatus s)
     {
+        _access();
         mStatus = s;
+        _exit();
     }
 
     inline ReadingThreadStatus getStatus()
     {
-        return mStatus;
+        ReadingThreadStatus s = UNKNOWN;
+        _access();
+        s = mStatus;
+        _exit();
+        return s;
     }
 
     void releaseChunkQueues();
@@ -243,7 +272,7 @@ private:
     unsigned int        mMaxSigId;
 
     bool                mIsOpen;
-    std::atomic<ReadingThreadStatus> mStatus;
+    ReadingThreadStatus mStatus;
 
     // double buffer, for backend thread loading
     os::MTQueue<UnCompressedChunk*> callChunkQueue;

@@ -54,7 +54,9 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 endif ()
 
 target_link_libraries(paretrace
+    ${SANITIZER}
     common
+    ${CMAKE_BINARY_DIR}/libcollector/libcollector.a
     ${SNAPPY_LIBRARIES}
     md5
     dl
@@ -62,9 +64,9 @@ target_link_libraries(paretrace
     ${PNG_LIBRARIES}
     ${ZLIB_LIBRARIES}
     jsoncpp
-    ${CMAKE_CURRENT_BINARY_DIR}/../libcollector/libcollector.a
 )
 set_target_properties(paretrace PROPERTIES LINK_FLAGS "-pthread" COMPILE_FLAGS "-pthread")
+target_compile_options(paretrace PRIVATE ${SANITIZER})
 add_dependencies(paretrace
     retrace_gles_auto_src_generation
     eglproc_auto_src_generation

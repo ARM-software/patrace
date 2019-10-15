@@ -848,6 +848,25 @@ class Retracer(object):
         if func.name == 'glCreateClientSideBuffer':
             print '    glCreateClientSideBuffer(name);'
             return
+        if func.name == 'glMapBufferOES':
+            print '    // remap to glMapBufferRange to avoid calling the unimplemented glMapBufferOES on some platforms'
+            print '    GLint size;'
+            print '    unsigned int access_bit = 0;'
+            print '    glGetBufferParameteriv(target, GL_BUFFER_SIZE, &size);'
+            print '    if (access == GL_WRITE_ONLY)'
+            print '    {'
+            print '        access_bit = GL_MAP_WRITE_BIT;'
+            print '    }'
+            print '    else if (access == GL_READ_ONLY)'
+            print '    {'
+            print '        access_bit = GL_MAP_READ_BIT;'
+            print '    }'
+            print '    else if (access == GL_READ_WRITE)'
+            print '    {'
+            print '        access_bit = GL_MAP_WRITE_BIT | GL_MAP_READ_BIT;'
+            print '    }'
+            print '    ret = glMapBufferRange(target, 0, size, access_bit);'
+            return
         if func.name in ['glViewport']:
             print '    if (!gRetracer.mOptions.mDoOverrideResolution)'
             print '    {'
@@ -952,28 +971,6 @@ using namespace retracer;
 
 // clang also supports gcc pragmas
 #pragma GCC diagnostic ignored "-Wunused-variable"
-
-struct __attribute__ ((packed)) IndirectCompute
-{
-    GLuint x, y,z;
-};
-
-struct __attribute__ ((packed)) IndirectDrawArrays
-{
-    GLuint count;
-    GLuint primCount;
-    GLuint first;
-    GLuint baseInstance;
-};
-
-struct __attribute__ ((packed)) IndirectDrawElements
-{
-    GLuint count;
-    GLuint instanceCount;
-    GLuint firstIndex;
-    GLint baseVertex;
-    GLuint reservedMustBeZero;
-};
 """,
 }
 

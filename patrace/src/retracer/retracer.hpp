@@ -60,10 +60,10 @@ public:
     virtual void run();
     void onFinished();
     void setStatus(WorkStatus s);
-    WorkStatus getStatus() { return status; }
-    void release() { int left = ref.fetch_sub(1); if (left == 0) delete this; }
-    void retain() { ref++; }
-    int  getRefCount() { return ref; }
+    WorkStatus getStatus();
+    void release();
+    void retain();
+    int getRefCount();
     void dump();
 
     inline uint64_t GetExecutionTime()
@@ -91,10 +91,18 @@ private:
     uint64_t    start_time;
     uint64_t    end_time;
     bool        isMeasureTime;
-    std::atomic<WorkStatus> status;
+    WorkStatus  status;
     common::UnCompressedChunk * _chunk;
-    std::atomic_int ref;
+    int  ref;
     os::Mutex workMutex;
+};
+
+class FlushWork : public Work
+{
+public:
+    FlushWork(int tid, unsigned frameId, unsigned callID, void* fptr, char* src, const char* name, common::UnCompressedChunk *chunk = NULL)
+        : Work(tid, frameId, callID, fptr, src, name, chunk) {}
+    void run();
 };
 
 class SnapshotWork : public Work
@@ -102,7 +110,6 @@ class SnapshotWork : public Work
 public:
     SnapshotWork(int tid, unsigned frameId, unsigned callID, void* fptr, char* src, const char* name, common::UnCompressedChunk *chunk = NULL)
         : Work(tid, frameId, callID, fptr, src, name, chunk) {}
-    ~SnapshotWork() {}
     void run();
 };
 
@@ -111,7 +118,6 @@ class DiscardFramebuffersWork : public Work
 public:
     DiscardFramebuffersWork(int tid, unsigned frameId, unsigned callID, void* fptr, char* src, const char* name, common::UnCompressedChunk *chunk = NULL)
         : Work(tid, frameId, callID, fptr, src, name, chunk) {}
-    ~DiscardFramebuffersWork() {}
     void run();
 };
 
@@ -151,8 +157,8 @@ public:
     void workQueuePush(Work *work);
     Work* workQueuePop() { return workQueue.pop(); }
     virtual void run();
-    WorkThreadStatus getStatus() { return status; }
-    void setStatus(WorkThreadStatus s) { status = s; }
+    WorkThreadStatus getStatus();
+    void setStatus(WorkThreadStatus s);
     void terminate();
     void workQueueWakeup();
     void waitIdle();
@@ -169,7 +175,7 @@ private:
     common::InFile *file;
     os::MTQueue<Work *> workQueue;
     os::Condition workThreadCond;
-    std::atomic<WorkThreadStatus> status;
+    WorkThreadStatus status;
     Work* curWork;
 };
 
@@ -194,8 +200,8 @@ public:
 
     void CheckGlError();
 
-    void reportAndAbort(const char *format, ...); // const NORETURN;
-    void saveResult();
+    void reportAndAbort(const char *format, ...) NORETURN;
+    void saveResult(int64_t endTime, float duration);
     bool addResultInformation();
 
     void OnFrameComplete();
@@ -212,6 +218,7 @@ public:
     std::string changeAttributesToConstants(const std::string& source, const std::vector<VertexArrayInfo>& attributesToRemove);
     std::vector<Texture> getTexturesToDump();
     void TakeSnapshot(unsigned int callNo, unsigned int frameNo, const char *filename = NULL);
+    void Flush();
     void StepShot(unsigned int callNo, unsigned int frameNo, const char *filename = NULL);
     void dumpUniformBuffers(unsigned int callno);
     void createWorkThreadPool();
@@ -273,7 +280,7 @@ public:
 private:
     bool loadRetraceOptionsByThreadId(int tid);
     void loadRetraceOptionsFromHeader();
-    float getDuration(long long lastTime, long long* thisTime) const;
+    float getDuration(int64_t lastTime, int64_t* thisTime) const;
     float ticksToSeconds(long long t) const;
     void initializeCallCounter();
 
@@ -284,9 +291,9 @@ private:
     unsigned short mExIdEglSwapBuffers;
     unsigned short mExIdEglSwapBuffersWithDamage;
 
-    long long           mEndFrameTime;
-    long long           mTimerBeginTime;
-    long long           mFinishSwapTime;
+    int64_t mEndFrameTime = 0;
+    int64_t mTimerBeginTime = 0;
+    int64_t mFinishSwapTime = 0;
 
     StateLogger mStateLogger;
     common::HeaderVersion mFileFormatVersion;
@@ -311,9 +318,9 @@ private:
     unsigned mDispatchFrameNo = 0;
 };
 
-inline float Retracer::getDuration(long long lastTime, long long* thisTime) const
+inline float Retracer::getDuration(int64_t lastTime, int64_t* thisTime) const
 {
-    long long now = os::getTime();
+    int64_t now = os::getTime();
     float duration = ticksToSeconds(now - lastTime);
     *thisTime = now;
     return duration;
@@ -342,7 +349,6 @@ inline int Retracer::getCurTid()
         for (it = workThreadPool.begin(); it != workThreadPool.end(); it++)
         {
             WorkThread* wThread = it->second;
-            if (wThread)
             {
                 if (os::Thread::IsSameThread(cur_tid, wThread->getTid()))
                 {
@@ -373,10 +379,7 @@ inline unsigned Retracer::GetCurCallId()
     {
         int tid = getCurTid();
         Work *work = GetCurWork(tid);
-        if (work) // in case of a null pointer, there is no work in the queue at the beginning of retracing
-        {
-            id = work->getCallID();
-        }
+        id = work->getCallID();
     }
 
     return id;
@@ -434,10 +437,7 @@ inline unsigned Retracer::GetCurFrameId()
     {
         int tid = getCurTid();
         Work *work = GetCurWork(tid);
-        if (work)
-        {
-            id = work->getFrameID();
-        }
+        id = work->getFrameID();
     }
 
     return id;
@@ -457,28 +457,25 @@ inline Work* Retracer::GetCurWork(int tid)
 {
     Work *work = NULL;
     workThreadPoolMutex.lock();
-    if (workThreadPool[tid])
-    {
-        work = workThreadPool[tid]->GetCurWork();
-    }
+    work = workThreadPool[tid]->GetCurWork();
     workThreadPoolMutex.unlock();
     return work;
 }
 
 inline Context& Retracer::getCurrentContext()
 {
-    int tid = getCurTid();
+    const int tid = getCurTid();
     Context* ctx = mState.mThreadArr[tid].getContext();
-    if (!ctx)
+    if (unlikely(!ctx))
     {
-        reportAndAbort("No current context found for thread ID %d!", tid);
+        reportAndAbort("No current context found for thread ID %d at call %u!", tid, GetCurCallId());
     }
     return *ctx;
 }
 
 inline bool Retracer::hasCurrentContext()
 {
-    int tid = getCurTid();
+    const int tid = getCurTid();
     return mState.mThreadArr[tid].getContext() != 0;
 }
 

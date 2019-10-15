@@ -172,6 +172,21 @@ void OffscreenManager::Init()
         mTexImage2D_internal_format = GL_RGB10_A2;
         mTexImage2D_type = GL_UNSIGNED_INT_2_10_10_10_REV;
     }
+    else if (
+            mConfig.offscreen_red_size == 0 &&
+            mConfig.offscreen_green_size == 0 &&
+            mConfig.offscreen_blue_size == 0 &&
+            mConfig.offscreen_alpha_size == 0)
+    {
+        DBG_LOG("warning! This is an old version trace file and Offscreen EGLConfig is 0000(RGBA).\n\t Transform it to 8880(RGBA)\n");
+        mConfig.offscreen_red_size = 8;
+        mConfig.offscreen_green_size = 8;
+        mConfig.offscreen_blue_size = 8;
+
+        mTexImage2D_format = GL_RGB;
+        mTexImage2D_internal_format = GL_RGB;
+        mTexImage2D_type = GL_UNSIGNED_BYTE;
+    }
     else
     {
         gRetracer.reportAndAbort("Unsupported offscreen buffer configuration (red=%d, green=%d, blue=%d, alpha=%d)",

@@ -183,16 +183,22 @@ bool InFileRA::CreateRAFile(const char* name, const std::string& target)
         }
 
         inStream.read(compressedCache, compressedLength);
-        ::snappy::GetUncompressedLength(compressedCache, (size_t)compressedLength,
-            &uncompressedLength);
+        if (!snappy::GetUncompressedLength(compressedCache, (size_t)compressedLength, &uncompressedLength) && compressedLength > 0)
+        {
+            DBG_LOG("Failed to parse chunk of size %u - file corrupt - aborting!\n", compressedLength);
+            os::abort();
+        }
         if (unCompressedCacheLen < uncompressedLength)
         {
             delete [] unCompressedCache;
             unCompressedCacheLen = uncompressedLength;
             unCompressedCache = new char [unCompressedCacheLen];
         }
-        ::snappy::RawUncompress(compressedCache, compressedLength,
-            unCompressedCache);
+        if (!snappy::RawUncompress(compressedCache, compressedLength, unCompressedCache) && compressedLength > 0)
+        {
+            DBG_LOG("Failed to decompress chunk of size %u - file is corrupt - aborting!\n", compressedLength);
+            os::abort();
+        }
 
         mStream.write(unCompressedCache, uncompressedLength);
     }

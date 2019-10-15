@@ -12,9 +12,9 @@ public:
     GlwsEglAndroid();
     ~GlwsEglAndroid();
     virtual EGLImageKHR createImageKHR(Context* context, EGLenum target, uintptr_t buffer, const EGLint* attrib_list) override;
-    virtual void postInit();
+    virtual void postInit() override;
     void setupJAVAEnv(JNIEnv *env);
-    virtual Drawable* CreateDrawable(int width, int height, int win);
+    virtual Drawable* CreateDrawable(int width, int height, int win) override;
     void setNativeWindow(EGLNativeWindowType window, int textureViewSize);
 
 private:

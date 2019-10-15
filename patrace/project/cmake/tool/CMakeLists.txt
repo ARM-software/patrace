@@ -314,7 +314,7 @@ target_link_libraries(analyze_trace
     ${ZLIB_LIBRARIES}
     jsoncpp
     ${LIBRARIES_FOR_TOOLS}
-    ${CMAKE_CURRENT_BINARY_DIR}/../libcollector/libcollector.a
+    ${CMAKE_BINARY_DIR}/libcollector/libcollector.a
 )
 set_target_properties(analyze_trace PROPERTIES LINK_FLAGS "-pthread" COMPILE_FLAGS "-pthread")
 if (${WINDOWSYSTEM} MATCHES "wayland")
@@ -374,6 +374,20 @@ target_link_libraries(strip
 )
 add_dependencies(strip call_parser_src_generation)
 install(TARGETS strip DESTINATION tools)
+
+###
+
+add_executable(insert_swap_before_terminate
+    ${SRC_ROOT}/tool/insert_swap_before_terminate.cpp
+    ${SRC_ROOT}/tool/utils.cpp
+    ${SRC_FOR_TOOLS}
+)
+target_link_libraries(insert_swap_before_terminate
+    md5
+    ${LIBRARIES_FOR_TOOLS}
+)
+add_dependencies(insert_swap_before_terminate call_parser_src_generation)
+install(TARGETS insert_swap_before_terminate DESTINATION tools)
 
 ###
 

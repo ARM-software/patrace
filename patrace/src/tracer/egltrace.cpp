@@ -968,10 +968,13 @@ void after_eglMakeCurrent(EGLDisplay dpy, EGLSurface drawSurf, EGLContext ctx)
     SetGLESVersion(traceCtx->profile);
     gTraceOut->mpBinAndMeta->saveExtensions();
 
-    _glDebugMessageCallback(callback, 0);
-    _glEnable(GL_DEBUG_OUTPUT_KHR);
-    // disable notifications -- they generate too much spam on some systems
-    _glDebugMessageControlKHR(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION_KHR, 0, NULL, GL_FALSE);
+    if (!tracerParams.DisableErrorReporting)
+    {
+        _glDebugMessageCallback(callback, 0);
+        _glEnable(GL_DEBUG_OUTPUT_KHR);
+        // disable notifications -- they generate too much spam on some systems
+        _glDebugMessageControlKHR(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION_KHR, 0, NULL, GL_FALSE);
+    }
 
     int gles_version_major = gGlesFeatures.glesVersion() / 100;
     if (gles_version_major >= 2)

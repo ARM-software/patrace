@@ -16,13 +16,13 @@ MaliCounterCollector::MaliCounterCollector(const Json::Value& config, const std:
 
 bool MaliCounterCollector::init(){
     if (!infoc.info.valid){
-        DBG_LOG("Collector invalid, not initializing");
+        DBG_LOG("Collector invalid, not initializing\n");
         return false;
     }
 
     if (!counter_reader.is_alive())
     {
-        DBG_LOG("Failed to create HWC reader.");
+        DBG_LOG("Failed to create HWC reader.\n");
         return false;
     }
 
@@ -97,12 +97,12 @@ bool MaliCounterCollector::deinit(){
 
 bool MaliCounterCollector::start(){
     if (!infoc.info.valid){
-        DBG_LOG("Collector invalid, not starting");
+        DBG_LOG("Collector invalid, not starting\n");
         return false;
     }
 
     //Probably dont need to store these
-    DBG_LOG("Starting Mali counter collector...");
+    DBG_LOG("Starting Mali counter collector...\n");
     for (size_t index = 0; index < num_counters; ++index){
         int core_index = core_indices[index];
         if (core_index == -1){
@@ -118,21 +118,20 @@ bool MaliCounterCollector::start(){
         }
     }
 
-    DBG_LOG("Counters cleared! Waiting for next event...");
+    DBG_LOG("Counters cleared! Waiting for next event...\n");
 
     if (!counter_reader.wait_next_event()){
-        DBG_LOG("Could not fetch next event..");
+        DBG_LOG("Could not fetch next event..\n");
         return false;
     }
 
-    DBG_LOG("Counter collector initialized!");
+    DBG_LOG("Counter collector initialized!\n");
 
     return true;
 }
 
 bool MaliCounterCollector::collect(int64_t /* now */){
     if (!infoc.info.valid){
-        DBG_LOG("Collector invalid, not collecting");
         return false;
     }
 
@@ -140,7 +139,6 @@ bool MaliCounterCollector::collect(int64_t /* now */){
 
     //TODO: We can optimize here if we need to
     for (size_t index = 0; index < num_counters; ++index){
-        
         int core_index = core_indices[index];
         if (core_index == -1){
             add(
@@ -171,7 +169,7 @@ bool MaliCounterCollector::collect(int64_t /* now */){
     }
 
     if (total_sum == 0){
-        DBG_LOG("Nothing sampled, exiting");
+        DBG_LOG("Nothing sampled, exiting\n");
         exit(0);
     }
 

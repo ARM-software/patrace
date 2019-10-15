@@ -64,7 +64,6 @@
 		9974A63B19474296007E020D /* in_file.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = in_file.cpp; path = ../../../../src/common/in_file.cpp; sourceTree = "<group>"; };
 		9974A63C19474296007E020D /* in_file.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = in_file.hpp; path = ../../../../src/common/in_file.hpp; sourceTree = "<group>"; };
 		9974A63D19474296007E020D /* jni_helper.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = jni_helper.h; path = ../../../../src/common/jni_helper.h; sourceTree = "<group>"; };
-		9974A63E19474296007E020D /* json.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = json.hpp; path = ../../../../src/common/json.hpp; sourceTree = "<group>"; };
 		9974A63F19474296007E020D /* library.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = library.cpp; path = ../../../../src/common/library.cpp; sourceTree = "<group>"; };
 		9974A64019474296007E020D /* library.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = library.hpp; path = ../../../../src/common/library.hpp; sourceTree = "<group>"; };
 		9974A64119474296007E020D /* memory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = memory.cpp; path = ../../../../src/common/memory.cpp; sourceTree = "<group>"; };
@@ -148,7 +147,6 @@
 				9974A63B19474296007E020D /* in_file.cpp */,
 				9974A63C19474296007E020D /* in_file.hpp */,
 				9974A63D19474296007E020D /* jni_helper.h */,
-				9974A63E19474296007E020D /* json.hpp */,
 				9974A63F19474296007E020D /* library.cpp */,
 				9974A64019474296007E020D /* library.hpp */,
 				9974A64119474296007E020D /* memory.cpp */,

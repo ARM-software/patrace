@@ -29,7 +29,6 @@ struct CmdOptions
     bool forceOffscreen = false;
     bool forceSingleWindow = false;
     bool multiThread = false;
-    bool forceInSequence = false;
     // eglConfig is used to select fbo format in offscreen (FBO mode)
     EglConfigInfo eglConfig;
     bool strictEGLMode = false;
@@ -48,6 +47,8 @@ struct CmdOptions
     int perfStart = -1;
     int perfStop = -1;
     int perfFreq = -1;
+    bool finishBeforeSwap = false;
+    std::string cpuMask;
 };
 
 #endif

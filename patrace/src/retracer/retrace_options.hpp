@@ -71,7 +71,6 @@ struct RetraceOptions
 
     bool                mForceSingleWindow = false;
     bool                mMultiThread = false;
-    bool                mForceInSequence = false;
     int                 mSkipWork = -1;
     bool                mDumpStatic = false;
     bool                mCallStats = false;
@@ -84,6 +83,8 @@ struct RetraceOptions
     int                 mPerfStop = -1;
     int                 mPerfFreq = 1000;
 
+    bool                mFinishBeforeSwap = false;
+
     std::vector<unsigned int> mLinkErrorWhiteListCallNum;
 #if __ANDROID__
     std::string         mPerfPath = "/system/bin/perf";
@@ -92,6 +93,8 @@ struct RetraceOptions
     std::string         mPerfPath = "/usr/bin/perf";
     std::string         mPerfOut = "perf.data";
 #endif
+
+    std::string         mCpuMask;
 
 private:
     // Noncopyable because of owned CallSet pointer members

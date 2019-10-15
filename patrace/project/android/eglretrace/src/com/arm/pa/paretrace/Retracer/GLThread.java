@@ -172,12 +172,12 @@ public class GLThread extends Thread {
                 }
                 js.put("callStats", parentIntent.getBooleanExtra("callstats", false));
                 js.put("statelog", parentIntent.getBooleanExtra("statelog", false));
+                if (parentIntent.hasExtra("cpumask")) {
+                    js.put("cpumask", parentIntent.getStringExtra("cpumask"));
+                }
                 js.put("drawlog", parentIntent.getBooleanExtra("drawlog", false));
                 if (parentIntent.hasExtra("multithread")) {
                     js.put("multithread", parentIntent.getBooleanExtra("multithread", false));
-                }
-                if (parentIntent.hasExtra("insequence")) {
-                    js.put("insequence", parentIntent.getBooleanExtra("insequence", false));
                 }
                 if (parentIntent.hasExtra("force_single_window")) {
                     js.put("forceSingleWindow", parentIntent.getBooleanExtra("force_single_window", false));

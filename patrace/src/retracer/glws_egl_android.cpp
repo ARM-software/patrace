@@ -35,7 +35,6 @@ public:
     }
 
 private:
-    EGLNativeDisplayType mDisplay;
     EGLint mNativeVisualId;
 };
 

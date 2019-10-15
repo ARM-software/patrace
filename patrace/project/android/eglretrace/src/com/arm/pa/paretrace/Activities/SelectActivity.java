@@ -200,7 +200,6 @@ public class SelectActivity extends Activity
             boolean enable_multithread = ((RadioButton)findViewById(R.id.option_enable_multithread)).isChecked();
             boolean force_single_window = ((RadioButton)findViewById(R.id.option_force_single_window)).isChecked();
             boolean enable_overlay = ((RadioButton)findViewById(R.id.option_enable_overlay)).isChecked();
-            boolean enable_insequence = ((CheckBox)findViewById(R.id.option_enable_insequence)).isChecked();
             boolean enable_seltid = ((CheckBox)findViewById(R.id.option_enable_seltid)).isChecked();
             boolean enable_fullscreen = ((CheckBox)findViewById(R.id.option_enable_fullscreen)).isChecked();
     		int xres = Integer.parseInt(((EditText)findViewById(R.id.option_xres)).getText().toString());
@@ -212,7 +211,6 @@ public class SelectActivity extends Activity
 			editor.putBoolean("settings_enable_res", enable_res);
 			editor.putBoolean("settings_enable_seltid", enable_seltid);
 			editor.putBoolean("settings_enable_multithread", enable_multithread);
-			editor.putBoolean("settings_enable_insequence", enable_insequence);
 			editor.putBoolean("settings_force_single_window", force_single_window);
 			editor.putBoolean("settings_enable_overlay", enable_overlay);
 			editor.putBoolean("settings_enable_fullscreen", enable_fullscreen);
@@ -240,7 +238,6 @@ public class SelectActivity extends Activity
         boolean enable_res = pref.getBoolean("settings_enable_res", false);
         boolean enable_seltid = pref.getBoolean("settings_enable_seltid", false);
 		boolean enable_multithread = pref.getBoolean("settings_enable_multithread", false);
-		boolean enable_insequence = enable_multithread? pref.getBoolean("settings_enable_insequence", false) : false;
 		boolean force_single_window = pref.getBoolean("settings_force_single_window", true);
 		boolean enable_overlay = force_single_window? false : pref.getBoolean("settings_enable_overlay", true);
 		boolean enable_split   = force_single_window? false : !enable_overlay;
@@ -253,7 +250,6 @@ public class SelectActivity extends Activity
         ((RadioButton)root_view.findViewById(R.id.option_enable_split)).setChecked(enable_split);
         ((RadioButton)root_view.findViewById(R.id.option_force_single_window)).setChecked(force_single_window);
 		((EditText)root_view.findViewById(R.id.option_alpha)).setText(""+alpha);
-        ((CheckBox)root_view.findViewById(R.id.option_enable_insequence)).setChecked(enable_insequence);
         ((CheckBox)root_view.findViewById(R.id.option_enable_seltid)).setChecked(enable_seltid);
         ((EditText)root_view.findViewById(R.id.option_xres)).setText(""+xres);
         ((EditText)root_view.findViewById(R.id.option_yres)).setText(""+yres);
@@ -411,13 +407,6 @@ public class SelectActivity extends Activity
             enable_multithread = ((RadioButton)findViewById(R.id.option_enable_multithread)).isChecked();
             if (enable_multithread) {
                 intent.putExtra("multithread", true);
-                boolean insequence = ((CheckBox)findViewById(R.id.option_enable_insequence)).isChecked();
-                if (insequence) {
-                    intent.putExtra("insequence", true);
-                }
-                else {
-                    intent.putExtra("insequence", false);
-                }
             }
             else {
                 intent.putExtra("multithread", false);

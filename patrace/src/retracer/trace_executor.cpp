@@ -66,6 +66,11 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         DBG_LOG("Callstats output enabled\n");
     }
 
+    if (value.get("finishBeforeSwap", false).asBool())
+    {
+        options.mFinishBeforeSwap = true;
+    }
+
     if (threadId < 0 && options.mRetraceTid < 0)
     {
         gRetracer.reportAndAbort("Missing thread ID. Must be in either trace header or JSON parameters.");
@@ -114,6 +119,11 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         0
     );
 
+    if (value.isMember("cpumask"))
+    {
+        options.mCpuMask = value.get("cpumask", "").asString();
+    }
+
     options.mForceSingleWindow = value.get("forceSingleWindow", options.mForceSingleWindow).asBool();
     options.mForceOffscreen = value.get("offscreen", options.mForceOffscreen).asBool();
     if (value.isMember("skipWork"))
@@ -138,16 +148,14 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         std::string frames = value.get("frames", "").asString();
         DBG_LOG("Frame string: %s\n", frames.c_str());
         unsigned int start, end;
-        if(sscanf(frames.c_str(), "%u-%u", &start, &end) == 2) {
+        if (sscanf(frames.c_str(), "%u-%u", &start, &end) == 2)
+        {
             if (start >= end)
             {
                 gRetracer.reportAndAbort("Start frame must be lower than end frame. (End frame is never played.)");
             }
-            else if (start >= 0 && end >= 0)
-            {
-                options.mBeginMeasureFrame = start;
-                options.mEndMeasureFrame = end;
-            }
+            options.mBeginMeasureFrame = start;
+            options.mEndMeasureFrame = end;
         } else {
             gRetracer.reportAndAbort("Invalid frames parameter [ %s ]", frames.c_str());
         };
@@ -220,10 +228,6 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
     if (value.get("multithread", false).asBool())
     {
         options.mMultiThread = true;
-        if (value.get("insequence", false).asBool())
-        {
-            options.mForceInSequence = true;
-        }
     }
 
     if (value.isMember("instrumentation"))
@@ -440,8 +444,8 @@ bool TraceExecutor::writeData(int frames, double duration, long long startTime, 
         result_data_value["frames"] = frames;
         result_data_value["time"] = duration;
         result_data_value["fps"] = ((double)frames) / duration;
-        result_data_value["start_time"] = ((double)startTime) / timeFrequency;
-        result_data_value["end_time"] = ((double)endTime) / timeFrequency;
+        result_data_value["start_time"] = ((double)startTime) / os::timeFrequency;
+        result_data_value["end_time"] = ((double)endTime) / os::timeFrequency;
 
         if (gRetracer.mCollectors)
         {
@@ -577,15 +581,19 @@ bool TraceExecutor::writeData(int frames, double duration, long long startTime, 
         return false;
     }
     size_t written;
+    int err = 0;
     do
     {
+        clearerr(fp);
         written = fwrite(data.c_str(), data.size(), 1, fp);
-    } while (!ferror(fp) && !written);
-    if (ferror(fp))
+        err = ferror(fp);
+    } while (!written && (err == EAGAIN || err == EWOULDBLOCK || err == EINTR));
+    if (err)
     {
-        DBG_LOG("Failed to write output JSON: %s\n", strerror(errno));
+        DBG_LOG("Failed to write output JSON: %s\n", strerror(err));
     }
     fsync(fileno(fp));
     fclose(fp);
+    DBG_LOG("Results written to %s\n", outputfile.c_str());
     return true;
 }

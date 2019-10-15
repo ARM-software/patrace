@@ -4,7 +4,6 @@ import os
 import sys
 import subprocess
 
-
 from build_all import (
     build_project,
     build_android,
@@ -21,7 +20,7 @@ if __name__ == '__main__':
         epilog="see build_all.py for building every target including Android"
     )
     parser.add_argument('project',
-                        help='valid values are \'patrace\' and \'fastforward\'')
+                        help='the only valid value is \'patrace\'')
     parser.add_argument('--build-dir', default='',
                         help='path to build directory. Defaults to \'builds\' in the top level project directory.')
     parser.add_argument('--install-dir', default='',
@@ -36,20 +35,6 @@ if __name__ == '__main__':
     parser.add_argument('type', default='debug',
                         help='the build type. Possible values: debug, release')
     args = parser.parse_args()
-
-    project_map = {
-        'patrace': {
-            'cmake_path': os.path.abspath(os.path.join(
-                script_dir, '..', 'patrace', 'project', 'cmake'
-            )),
-        },
-        'fastforward': {
-            'cmake_path': os.path.abspath(os.path.join(
-                script_dir, '..', 'patrace', 'project', 'cmake'
-            )),
-            'cmake_defines': ["FF_ONLY=1"],
-        },
-    }
 
     if not args.build_dir:
         args.build_dir = os.path.abspath(os.path.join(
@@ -76,8 +61,8 @@ if __name__ == '__main__':
             variant=args.type,
             build_dir=args.build_dir,
             install_dir=args.install_dir,
-            project_path=project_map[args.project]['cmake_path'],
-            cmake_defines=project_map[args.project].get("cmake_defines", [])
+            project_path=os.path.abspath(os.path.join(script_dir, '..', 'patrace', 'project', 'cmake')),
+            cmake_defines=[]
         )
 
     sys.exit(returncode)

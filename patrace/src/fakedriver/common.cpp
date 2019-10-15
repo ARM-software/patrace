@@ -122,6 +122,7 @@ namespace wrapper
             DBG_LOG("Failed to open %s\n", appListPath);
             return;
         }
+
         string itAppName;
         while (appListIfs>>itAppName)
         {

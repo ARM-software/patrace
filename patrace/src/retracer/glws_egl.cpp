@@ -23,6 +23,15 @@ EglDrawable::~EglDrawable()
     eglWaitNative(EGL_CORE_NATIVE_ENGINE);
 }
 
+
+void EglDrawable::setDamage(int* array, int length)
+{
+    if (eglSetDamageRegionKHR(mEglDisplay, mSurface, array, length) == EGL_FALSE)
+    {
+        DBG_LOG("eglSetDamageRegionKHR failed on replay and succeeded in original content\n");
+    }
+}
+
 void EglDrawable::show(void)
 {
     if (visible)

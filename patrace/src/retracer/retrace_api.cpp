@@ -29,21 +29,21 @@ using namespace retracer;
 void glCopyClientSideBuffer(GLenum target, unsigned int name)
 {
     GLuint buffer = getBoundBuffer(target);
-    if (buffer == 0)
+    if (unlikely(buffer == 0))
     {
-        const char* name = bufferName(target);
-        gRetracer.reportAndAbort("Trying to copy client side buffer, but no %s buffer bound\n", name);
+        const char* bufname = bufferName(target);
+        gRetracer.reportAndAbort("Trying to copy client side buffer %u, but no %s buffer bound\n", name, bufname);
     }
     void* data = gRetracer.getCurrentContext()._bufferToData_map[buffer];
     ClientSideBufferObject* csb = gRetracer.mCSBuffers.get_object(gRetracer.getCurTid(), name);
-    if (data == NULL)
+    if (unlikely(data == NULL))
     {
-        const char* name = bufferName(target);
-        gRetracer.reportAndAbort("Trying to copy client side buffer, but failed to fetch %s buffer\n", name);
+        const char* bufname = bufferName(target);
+        gRetracer.reportAndAbort("Trying to copy client side buffer %u, but failed to fetch %s buffer %u\n", name, bufname, buffer);
     }
-    if (csb == NULL)
+    if (unlikely(csb == NULL))
     {
-        gRetracer.reportAndAbort("Trying to copy client side buffer, but failed to fetch client side buffer %d\n", name);
+        gRetracer.reportAndAbort("Trying to copy client side buffer %u, but failed to fetch client side buffer\n", name);
     }
     memcpy(data, csb->base_address, csb->size);
 }
@@ -53,16 +53,16 @@ void glCopyClientSideBuffer(GLenum target, unsigned int name)
 void glPatchClientSideBuffer(GLenum target, int _size, const char* _data)
 {
     GLuint buffer = getBoundBuffer(target);
-    if (buffer == 0)
+    if (unlikely(buffer == 0))
     {
         const char* name = bufferName(target);
         gRetracer.reportAndAbort("Trying to copy client side buffer, but no %s buffer bound!\n", name);
     }
     void* data = gRetracer.getCurrentContext()._bufferToData_map[buffer];
-    if (data == NULL)
+    if (unlikely(data == NULL))
     {
         const char* name = bufferName(target);
-        gRetracer.reportAndAbort("Trying to copy client side buffer, but failed to fetch %s buffer!\n", name);
+        gRetracer.reportAndAbort("Trying to copy client side buffer, but failed to fetch %s buffer %u!\n", name, buffer);
     }
 
     // patch it
@@ -106,10 +106,23 @@ void glDeleteClientSideBuffer(unsigned int _name) {
 unsigned int glGenGraphicBuffer_ARM(unsigned int _width, unsigned int _height, int _pix_format, unsigned int _usage) {
     Context& context = gRetracer.getCurrentContext();
 #ifdef ANDROID
-    GraphicBuffer *graphicBuffer = new GraphicBuffer(_width, _height, (PixelFormat)_pix_format, _usage);
-    context.mGraphicBuffers.push_back(graphicBuffer);
+    if (useGraphicBuffer)
+    {
+        GraphicBuffer *graphicBuffer = new GraphicBuffer(_width, _height, (PixelFormat)_pix_format, _usage);
+        context.mGraphicBuffers.push_back(graphicBuffer);
+        return context.mGraphicBuffers.size() - 1;
+    }
+    else if (useHardwareBuffer)
+    {
+        HardwareBuffer *hardwareBuffer = new HardwareBuffer(_width, _height, _pix_format, _usage);
+        context.mHardwareBuffers.push_back(hardwareBuffer);
+        return context.mHardwareBuffers.size() - 1;
+    }
 
-    return context.mGraphicBuffers.size() - 1;
+    // should never get here, as we abort with exception once libui.so fails to open, as well as libnativewindow.so
+    gRetracer.reportAndAbort("Fail to open libui.so and libnativewindow.so somehow. Please report this as a bug. Aborting...\n");
+
+    return 0;
 #else
     auto iter = context.mAndroidToLinuxPixelMap.find(static_cast<PixelFormat>(_pix_format));
     if (iter == context.mAndroidToLinuxPixelMap.end()) {
@@ -149,13 +162,28 @@ void glGraphicBufferData_ARM(unsigned int _name, int _size, const char * _data) 
     Context& context = gRetracer.getCurrentContext();
     int id = context.getGraphicBufferMap().RValue(_name);
 #ifdef ANDROID
-    GraphicBuffer *graphicBuffer = context.mGraphicBuffers[id];
+    if (useGraphicBuffer)
+    {
+        GraphicBuffer *graphicBuffer = context.mGraphicBuffers[id];
 
-    // Writing data
-    void *writePtr = 0;
-    graphicBuffer->lock(GraphicBuffer::USAGE_SW_WRITE_OFTEN, &writePtr);
-    memcpy(writePtr, _data, _size);
-    graphicBuffer->unlock();
+        // Writing data
+        void *writePtr = 0;
+        graphicBuffer->lock(GraphicBuffer::USAGE_SW_WRITE_OFTEN, &writePtr);
+        memcpy(writePtr, _data, _size);
+        graphicBuffer->unlock();
+    }
+    else if (useHardwareBuffer)
+    {
+        HardwareBuffer *hardwareBuffer = context.mHardwareBuffers[id];
+
+        AHardwareBuffer_Desc ahb_desc;
+        void *writePtr = 0;
+        int fence = -1;
+        hardwareBuffer->describe(&ahb_desc);
+        hardwareBuffer->lock(ahb_desc.usage, fence, NULL, &writePtr);
+        memcpy((char *)writePtr, _data, _size);
+        hardwareBuffer->unlock(&fence);
+    }
 #else
     egl_image_fixture *fix = context.mGraphicBuffers[id];
     refresh_dma_data(fix, _size, (const unsigned char *)_data);

@@ -10,6 +10,7 @@ public:
     ~DynamicLibrary();
 
     void *getFunctionPtr(const char *name) const;
+    void *getlibHandle() {return libHandle;}
 
     DynamicLibrary(const DynamicLibrary &) = delete;
     DynamicLibrary & operator = (const DynamicLibrary &other) = delete;

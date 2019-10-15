@@ -19,6 +19,7 @@ os::Mutex gEGLMutex;
 
 static void callback(unsigned int source, unsigned int type, unsigned int id, unsigned int severity, int length, const char* message, const void* userParam)
 {
+    if (type == GL_DEBUG_TYPE_PERFORMANCE) return; // too much
     DBG_LOG("%s::%s::%s (call=%u frame=%u) %s: %s\n", cbsource(source), cbtype(type), cbseverity(severity), gRetracer.GetCurCallId(), gRetracer.GetCurFrameId(), gRetracer.GetCurCallName(), message);
 }
 
@@ -418,6 +419,8 @@ static void retrace_eglDestroyContext(char* src)
 
 void retrace_eglMakeCurrent(char* src)
 {
+    static bool only_once_ever = true;
+
     // ------- ret & params definition --------
     int ret;
     int dpy;
@@ -528,6 +531,22 @@ void retrace_eglMakeCurrent(char* src)
             }
             context->_firstTimeMakeCurrent = false;
 
+            if (isGlesExtensionSupported("GL_KHR_debug") && gRetracer.mOptions.mDebug)
+            {
+                DBG_LOG("KHR_debug callback registered\n");
+                _glDebugMessageCallbackKHR(callback, 0);
+                _glEnable(GL_DEBUG_OUTPUT_KHR);
+                // disable notifications -- they generate too much spam on some systems
+                _glDebugMessageControlKHR(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION_KHR, 0, NULL, GL_FALSE);
+            }
+        }
+
+        if (only_once_ever)
+        {
+            DBG_LOG("Vendor: %s\n", (const char*)glGetString(GL_VENDOR));
+            DBG_LOG("Renderer: %s\n", (const char*)glGetString(GL_RENDERER));
+            DBG_LOG("Version: %s\n", (const char*)glGetString(GL_VERSION));
+
             typedef std::pair<std::string, GLenum> Se_t;
             std::vector<Se_t> stringEnumList;
             stringEnumList.push_back(Se_t("GL_MAX_ATOMIC_COUNTER_BUFFER_BINDINGS     ",  GL_MAX_ATOMIC_COUNTER_BUFFER_BINDINGS));
@@ -544,15 +563,7 @@ void retrace_eglMakeCurrent(char* src)
                 _glGetIntegerv(it->second, &value);
                 DBG_LOG("%s = %d\n", it->first.c_str(), value);
             }
-
-            if (isGlesExtensionSupported("GL_KHR_debug") && gRetracer.mOptions.mDebug)
-            {
-                DBG_LOG("KHR_debug callback registered\n");
-                _glDebugMessageCallbackKHR(callback, 0);
-                _glEnable(GL_DEBUG_OUTPUT_KHR);
-                // disable notifications -- they generate too much spam on some systems
-                _glDebugMessageControlKHR(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION_KHR, 0, NULL, GL_FALSE);
-            }
+            only_once_ever = false;
         }
     }
 
@@ -611,6 +622,7 @@ static void retrace_eglCreateImageKHR(char* src)
     src = Read1DArray(src, attrib_list);
     src = ReadFixed(src, ret);
 
+    std::vector<int> attrib_list2;
     // All the attribs will be overwritten when using dma buffer
     // So we needn't check them here
     if (tgt != EGL_LINUX_DMA_BUF_EXT) {
@@ -620,10 +632,23 @@ static void retrace_eglCreateImageKHR(char* src)
             // 0x314A = EGL_IMAGE_CROP_RIGHT_ANDROID
             // 0x314B = EGL_IMAGE_CROP_BOTTOM_ANDROID
             // All of them need EGL_ANDROID_image_crop extension
-            if (attrib_list[i] >= 0x3148 && attrib_list[i] <= 0x314B &&
-                !isEglExtensionSupported(gRetracer.mState.mEglDisplay, "EGL_ANDROID_image_crop")) {
-                gRetracer.reportAndAbort("Call %d eglCreateImageKHR, attrib_list[%d] = 0x%x needs EGL_ANDROID_image_crop extension,"
-                                         " which is not supported by your GPU. Retracing would be aborted.\n", gRetracer.GetCurCallId(), i, attrib_list[i]);
+            if (attrib_list[i] >= 0x3148 && attrib_list[i] <= 0x314B) {
+                if (tgt == EGL_NATIVE_BUFFER_ANDROID) {
+                    if (!isEglExtensionSupported(gRetracer.mState.mEglDisplay, "EGL_ANDROID_image_crop"))
+                        gRetracer.reportAndAbort("Call %d eglCreateImageKHR, attrib_list[%d] = 0x%X needs EGL_ANDROID_image_crop extension,"
+                                                 " which is not supported by your GPU. Retracing would be aborted.\n", gRetracer.GetCurCallId(), i, attrib_list[i]);
+                }
+                else {  // 0x3148, 0x3149, 0x314A and 0x314B are only compatible with target=EGL_NATIVE_BUFFER_ANDROID
+                    DBG_LOG("Call %d eglCreateImageKHR, attrib_list[%d] = 0x%X is only compatible with tgt == EGL_NATIVE_BUFFER_ANDROID,"
+                            " but in this call, target == 0x%X != EGL_NATIVE_BUFFER_ANDROID(0x%X)."
+                            " It might be caused by a conversion of the format of this EGLImageKHR when tracing."
+                            " So here we'll ignore this attrib and continue retracing. But it might bring some aitifacts.\n", gRetracer.GetCurCallId(), i, attrib_list[i], tgt, EGL_NATIVE_BUFFER_ANDROID);
+                }
+            }
+            else {
+                attrib_list2.push_back(attrib_list[i]);
+                if (attrib_list[i] != EGL_NONE)
+                    attrib_list2.push_back(attrib_list[i + 1]);
             }
         }
     }
@@ -637,16 +662,38 @@ static void retrace_eglCreateImageKHR(char* src)
         retracer::Context &curContext = gRetracer.getCurrentContext();
         int id = curContext.getGraphicBufferMap().RValue(buffer);
 #ifdef ANDROID
-        GraphicBuffer *graphicBuffer;
-        try {
-            graphicBuffer = curContext.mGraphicBuffers.at(id);
-        }
-        catch (std::out_of_range&) {
-            DBG_LOG("Cannot find the corresponding GraphicBuffer for eglCreateImageKHR in call %d. "
+        if (useGraphicBuffer)
+        {
+            GraphicBuffer *graphicBuffer;
+            try {
+                graphicBuffer = curContext.mGraphicBuffers.at(id);
+            }
+            catch (std::out_of_range&) {
+                DBG_LOG("Cannot find the corresponding GraphicBuffer for eglCreateImageKHR in call %d. "
                     "Either a glGenGraphicBuffer missing or retracing a very old pat file.\n", gRetracer.GetCurCallId());
-            goto retrace;
+                goto retrace;
+            }
+            buffer_new = reinterpret_cast<uintptr_t>(graphicBuffer->getNativeBuffer());
         }
-        buffer_new = reinterpret_cast<uintptr_t>(graphicBuffer->getNativeBuffer());
+        else if (useHardwareBuffer)
+        {
+            static PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC __eglGetNativeClientBufferANDROID = NULL;
+
+            HardwareBuffer *hardwareBuffer;
+            try {
+                hardwareBuffer = curContext.mHardwareBuffers.at(id);
+            }
+            catch (std::out_of_range&) {
+                DBG_LOG("Cannot find the corresponding HardwareBuffer for eglCreateImageKHR in call %d. "
+                    "Either a glGenGraphicBuffer missing or retracing a very old pat file.\n", gRetracer.GetCurCallId());
+                goto retrace;
+            }
+
+            __eglGetNativeClientBufferANDROID =
+                (PFNEGLGETNATIVECLIENTBUFFERANDROIDPROC)eglGetProcAddress("eglGetNativeClientBufferANDROID");
+
+            buffer_new = reinterpret_cast<uintptr_t>(hardwareBuffer->eglGetNativeClientBufferANDROID((void *)__eglGetNativeClientBufferANDROID));
+        }
 #else
         tgt = EGL_LINUX_DMA_BUF_EXT;        // need to be adjusted
         buffer_new = 0;     // NULL
@@ -670,7 +717,11 @@ static void retrace_eglCreateImageKHR(char* src)
 
     //  ------------- retrace ---------------
 retrace:
-    EGLImageKHR image = GLWS::instance().createImageKHR(context, tgt, buffer_new, attrib_list);
+    EGLImageKHR image;
+    if (attrib_list2.empty())
+        image = GLWS::instance().createImageKHR(context, tgt, buffer_new, attrib_list);
+    else
+        image = GLWS::instance().createImageKHR(context, tgt, buffer_new, &attrib_list2[0]);
     if (image == NULL) {
         DBG_LOG("eglCreateImageKHR failed to create EGLImage = 0x%x at call %u.\n", ret, gRetracer.GetCurCallId());
     }
@@ -748,7 +799,7 @@ static void swapBuffersCommon(char* src, bool withDamage)
     retracer::Drawable* pDrawable = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getDrawable();
     if (!pDrawable)
     {
-        DBG_LOG("WARNING: pDrawable is 0 in swapBuffersCommon\n");
+        DBG_LOG("WARNING: pDrawable for tid=%u is 0 in swapBuffersCommon at call=%u\n", gRetracer.getCurTid(), gRetracer.GetCurCallId());
         gEGLMutex.unlock();
         return;
     }
@@ -963,6 +1014,24 @@ static void retrace_eglSignalSyncKHR(char* src)
     (void)new_result; // ignore
 }
 
+static void retrace_eglSetDamageRegionKHR(char* _src)
+{
+    int dpy;
+    int surface;
+    Array<int> rects;
+    int n_rects;
+    int old_ret;
+
+    _src = ReadFixed<int>(_src, dpy);
+    _src = ReadFixed<int>(_src, surface);
+    _src = Read1DArray(_src, rects);
+    _src = ReadFixed<int>(_src, n_rects);
+    _src = ReadFixed<int>(_src, old_ret);
+    if (old_ret == EGL_FALSE) return; // failed in original, so fail here as well
+
+    gRetracer.mState.GetDrawable(surface)->setDamage(rects.v, rects.cnt);
+}
+
 const common::EntryMap retracer::egl_callbacks = {
     {"eglCreateSyncKHR", (void*)retrace_eglCreateSyncKHR},
     {"eglClientWaitSyncKHR", (void*)retrace_eglClientWaitSyncKHR},
@@ -977,6 +1046,7 @@ const common::EntryMap retracer::egl_callbacks = {
     {"eglGetConfigs", (void*)ignore},
     {"eglChooseConfig", (void*)ignore},
     {"eglGetConfigAttrib", (void*)ignore},
+    {"eglSetDamageRegionKHR", (void*)retrace_eglSetDamageRegionKHR},
     {"eglCreateWindowSurface", (void*)retrace_eglCreateWindowSurface},
     {"eglCreateWindowSurface2", (void*)retrace_eglCreateWindowSurface2},
     {"eglCreatePbufferSurface", (void*)retrace_eglCreatePbufferSurface},

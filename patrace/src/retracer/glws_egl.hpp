@@ -62,6 +62,8 @@ public:
 
     EGLSurface getSurface() const { return mSurface; }
 
+    virtual void setDamage(int* array, int length);
+
 private:
     EGLSurface _createWindowSurface();
 

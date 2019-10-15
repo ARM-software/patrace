@@ -48,6 +48,8 @@ struct DrawParams
     double vec4_locality = 0.0;
     double temporal_locality = 0.0;
     double spatial_locality = 0.0;
+
+    void* index_buffer = nullptr;
 };
 
 static inline const std::string drawEnum(unsigned int enumToFind)
@@ -384,10 +386,46 @@ struct Context : public Resource
     /// Global clear fill states
     FillState fillstate;
 
+    int draws_since_last_state_change = 0;
+    int draws_since_last_state_or_uniform_change = 0;
+    int draws_since_last_state_or_index_buffer_change = 0;
     std::map<int, int> draw_calls_per_frame;
     std::map<int, int> renderpasses_per_frame;
     std::map<int, int> flush_calls_per_frame;
     std::map<int, int> finish_calls_per_frame;
+    std::map<int, int> client_index_ui8_calls_per_frame;
+    std::map<int, int> client_index_ui16_calls_per_frame;
+    std::map<int, int> client_index_ui32_calls_per_frame;
+    std::map<int, int> bound_index_ui8_calls_per_frame;
+    std::map<int, int> bound_index_ui16_calls_per_frame;
+    std::map<int, int> bound_index_ui32_calls_per_frame;
+    std::map<int, int> no_state_changed_draws_per_frame;
+    std::map<int, int> no_state_or_uniform_changed_draws_per_frame;
+    std::map<int, int> no_state_or_index_buffer_changed_draws_per_frame;
+
+    void* last_index_buffer = nullptr;
+    GLsizei last_index_count = -1;
+    GLenum last_index_type = GL_NONE;
+
+    inline void index_buffer_change(int frame)
+    {
+        if (draws_since_last_state_or_index_buffer_change > 1) no_state_or_index_buffer_changed_draws_per_frame[frame] += draws_since_last_state_or_index_buffer_change - 1;
+        draws_since_last_state_or_index_buffer_change = 0;
+    }
+
+    inline void uniform_change(int frame)
+    {
+        if (draws_since_last_state_or_uniform_change > 1) no_state_or_uniform_changed_draws_per_frame[frame] += draws_since_last_state_or_uniform_change - 1;
+        draws_since_last_state_or_uniform_change = 0;
+    }
+
+    inline void state_change(int frame)
+    {
+        uniform_change(frame);
+        index_buffer_change(frame);
+        if (draws_since_last_state_change > 1) no_state_changed_draws_per_frame[frame] += draws_since_last_state_change - 1;
+        draws_since_last_state_change = 0;
+    }
 
     std::vector<RenderPass> render_passes;
 
@@ -442,6 +480,7 @@ struct Context : public Resource
         GLsizeiptr size;
     };
     std::map<GLenum, std::map<GLuint, BufferBinding>> boundBufferIds; // target : GL buffer index : buffer info
+    std::map<GLuint, std::tuple<GLenum, GLint, GLsizei>> boundVertexAttribs; // index : (type, components, stride)
 
     int program_index = UNBOUND;
 

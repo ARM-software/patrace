@@ -46,13 +46,13 @@ endif ()
 target_link_libraries (fastforward
     dl
     common
+    ${CMAKE_BINARY_DIR}/libcollector/libcollector.a
     ${SNAPPY_LIBRARIES}
     md5
     ${LIBRARY_FASTFORWARD_SYSTEM}
     ${PNG_LIBRARIES}
     ${ZLIB_LIBRARIES}
     jsoncpp
-    ${CMAKE_CURRENT_BINARY_DIR}/../libcollector/libcollector.a
 )
 add_dependencies(fastforward
     retrace_gles_auto_src_generation

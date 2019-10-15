@@ -30,7 +30,6 @@ public:
     bool available() override;
 
 private:
-	
 	InfoCapsule infoc;
 	mali_userspace::MaliHWCReader counter_reader;
 

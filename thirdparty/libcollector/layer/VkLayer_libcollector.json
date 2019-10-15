@@ -1,0 +1,14 @@
+{
+    "file_format_version" : "1.0.0",
+    "layer" : {
+        "name": "VK_LAYER_ARM_libcollector",
+        "type": "GLOBAL",
+        "library_path": "libVkLayer_libcollector.so",
+        "api_version": "1.1.0",
+        "implementation_version": "1",
+        "description": "ARM Validation Layer used for collecting performance data for vulkan applications.",
+        "disable_environment": {
+           "DISABLE_LAYER_LIBCOLLECTOR_1": "1"
+       }
+    }
+}

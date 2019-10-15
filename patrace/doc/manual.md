@@ -54,6 +54,10 @@ Build dependencies: You must install the Android SDK and NDK with support for th
 
     apt-get install openjdk-7-jdk ant
 
+You may also have to install these (if it complains about missing 'aapt' program):
+
+    apt-get install lib32stdc++6 lib32z1
+
 Building:
 
     ./scripts/build.py patrace android release
@@ -301,6 +305,7 @@ before tracing it.
 1.  If the traced content uses multiple threads and/or multiple contexts, retracing may fail. Try running the pat-remap-egl python script that comes with patrace. See python tool installation instructions above.
 2.  Did you remember to close the application correctly? See tracing instructions above.
 3.  The tracer does not write directly to disk; instead it has a in-memory cache that is flushed to disk when full. The cache is currently hardcoded to 70MB, but can be decreased or increased. It was increased from 20MB to 70MB when it was discovered that a game allocating large textures (almost 4k by 4k) used more space that the maxium size of the cache. The downside of increasing the cache size is that we have a limited amount of memory on the devices we create traces on. The cache size is defined in `patrace/src/tracer/egltrace.hpp::TraceOut::WRITE_BUF::LEN`
+4.  If you store data on the sdcard, you may have to give the app permissions to write to the sdcard. To do so, you may need to edit the app's platform.xml and add <group gid="media_rw" />" after a <permission name="android.permission.WRITE_EXTERNAL_STORAGE"> line. If there is no such line, you may have to add it.
 
 Retracing
 ---------
@@ -342,6 +347,11 @@ To retrace some traces which contain external YUV textures on Android 7 or later
     mount -o rw,remount /  
     echo libui.so >> /etc/public.libraries.txt  
 
+If you have a problem opening files on /sdcard, you may need to do this:
+
+    adb shell appops set com.arm.pa.paretrace READ_EXTERNAL_STORAGE allow
+    adb shell appops set com.arm.pa.paretrace WRITE_EXTERNAL_STORAGE allow
+
 ### Retracing On Desktop Linux
 
 For GLES support on Linux desktop environments there are three options:
@@ -362,16 +372,6 @@ The first time you run the file, it is recommended to add the "-debug" command l
 -   If you're interested in the final FPS number then you will need to set a suitable frame range and use preload, i.e. "eglretrace -preload x y tracefile.pat"
 -   See paretrace -h for options such as setting window size, retracing only a part of the file, debugging etc.
 -   If your use case is more advanced (automation, instrumented data collection) you'll need to pass the parameters to the retracer as a JSON file - see PatracePerframeData for more information.
-
-### Retracing on Midgard Model
-
-You need the retracer for x86 built for **fbdev** window system (available as other binaries, see above) and with the same bit-ness as your model build. A 32-bit model requires a 32-bit retracer, and a 64-bit model requires a 64-bit retracer. This is because libMidgardModel.so will use the retracers libEGL.so and libGLESv2.so
-
-Check out Midgard DDK and build it with e.g. `scons profile=x86-32-debug-dump`
-
-Run the trace using e.g.
-
-    LD_LIBRARY_PATH=path_to_driver_libraries MALI_SAVE_FRAMES_TO_FILE=1 paretrace input.pat
 
 ### Parameter options
 
@@ -412,8 +412,9 @@ There are three different ways to tell the retracer which parameters that should
 | `-perfout filepath`                          | (since r2p5) Destination file for your -perf data                                                                                                                                                                                      |
 | `-noscreen`                                  | (since r2p4) Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.                                |
 | `-flush`                                     | (since r2p5) Will try hard to flush all pending CPU and GPU work before starting the selected framerange. This should usually not be necessary.                                                                                        |
+| `-flushonswap`                               | (since r2p15) Will try hard to flush all pending CPU and GPU work before starting the next frame. This should usually not be necessary. |
+| `-cpumask`                                   | (since r2p15) Lock all work associated with this replay to the specified CPU cores, given as a string of one or zero for each core. |
 | `-multithread`                               | Enable to run the calls in all the threads recorded in the pat file. These calls will be dispatched to corresponding work threads and run simultaneously. The execution sequence of calls between different threads is not guaranteed. |
-| `-insequence`                                | This option should be used after -multithread. It guarantees the calls in different work threads run in the sequence as recorded in the pat file.                                                                                      |
 
     CALL_SET = interval ( '/' frequency )
     interval = '*' | number | start_number '-' end_number
@@ -449,7 +450,6 @@ There are three different ways to tell the retracer which parameters that should
 | `--es traceFilePath`       | base path to trace file storage, e.g. /data/apitrace                                                                                                                                                                                                                                                                                                                         |
 | `--es resultFile`          | path to output result file, e.g. /data/apitrace/result.json                                                                                                                                                                                                                                                                                                                  |
 | `--ez multithread`         | Enable/Disable(default) Multithread execution mode.                                                                                                                                                                                                                                                                                                                          |
-| `--ez insequence`          | Add after --ez multithread, true/false(default) to garantee all calls run in the sequence as recorded in the pat file.                                                                                                                                                                                                                                                       |
 | `--ez enOverlay`           | If true(default), enable overlay all the surfaces when there is more then one surface created. If false, all the surfaces will be splited horizontally in a slider container.                                                                                                                                                                                                |
 | `--ei transparent`         | The alpha value of each surface, when using Overlay layout. The defualt is 100(opaque).                                                                                                                                                                                                                                                                                      |
 | `--ez force_single_window` | Ture/False(default) to force render all the calls onto a single surface. This can't be true with multithread mode enabled.                                                                                                                                                                                                                                                   |
@@ -483,7 +483,7 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | skipWork                     | int        | yes      | See command line options for Linux above.                                                                                                                                                                                              |
 | offscreenSingleTile          | boolean    | yes      | Draw only one frame for each buffer swap in offscreen mode.                                                                                                                                                                            |
 | multithread                  | boolean    | yes      | Enable to run the calls in all the threads recorded in the pat file. These calls will be dispatched to corresponding work threads and run simultaneously. The execution sequence of calls between different threads is not guaranteed. |
-| insequence                   | boolean    | yes      | This option should be used after enabling "multithread". It guarantees the calls in different work threads run in the sequence as recorded in the pat file.                                                                            |
+| cpumask                      | string     | yes      | See 'cpumask' command line option above. |
 
 This is an example of a JSON parameter file:
 

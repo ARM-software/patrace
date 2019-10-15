@@ -20,6 +20,7 @@
 #include "common/image.hpp"
 #include "common/os_string.hpp"
 #include "common/pa_exception.h"
+#include "common/gl_extension_supported.hpp"
 
 #include "jsoncpp/include/json/writer.h"
 #include "jsoncpp/include/json/reader.h"
@@ -34,6 +35,8 @@
 #include <libgen.h> // basename
 #include <sys/types.h>
 #include <signal.h>
+#include <unistd.h>
+#include <sched.h>
 
 using namespace common;
 using namespace os;
@@ -63,6 +66,235 @@ static inline uint64_t gettime()
     return ((uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec);
 }
 
+/// --- AMD performance counter extension support
+
+#define GL_COUNTER_TYPE_AMD               0x8BC0
+#define GL_COUNTER_RANGE_AMD              0x8BC1
+#define GL_UNSIGNED_INT64_AMD             0x8BC2
+#define GL_PERCENTAGE_AMD                 0x8BC3
+#define GL_PERFMON_RESULT_AVAILABLE_AMD   0x8BC4
+#define GL_PERFMON_RESULT_SIZE_AMD        0x8BC5
+#define GL_PERFMON_RESULT_AMD             0x8BC6
+
+static GLuint pm_monitor = 0;
+static bool amd_perf_activated = false;
+#ifdef ANDROID
+const char *perfmon_filename = "/sdcard/perfmon.csv";
+#else
+const char *perfmon_filename = "perfmon.csv";
+#endif
+
+static void perfmon_list()
+{
+    GLint numGroups = 0;
+    _glGetPerfMonitorGroupsAMD(&numGroups, 0, NULL);
+    std::vector<GLuint> groups(numGroups);
+    FILE* pm_fp = fopen("/sdcard/perfmon_counters.csv", "w");
+    if (!pm_fp)
+    {
+        DBG_LOG("Could not open file for writing perfmon counter list: %s\n", strerror(errno));
+        return;
+    }
+    fprintf(pm_fp, "Group Idx,Group ID,Counter Idx,CounterID,Group Name,Counter Name,Type\n");
+    _glGetPerfMonitorGroupsAMD(NULL, numGroups, groups.data());
+    for (int i = 0 ; i < numGroups; i++)
+    {
+        GLint numCounters = 0;
+        GLint maxActiveCounters = 0;
+        char curGroupName[256];
+        memset(curGroupName, 0, sizeof(curGroupName));
+        _glGetPerfMonitorGroupStringAMD(groups[i], 256, NULL, curGroupName);
+        _glGetPerfMonitorCountersAMD(groups[i], &numCounters, &maxActiveCounters, 0, NULL);
+        bool ok = (_glGetError() == GL_NO_ERROR);
+        if (!ok) { DBG_LOG("list: glGetPerfMonitorCountersAMD failed\n"); continue; }
+        std::vector<GLuint> counterList(numCounters);
+        _glGetPerfMonitorCountersAMD(groups[i], NULL, NULL, numCounters, counterList.data());
+        ok = (_glGetError() == GL_NO_ERROR);
+        if (!ok) { DBG_LOG("list: glGetPerfMonitorCountersAMD (2) failed\n"); continue; }
+        for (int j = 0; j < numCounters; j++)
+        {
+            char curCounterName[256];
+            memset(curCounterName, 0, sizeof(curCounterName));
+            _glGetPerfMonitorCounterStringAMD(groups[i], counterList[j], 256, NULL, curCounterName);
+            bool ok = (_glGetError() == GL_NO_ERROR);
+            if (!ok) { DBG_LOG("list: glGetPerfMonitorCounterStringAMD failed\n"); continue; }
+            GLenum type;
+            _glGetPerfMonitorCounterInfoAMD(groups[i], counterList[j], GL_COUNTER_TYPE_AMD, &type);
+            fprintf(pm_fp, "%d,%u,%d,%u,%s,%s,0x%04x\n", i, groups[i], j, counterList[j], curGroupName, curCounterName, type);
+        }
+    }
+    fclose(pm_fp);
+}
+
+static void perfmon_init()
+{
+    unsigned pm_current_group = 0;
+    std::vector<GLuint> perfset;
+    amd_perf_activated = false;
+    const char *vendor = (const char *)_glGetString(GL_VENDOR);
+    if (!isGlesExtensionSupported("GL_AMD_performance_monitor") && strncasecmp(vendor, "qualcomm", 8) != 0)
+    {
+        return;
+    }
+    perfmon_list();
+    FILE* pm_fp = fopen("/sdcard/perfmon.conf", "r");
+    if (pm_fp)
+    {
+        int r = fscanf(pm_fp, "%u\n", &pm_current_group);
+        if (r != 1)
+        {
+            DBG_LOG("Failed to read perfmon.conf! No perf measurements for you :-(\n");
+            return;
+        }
+        DBG_LOG("GL_AMD_performance_monitor activating for group %u and counters:", pm_current_group);
+        unsigned v = 0;
+        do // read counter values
+        {
+            r = fscanf(pm_fp, "%u\n", &v);
+            if (r == 1)
+            {
+                perfset.push_back(v);
+            }
+        }
+        while (r == 1);
+        fclose(pm_fp);
+        pm_fp = NULL;
+    }
+    else // just get top level gpu cycles
+    {
+        DBG_LOG("Failed to open perfmon.conf - using default counter info instead\n");
+        perfset.push_back(2);
+    }
+    (void)_glGetError();
+    GLint numGroups = 0;
+    std::vector<GLuint> groups;
+    _glGetPerfMonitorGroupsAMD(&numGroups, 0, NULL);
+    groups.resize(numGroups);
+    _glGetPerfMonitorGroupsAMD(NULL, numGroups, groups.data());
+    GLint numCounters = 0;
+    GLint maxActiveCounters = 0;
+    _glGetPerfMonitorCountersAMD(groups[pm_current_group], &numCounters, &maxActiveCounters, 0, NULL);
+    bool ok = (_glGetError() == GL_NO_ERROR);
+    if (!ok)
+    {
+        DBG_LOG("glGetPerfMonitorCountersAMD failed to get counter stats\n");
+        return;
+    }
+    if ((unsigned)maxActiveCounters < perfset.size())
+    {
+        DBG_LOG("Too many counters defined (%d max, trying to use %u) - concatenating the list\n", maxActiveCounters, (unsigned)perfset.size());
+        perfset.resize(maxActiveCounters);
+    }
+    std::vector<GLuint> counterList(numCounters);
+    _glGetPerfMonitorCountersAMD(groups[pm_current_group], NULL, NULL, numCounters, counterList.data());
+    ok = (_glGetError() == GL_NO_ERROR);
+    if (!ok)
+    {
+        DBG_LOG("glGetPerfMonitorCountersAMD failed to get counter list\n");
+        _glDeletePerfMonitorsAMD(1, &pm_monitor);
+        return;
+    }
+    _glGenPerfMonitorsAMD(1, &pm_monitor);
+    std::vector<GLuint> active_counters(perfset.size());
+    for (unsigned i = 0; i < perfset.size(); i++)
+    {
+         active_counters[i] = counterList[perfset[i]];
+    }
+    _glSelectPerfMonitorCountersAMD(pm_monitor, GL_TRUE, groups[pm_current_group], perfset.size(), active_counters.data());
+    ok = (_glGetError() == GL_NO_ERROR);
+    DBG_LOG("Enabling perf monitor for group %u: %s\n", groups[pm_current_group], ok ? "OK" : "FAILED");
+    if (!ok)
+    {
+        DBG_LOG("Failed to enable perf monitor!\n");
+        _glDeletePerfMonitorsAMD(1, &pm_monitor);
+        return;
+    }
+    // Write out csv header if file does not exist already
+    pm_fp = fopen(perfmon_filename, "w");
+    if (!pm_fp)
+    {
+        DBG_LOG("Could not open file %s for writing perfmon header: %s\n", perfmon_filename, strerror(errno));
+        _glDeletePerfMonitorsAMD(1, &pm_monitor);
+        return;
+    }
+    char groupname[256];
+    char name[256];
+    fprintf(pm_fp, "Name");
+    _glGetPerfMonitorGroupStringAMD(groups[pm_current_group], 256, NULL, groupname);
+    for (unsigned j = 0; j < perfset.size(); j++)
+    {
+        _glGetPerfMonitorCounterStringAMD(groups[pm_current_group], active_counters[j], 256, NULL, name);
+        fprintf(pm_fp, ",%s:%s", groupname, name);
+    }
+    fprintf(pm_fp, "\n");
+    fclose(pm_fp);
+    _glBeginPerfMonitorAMD(pm_monitor);
+    ok = (_glGetError() == GL_NO_ERROR);
+    if (!ok)
+    {
+        DBG_LOG("perfmon : FAILED at begin\n");
+        _glDeletePerfMonitorsAMD(1, &pm_monitor);
+        return;
+    }
+    amd_perf_activated = true;
+}
+
+static void perfmon_end()
+{
+    if (!amd_perf_activated)
+    {
+        return;
+    }
+    _glEndPerfMonitorAMD(pm_monitor);
+    bool ok = (_glGetError() == GL_NO_ERROR);
+    if (!ok)
+    {
+        DBG_LOG("perfmon end : FAILED\n");
+    }
+    FILE* pm_fp = fopen(perfmon_filename, "a");
+    if (!pm_fp)
+    {
+        DBG_LOG("Could not open file %s for writing perfmon data: %s\n", perfmon_filename, strerror(errno));
+    }
+    GLuint dataAvail = GL_FALSE;
+    int repeat = 0;
+    do
+    {
+        _glGetPerfMonitorCounterDataAMD(pm_monitor, GL_PERFMON_RESULT_AVAILABLE_AMD, sizeof(GLuint), &dataAvail, NULL);
+        if (dataAvail == GL_FALSE)
+        {
+            _glFinish();
+            usleep(1000);
+        }
+        repeat++;
+    }
+    while (dataAvail == GL_FALSE && repeat < 20);
+    GLsizei written = 0;
+    GLuint resultSize = 0;
+    _glGetPerfMonitorCounterDataAMD(pm_monitor, GL_PERFMON_RESULT_SIZE_AMD, sizeof(GLuint), &resultSize, NULL);
+    std::vector<GLuint> result(resultSize / sizeof(GLuint));
+    _glGetPerfMonitorCounterDataAMD(pm_monitor, GL_PERFMON_RESULT_AMD, resultSize, (GLuint*)result.data(), &written);
+    fprintf(pm_fp, "run"); // TBD trace file name here
+    GLsizei wordCount = 0;
+    while (wordCount * (GLsizei)sizeof(GLuint) < written)
+    {
+        GLuint groupId = result[wordCount];
+        GLuint counterId = result[wordCount + 1];
+        (void)groupId;
+        (void)counterId;
+        uint64_t counterResult = 0;
+        memcpy(&counterResult, &result[wordCount + 2], sizeof(uint64_t));
+        if (pm_fp) fprintf(pm_fp, ",%llu", (unsigned long long)counterResult);
+        wordCount += 4;
+    }
+    fprintf(pm_fp, "\n");
+    fclose(pm_fp);
+    _glDeletePerfMonitorsAMD(1, &pm_monitor);
+    amd_perf_activated = false;
+}
+
+/// ---
+
 WorkThread::WorkThread(InFile *f) :
     file(f),
     workQueue(MAX_WORK_QUEUE_SIZE),
@@ -91,6 +323,22 @@ void WorkThread::workQueuePush(Work *work)
             work->getChunkHandler()->retain();
         while(!workQueue.push(work));
     }
+}
+
+WorkThread::WorkThreadStatus WorkThread::getStatus()
+{
+    WorkThreadStatus s = UNKNOWN;
+    _access();
+    s = status;
+    _exit();
+    return s;
+}
+
+void WorkThread::setStatus(WorkThread::WorkThreadStatus s)
+{
+    _access();
+    status = s;
+    _exit();
 }
 
 void WorkThread::run()
@@ -196,7 +444,7 @@ void Work::setStatus(Work::WorkStatus s)
     status = s;
     if (isMeasureTime)
     {
-        switch (status)
+        switch (s)
         {
             case EXECUTED:
                 start_time = gettime();
@@ -211,6 +459,45 @@ void Work::setStatus(Work::WorkStatus s)
     workMutex.unlock();
 }
 
+Work::WorkStatus Work::getStatus()
+{
+    WorkStatus s = UNKNOWN;
+    workMutex.lock();
+    s = status;
+    workMutex.unlock();
+    return s;
+}
+
+void Work::release()
+{
+    unsigned left = 0;
+    workMutex.lock();
+    left = --ref;
+    workMutex.unlock();
+
+    if (left == 0)
+    {
+        delete this;
+    }
+}
+
+void Work::retain()
+{
+    workMutex.lock();
+    ref++;
+    workMutex.unlock();
+}
+
+int  Work::getRefCount()
+{
+    unsigned left = 0;
+    workMutex.lock();
+    left = ref;
+    workMutex.unlock();
+
+    return left;
+}
+
 void Work::dump()
 {
     DBG_LOG("Call(%s): tid %d, frameId %d, callId %d\n", _callName, _tid, _frameId, _callId);
@@ -219,6 +506,11 @@ void Work::dump()
 void SnapshotWork::run()
 {
     gRetracer.TakeSnapshot(getCallID(), getFrameID());
+}
+
+void FlushWork::run()
+{
+    gRetracer.Flush();
 }
 
 void DiscardFramebuffersWork::run()
@@ -262,9 +554,6 @@ Retracer::Retracer()
  , mCollectors(NULL)
  , mExIdEglSwapBuffers(0)
  , mExIdEglSwapBuffersWithDamage(0)
- , mEndFrameTime(0)
- , mTimerBeginTime(0)
- , mFinishSwapTime(0)
  , mStateLogger()
  , mFileFormatVersion(INVALID_VERSION)
  , mSnapshotPaths()
@@ -446,11 +735,6 @@ void Retracer::loadRetraceOptionsFromHeader()
     {
         DBG_LOG("Enabling multiple thread option\n");
     }
-    mOptions.mForceInSequence = jsHeader.get("forceInSequence", false).asBool();
-    if (mOptions.mForceInSequence)
-    {
-        DBG_LOG("Enabling force in sequence execution option\n");
-    }
     switch (jsHeader["glesVersion"].asInt())
     {
     case 1: mOptions.mApiVersion = PROFILE_ES1; break;
@@ -477,6 +761,13 @@ bool Retracer::overrideWithCmdOptions( const CmdOptions &cmdOptions )
     }
     mOptions.mDumpStatic = cmdOptions.dumpStatic;
     mOptions.mCallStats = cmdOptions.callStats;
+
+    if (cmdOptions.finishBeforeSwap)
+    {
+        mOptions.mFinishBeforeSwap = true;
+    }
+
+    if (!cmdOptions.cpuMask.empty()) mOptions.mCpuMask = cmdOptions.cpuMask;
 
     if (cmdOptions.perfStart != -1)
     {
@@ -586,11 +877,6 @@ bool Retracer::overrideWithCmdOptions( const CmdOptions &cmdOptions )
     if (cmdOptions.multiThread)
     {
         mOptions.mMultiThread = true;
-    }
-
-    if (cmdOptions.forceInSequence)
-    {
-        mOptions.mForceInSequence = true;
     }
 
     if (mFile.getHeaderVersion() >= common::HEADER_VERSION_2
@@ -911,6 +1197,11 @@ void Retracer::StepShot(unsigned int callNo, unsigned int frameNo, const char *f
     {
         DBG_LOG("EGL context has not been created\n");
     }
+}
+
+void Retracer::Flush()
+{
+    _glFinish();
 }
 
 void Retracer::TakeSnapshot(unsigned int callNo, unsigned int frameNo, const char *filename)
@@ -1314,11 +1605,53 @@ void forceRenderMosaicToScreen()
     }
 }
 
+static void report_cpu_mask()
+{
+    cpu_set_t mask;
+    std::string descr;
+    int retval = sched_getaffinity(0, sizeof(mask), &mask);
+    if (retval != 0)
+    {
+        DBG_LOG("Failed to get CPU mask: %s\n", strerror(errno));
+    }
+    for (unsigned i = 0; i < sizeof(mask) / CPU_ALLOC_SIZE(1); i++)
+    {
+        descr += CPU_ISSET(i, &mask) ? "1" : "0";
+    }
+    DBG_LOG("Current CPU mask: %s\n", descr.c_str());
+}
+
+static void set_cpu_mask(const std::string& descr)
+{
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    for (unsigned i = 0; i < descr.size(); i++)
+    {
+        if (descr.at(i) == '1')
+        {
+            CPU_SET(i, &mask);
+        }
+        else if (descr.at(i) != '0')
+        {
+            DBG_LOG("Invalid CPU mask: %s!\n", descr.c_str());
+            return;
+        }
+    }
+    int retval = sched_setaffinity(0, sizeof(mask), &mask);
+    if (retval != 0)
+    {
+        DBG_LOG("Failed to set CPU mask: %s\n", strerror(errno));
+    }
+}
+
 bool Retracer::Retrace()
 {
     void* fptr;
     char* src;
     UnCompressedChunk *callChunk;
+
+    if (!mOptions.mCpuMask.empty()) set_cpu_mask(mOptions.mCpuMask);
+    report_cpu_mask();
 
     // prepare for the last glFinish
     const char *glFinish_name = "glFinish";
@@ -1354,10 +1687,13 @@ bool Retracer::Retrace()
 
             glFinish_call.tid = mCurCall.tid;
             DispatchWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo, glFinish_fptr, glFinish_src, glFinish_name, 0);
+            int64_t endTime;
+            const float duration = getDuration(mTimerBeginTime, &endTime);
+            perfmon_end();
 
             GLWS::instance().Cleanup();
             if (!mOutOfMemory)
-                saveResult();
+                saveResult(endTime, duration);
             CloseTraceFile();
 #if ANDROID
             if (!mOptions.mForceSingleWindow)
@@ -1454,6 +1790,18 @@ bool Retracer::Retrace()
 
             if (!doSkip)
             {
+                if (isSwapBuffers && mOptions.mFinishBeforeSwap)
+                {
+                    if (!mOptions.mMultiThread)
+                    {
+                        _glFinish();
+                    }
+                    else
+                    {
+                        FlushWork* work = new FlushWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo - 1, NULL, NULL, "Flush", NULL);
+                        DispatchWork(work);
+                    }
+                }
                 DispatchWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo, fptr, src, funcName, callChunk);
                 if (isSwapBuffers && mCurCall.tid == mOptions.mRetraceTid)
                 {
@@ -1548,6 +1896,7 @@ void Retracer::StartMeasuring()
     {
         mCollectors->start();
     }
+    perfmon_init();
     DBG_LOG("================== Start timer (Frame: %u) ==================\n", mCurFrameNo);
     mTimerBeginTime = os::getTime();
     mEndFrameTime = mTimerBeginTime;
@@ -1645,12 +1994,19 @@ void Retracer::DiscardFramebuffers()
     }
 }
 
-void Retracer::reportAndAbort(const char *format, ...) //const
+void Retracer::reportAndAbort(const char *format, ...)
 {
     char buf[256];
     va_list ap;
     memset(buf, 0, sizeof(buf));
-    sprintf(buf, "[c%u,f%u] ", GetCurCallId(), GetCurFrameId()); // mCurCallNo->GetCurCallId(),avoid the callId divergence in multithread case
+    if ( !workThreadPool[getCurTid()] || !GetCurWork(getCurTid()) )
+    {
+        sprintf(buf, "[c%u,f%u] ", 0, 0);
+    }
+    else
+    {
+        sprintf(buf, "[c%u,f%u] ", GetCurCallId(), GetCurFrameId());
+    }
     va_start(ap, format);
     const unsigned len = strlen(buf);
     vsnprintf(buf + len, sizeof(buf) - len - 1, format, ap);
@@ -1666,10 +2022,8 @@ void Retracer::reportAndAbort(const char *format, ...) //const
 #endif
 }
 
-void Retracer::saveResult()
+void Retracer::saveResult(int64_t endTime, float duration)
 {
-    long long endTime;
-    float duration = getDuration(mTimerBeginTime, &endTime);
     unsigned int numOfFrames = mCurFrameNo - mOptions.mBeginMeasureFrame;
 
     if(mTimerBeginTime != 0) {
@@ -1829,18 +2183,14 @@ void Retracer::DispatchWork(Work* work)
         WorkThread* wThread = findWorkThread(work->getThreadID());
         if (wThread)
         {
-            if (mOptions.mForceInSequence)
+            if (preThread != wThread)
             {
-                if (preThread != wThread)
+                if (preThread != NULL)
                 {
-                    if (preThread != NULL)
-                    {
-                        preThread->waitIdle();
-                    }
-                    preThread = wThread;
+                    preThread->waitIdle();
                 }
+                preThread = wThread;
             }
-
             wThread->workQueuePush(work);
         }
         else
@@ -1950,7 +2300,7 @@ void post_glLinkProgram(GLuint program, GLuint originalProgramName, int status)
         }
         else
         {
-            DBG_LOG("!!!!! Pay Attention !!!!!\n\tError in linking program %d:%s\t!!!!!PLEASE NOTE THAT:This call [c%u, f%u] is a potential error and could produce an unexpected rendering.\n", originalProgramName, infoLog ? infoLog : "(n/a)", gRetracer.GetCurCallId(), gRetracer.GetCurFrameId());
+            gRetracer.reportAndAbort("Error in linking program %d: %s\n", originalProgramName, infoLog ? infoLog : "(n/a)");
         }
         free(infoLog);
     }
@@ -2024,8 +2374,25 @@ void hardcode_glDeleteFramebuffers(int n, unsigned int* oldIds)
     {
         unsigned int oldId = oldIds[i];
         unsigned int newId = idMap.RValue(oldId);
+
+        GLint preReadFboId, preDrawFboId;
+        _glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &preReadFboId);
+        _glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &preDrawFboId);
+
         glDeleteFramebuffers(1, &newId);
         idMap.LValue(oldId) = 0;
+
+        if (gRetracer.mOptions.mForceOffscreen &&
+            (newId == (unsigned int)preReadFboId || newId == (unsigned int)preDrawFboId))
+        {
+#if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
+            const unsigned int ON_SCREEN_FBO = 1;
+#else
+            const unsigned int ON_SCREEN_FBO = 0;
+#endif
+            gRetracer.getCurrentContext()._current_framebuffer = ON_SCREEN_FBO;
+            gRetracer.mpOffscrMgr->BindOffscreenFBO();
+        }
     }
 }
 

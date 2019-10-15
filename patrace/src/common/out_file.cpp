@@ -12,7 +12,6 @@ namespace common {
 OutFile::OutFile()
  : mHeader()
  , mIsOpen(false)
- , mStream()
  , mCache(NULL)
  , mCacheLen(0)
  , mCacheP(NULL)
@@ -24,7 +23,6 @@ OutFile::OutFile()
 OutFile::OutFile(const char *name)
  : mHeader()
  , mIsOpen(false)
- , mStream()
  , mCache(NULL)
  , mCacheLen(0)
  , mCacheP(NULL)
@@ -48,15 +46,15 @@ bool OutFile::Open(const char* name, bool writeSigBook, const std::vector<std::s
         name = autogenFileName;
     }
 
-    mStream.close(); // Make sure it's closed (sets failbit if not open)
-    mStream.clear(); // Clear state-bits
+    if (mStream)
+    {
+        fclose(mStream);
+        mStream = nullptr;
+    }
 
-    std::ios_base::openmode fmode =
-        std::fstream::binary | std::fstream::out | std::fstream::trunc;
-    mStream.open(name, fmode);
-
-    if (!mStream.is_open() || !mStream.good()) {
-        DBG_LOG("Failed to open file %s\n", name);
+    mStream = fopen(name, "wb");
+    if (!mStream) {
+        DBG_LOG("Failed to open file %s: %s\n", name, strerror(errno));
         return false;
     } else {
         DBG_LOG("Successfully open file %s\n", name);
@@ -66,12 +64,12 @@ bool OutFile::Open(const char* name, bool writeSigBook, const std::vector<std::s
     mIsOpen = true;
 
     // It will be re-written before the file is closed.
-    mStream.write((char*)&mHeader, sizeof(BHeaderV3) );
-    mHeader.jsonFileBegin = mStream.tellp();
+    filewrite((char*)&mHeader, sizeof(BHeaderV3));
+    mHeader.jsonFileBegin = ftell(mStream);
     // reserve 512k at beginning of file for json data
     std::vector<char> zerobuf(mHeader.jsonMaxLength);
-    mStream.write(zerobuf.data(), zerobuf.size());
-    long long jsonEnd = (long long)mStream.tellp();
+    filewrite(zerobuf.data(), zerobuf.size());
+    long long jsonEnd = (long long)ftell(mStream);
     if (mHeader.jsonFileEnd == jsonEnd) {
         DBG_LOG("json file end calculated correctly, endoffs: %lld\n", jsonEnd );
     } else {
@@ -97,17 +95,11 @@ void OutFile::Close()
         return;
 
     Flush();
-    mStream.seekp(0, std::ios_base::beg);
-    mStream.write((char*)&mHeader, sizeof(BHeaderV3));
-
-    // Verify all writes went OK.
-    if (!mStream.good())
-    {
-        throw PA_EXCEPTION("Detected bad stream while closing OutFile. Writes might have failed.");
-    }
+    fseek(mStream, 0, SEEK_SET);
+    filewrite((char*)&mHeader, sizeof(BHeaderV3));
 
     mIsOpen = false;
-    mStream.close();
+    fclose(mStream);
     DBG_LOG("Close trace file %s\n", mFileName.c_str());
 
     delete [] mCache;
@@ -128,18 +120,18 @@ void OutFile::Flush()
     size_t compressedLen;
     ::snappy::RawCompress(mCache, len, mCompressedCache, &compressedLen);
     WriteCompressedLength((unsigned int)compressedLen);
-    mStream.write(mCompressedCache, compressedLen);
-    mStream.flush();
+    filewrite(mCompressedCache, compressedLen);
+    fflush(mStream);
     mCacheP = mCache;
 }
 
 void OutFile::FlushHeader()
 {
-    std::ios::streampos curP = mStream.tellp();
-    mStream.seekp(0, std::ios_base::beg);
-    mStream.write((char*)&mHeader, sizeof(BHeaderV3));
-    mStream.seekp(curP, std::ios_base::beg);
-    mStream.flush();
+    long curP = ftell(mStream);
+    fseek(mStream, 0, SEEK_SET);
+    filewrite((char*)&mHeader, sizeof(BHeaderV3));
+    fseek(mStream, curP, SEEK_SET);
+    fflush(mStream);
 }
 
 void OutFile::WriteHeader(const char* buf, unsigned int len, bool verbose)
@@ -155,15 +147,15 @@ void OutFile::WriteHeader(const char* buf, unsigned int len, bool verbose)
         DBG_LOG("Error: json file too long for header, %d > %d\n", len, mHeader.jsonMaxLength);
         os::abort();
     } else {
-        std::ios::streampos oldP = mStream.tellp();
-        mStream.seekp(mHeader.jsonFileBegin, std::ios_base::beg);
-        mStream.write(buf,len);
+        long oldP = ftell(mStream);
+        fseek(mStream, mHeader.jsonFileBegin, SEEK_SET);
+        filewrite(buf, len);
         mHeader.jsonLength = len;
         if (verbose)
         {
             DBG_LOG("wrote json header, length=%d\n", mHeader.jsonLength);
         }
-        mStream.seekp(oldP, std::ios_base::beg);
+        fseek(mStream, oldP, SEEK_SET);
 
         FlushHeader();
     }

@@ -596,6 +596,6 @@ unsigned int remap_csb_handle(unsigned int idx, unsigned int name)
     }
     else
     {
-        return name + idx*CSB_THREAD_REMAP_BASE;
+        return (name == 0) ? 0: (name + idx*CSB_THREAD_REMAP_BASE);
     }
 }

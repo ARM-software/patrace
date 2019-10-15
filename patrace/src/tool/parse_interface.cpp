@@ -17,14 +17,19 @@ DrawParams ParseInterfaceBase::getDrawCallCount(common::CallTM *call)
         || call->mCallName == "glDrawElementsInstancedBaseVertex")
     {
         ret.vertices = call->mArgs[1]->GetAsUInt();
+        ret.index_buffer = (void*)call->mArgs[3]->GetAsUInt64();
+        ret.value_type = call->mArgs[2]->GetAsUInt();
     }
     else if (call->mCallName == "glDrawArrays" || call->mCallName == "glDrawArraysInstanced")
     {
         ret.vertices = call->mArgs[2]->GetAsUInt();
+        ret.index_buffer = nullptr;
     }
     else if (call->mCallName == "glDrawRangeElements" || call->mCallName == "glDrawRangeElementsBaseVertex")
     {
         ret.vertices = call->mArgs[3]->GetAsUInt();
+        ret.index_buffer = (void*)call->mArgs[5]->GetAsUInt64();
+        ret.value_type = call->mArgs[4]->GetAsUInt();
     }
 
     if ((call->mCallName == "glDrawElementsInstanced" || call->mCallName == "glDrawElementsInstancedBaseVertex"))
@@ -407,6 +412,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     /// --- start GLES ---
     else if (call->mCallName == "glViewport")
     {
+        contexts[context_index].state_change(frames);
         contexts[context_index].viewport.x = call->mArgs[0]->GetAsInt();
         contexts[context_index].viewport.y = call->mArgs[1]->GetAsInt();
         contexts[context_index].viewport.width = call->mArgs[2]->GetAsInt();
@@ -414,6 +420,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glScissor")
     {
+        contexts[context_index].state_change(frames);
         contexts[context_index].fillstate.scissor.x = call->mArgs[0]->GetAsInt();
         contexts[context_index].fillstate.scissor.y = call->mArgs[1]->GetAsInt();
         contexts[context_index].fillstate.scissor.width = call->mArgs[2]->GetAsInt();
@@ -454,6 +461,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glBindVertexArray" || call->mCallName == "glBindVertexArrayOES")
     {
+        contexts[context_index].state_change(frames);
         const GLuint vao = call->mArgs[0]->GetAsUInt();
         if (vao != 0 && !contexts[context_index].vaos.contains(vao))
         {
@@ -478,11 +486,19 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     else if (call->mCallName == "glEnable")
     {
         GLenum target = call->mArgs[0]->GetAsInt();
+        if (contexts[context_index].enabled.count(target) == 0 || !contexts[context_index].enabled[target])
+        {
+            contexts[context_index].state_change(frames);
+        }
         contexts[context_index].enabled[target] = true;
     }
     else if (call->mCallName == "glDisable")
     {
         GLenum target = call->mArgs[0]->GetAsInt();
+        if (contexts[context_index].enabled.count(target) == 0 || contexts[context_index].enabled[target])
+        {
+            contexts[context_index].state_change(frames);
+        }
         contexts[context_index].enabled[target] = false;
     }
     else if (call->mCallName == "glEnableVertexAttribArray")
@@ -536,6 +552,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glBindFramebuffer" || call->mCallName == "glBindFramebufferOES")
     {
+        contexts[context_index].state_change(frames);
         GLenum target = call->mArgs[0]->GetAsUInt();
         GLuint fb = call->mArgs[1]->GetAsUInt();
         if (fb != 0 && !contexts[context_index].framebuffers.contains(fb))
@@ -565,6 +582,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     else if (call->mCallName == "glFramebufferTexture2D" || call->mCallName == "glFramebufferTextureLayer"
              || call->mCallName == "glFramebufferTexture2DOES" || call->mCallName == "glFramebufferTextureLayerOES")
     {
+        contexts[context_index].state_change(frames);
         const GLenum target = call->mArgs[0]->GetAsUInt();
         int target_fb_index = 0;
 
@@ -612,6 +630,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glGenerateMipmap" || call->mCallName == "glGenerateMipmapOES")
     {
+        contexts[context_index].state_change(frames);
         const GLenum target = call->mArgs[0]->GetAsUInt();
         const GLuint unit = contexts[context_index].activeTextureUnit;
         const GLuint tex_id = contexts[context_index].textureUnits[unit][target];
@@ -650,6 +669,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glFramebufferRenderbuffer" || call->mCallName == "glFramebufferRenderbufferOES")
     {
+        contexts[context_index].state_change(frames);
         const GLenum target = call->mArgs[0]->GetAsUInt();
         int target_fb_index = 0;
         if (target == GL_DRAW_FRAMEBUFFER || target == GL_FRAMEBUFFER)
@@ -682,6 +702,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glBindRenderbuffer" || call->mCallName == "glBindRenderbufferOES")
     {
+        contexts[context_index].state_change(frames);
         GLenum target = call->mArgs[0]->GetAsUInt();
         assert(target == GL_RENDERBUFFER);
         GLuint rb = call->mArgs[1]->GetAsUInt();
@@ -701,6 +722,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glRenderbufferStorage" || call->mCallName == "glRenderbufferStorageOES")
     {
+        contexts[context_index].state_change(frames);
         GLenum target = call->mArgs[0]->GetAsUInt();
         assert(target == GL_RENDERBUFFER);
         const int renderbuffer_index = contexts[context_index].renderbuffer_index;
@@ -717,6 +739,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glRenderbufferStorageMultisample" || call->mCallName == "glRenderbufferStorageMultisampleEXT")
     {
+        contexts[context_index].state_change(frames);
         GLenum target = call->mArgs[0]->GetAsUInt();
         assert(target == GL_RENDERBUFFER);
         const int renderbuffer_index = contexts[context_index].renderbuffer_index;
@@ -759,9 +782,11 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glBindSampler")
     {
+        contexts[context_index].state_change(frames);
         // The usual rule that you can create objects with glBind*() calls apparently does not apply to to glBindSampler()
         const GLuint unit = call->mArgs[0]->GetAsUInt();
-        contexts[context_index].sampler_binding[unit] = call->mArgs[1]->GetAsUInt();
+        const GLuint sampler = call->mArgs[1]->GetAsUInt();
+        contexts[context_index].sampler_binding[unit] = sampler;
     }
     else if (call->mCallName == "glGenQueries" || call->mCallName == "glGenQueriesEXT")
     {
@@ -826,6 +851,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glBindTransformFeedback")
     {
+        contexts[context_index].state_change(frames);
         assert(call->mArgs[0]->GetAsUInt() == GL_TRANSFORM_FEEDBACK);
         GLuint id = call->mArgs[1]->GetAsUInt();
         if (id != 0 && !contexts[context_index].transform_feedbacks.contains(id))
@@ -838,6 +864,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
 #if 0 // this was not working as it should; apparently non-object transform feedback is legal in GLES
     else if (call->mCallName == "glBeginTransformFeedback")
     {
+        contexts[context_index].state_change(frames);
         const GLuint id = contexts[context_index].transform_feedback_binding;
         const int index = contexts[context_index].transform_feedbacks.remap(id);
         contexts[context_index].transform_feedbacks[index].primitiveMode = call->mArgs[0]->GetAsUInt();
@@ -879,6 +906,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glBufferData")
     {
+        contexts[context_index].state_change(frames);
         const GLenum target = call->mArgs[0]->GetAsUInt();
         const GLuint id = contexts[context_index].boundBufferIds[target][0].buffer;
         const int index = contexts[context_index].buffers.remap(id);
@@ -887,10 +915,24 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         buffer.usages.insert(call->mArgs[3]->GetAsUInt());
         //call->mArgs[2]->GetAsBlob() contains the buffer itself
     }
+    else if (call->mCallName == "glBufferSubData")
+    {
+        contexts[context_index].state_change(frames);
+    }
+    else if (call->mCallName == "glMapBufferRange" || call->mCallName == "glMapBufferOES" || call->mCallName == "glMapBuffer")
+    {
+        contexts[context_index].state_change(frames);
+    }
     else if (call->mCallName == "glBindBuffer")
     {
         const GLenum target = call->mArgs[0]->GetAsUInt();
         const GLuint id = call->mArgs[1]->GetAsUInt();
+        if (contexts[context_index].boundBufferIds.count(target) == 0
+            || contexts[context_index].boundBufferIds[target].count(0) == 0
+            || contexts[context_index].boundBufferIds[target][0].buffer != id)
+        {
+            contexts[context_index].state_change(frames);
+        }
         if (id != 0 && !contexts[context_index].buffers.contains(id))
         {
             // It is legal to create objects with a call to this function.
@@ -903,6 +945,12 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         const GLenum target = call->mArgs[0]->GetAsUInt();
         const GLuint index = call->mArgs[1]->GetAsUInt();
         const GLuint id = call->mArgs[2]->GetAsUInt();
+        if (contexts[context_index].boundBufferIds.count(target) == 0
+            || contexts[context_index].boundBufferIds[target].count(index) == 0
+            || contexts[context_index].boundBufferIds[target][index].buffer != id)
+        {
+            contexts[context_index].state_change(frames);
+        }
         if (id != 0 && !contexts[context_index].buffers.contains(id))
         {
             // It is legal to create objects with a call to this function.
@@ -917,6 +965,14 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         const GLuint id = call->mArgs[2]->GetAsUInt();
         const GLintptr offset = call->mArgs[3]->GetAsUInt();
         const GLsizeiptr size = call->mArgs[4]->GetAsUInt();
+        if (contexts[context_index].boundBufferIds.count(target) == 0
+            || contexts[context_index].boundBufferIds[target].count(index) == 0
+            || contexts[context_index].boundBufferIds[target][index].buffer != id
+            || contexts[context_index].boundBufferIds[target][index].offset != offset
+            || contexts[context_index].boundBufferIds[target][index].size != size)
+        {
+            contexts[context_index].state_change(frames);
+        }
         if (id != 0 && !contexts[context_index].buffers.contains(id))
         {
             // It is legal to create objects with a call to this function.
@@ -936,11 +992,25 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 const GLint size = call->mArgs[1]->GetAsInt();
                 const int stride_idx = (call->mCallName == "glVertexAttribPointer") ? 4 : 3;
                 const GLsizei stride = call->mArgs[stride_idx]->GetAsInt();
-                contexts[context_index].buffers[buffer_index].types.insert(std::make_tuple(type, size, stride));
+                const auto tuple = std::make_tuple(type, size, stride);
+                if (contexts[context_index].boundVertexAttribs.count(buffer_index) == 0 || contexts[context_index].boundVertexAttribs[buffer_index] != tuple)
+                {
+                    contexts[context_index].buffers[buffer_index].types.insert(tuple);
+                    contexts[context_index].boundVertexAttribs[buffer_index] = tuple;
+                    contexts[context_index].state_change(frames);
+                }
             }
             else // should never get here, as it should have been caught on bind
             {
                 DBG_LOG("API ERROR [%d]: %s specifies a bad target %u\n", (int)call->mCallNo, call->mCallName.c_str(), id);
+            }
+        }
+        else
+        {
+            if (contexts[context_index].buffers.contains(id))
+            {
+                const int buffer_index = contexts[context_index].buffers.remap(id);
+                contexts[context_index].boundVertexAttribs.erase(buffer_index);
             }
         }
     }
@@ -1004,6 +1074,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt());
         const GLuint unit = contexts[context_index].activeTextureUnit;
         const GLuint tex_id = contexts[context_index].textureUnits[unit][target];
+        contexts[context_index].state_change(frames);
         if (contexts[context_index].textures.contains(tex_id))
         {
             const int target_texture_index = contexts[context_index].textures.remap(tex_id);
@@ -1038,6 +1109,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glTexStorage2DMultisample")
     {
+        contexts[context_index].state_change(frames);
         const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt()); // must be GL_TEXTURE_2D_MULTISAMPLE
         assert(target == GL_TEXTURE_2D_MULTISAMPLE);
         const GLuint unit = contexts[context_index].activeTextureUnit;
@@ -1056,6 +1128,13 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         const unsigned unit = contexts[context_index].activeTextureUnit;
         const unsigned target = call->mArgs[0]->GetAsUInt();
         const unsigned tex_id = call->mArgs[1]->GetAsUInt();
+        if (!contexts[context_index].textures.contains(tex_id)
+            || contexts[context_index].textureUnits.count(unit) == 0
+            || contexts[context_index].textureUnits[unit].count(target) == 0
+            || contexts[context_index].textureUnits[unit][target] != tex_id)
+        {
+            contexts[context_index].state_change(frames);
+        }
         contexts[context_index].textureUnits[unit][target] = tex_id;
         if (tex_id != 0 && !contexts[context_index].textures.contains(tex_id))
         {
@@ -1077,6 +1156,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         {
             return;
         }
+        contexts[context_index].state_change(frames);
         const int texture_index = contexts[context_index].textures.remap(texture_id);
         adjust_sampler_state(call, pname, contexts[context_index].textures[texture_index].state, call->mArgs[2]);
     }
@@ -1088,6 +1168,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             DBG_LOG("API ERROR [%d]: Invalid sampler id=%u\n", (int)call->mCallNo, sampler);
             return;
         }
+        contexts[context_index].state_change(frames);
         const GLenum pname = call->mArgs[1]->GetAsUInt();
         const GLuint sampler_idx = contexts[context_index].samplers.remap(sampler);
         adjust_sampler_state(call, pname, contexts[context_index].samplers[sampler_idx].state, call->mArgs[2]);
@@ -1109,7 +1190,12 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             }
             else
             {
-                contexts[context_index].program_index = contexts[context_index].programs.remap(id);
+                const int program_index = contexts[context_index].programs.remap(id);
+                if (contexts[context_index].program_index != program_index)
+                {
+                    contexts[context_index].state_change(frames);
+                    contexts[context_index].program_index = program_index;
+                }
             }
         }
         else
@@ -1221,6 +1307,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         GLSLParser parser;
         std::string stripped = parser.strip_comments(code);
         GLSLShader sh = parser.preprocessor(stripped, s.shader_type);
+        highest_gles_version = std::max(sh.version / 10, highest_gles_version);
         s.source_compressed = parser.compressed(sh);
         GLSLRepresentation repr = parser.parse(sh);
         s.contains_invariants = repr.contains_invariants;
@@ -1262,6 +1349,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     // Standard: "Sampler values must be set by calling Uniform1i{v}". That's why we only save those.
     else if (call->mCallName == "glUniform1i")
     {
+        contexts[context_index].uniform_change(frames);
         const GLint location = call->mArgs[0]->GetAsInt();
         if (location != -1)
         {
@@ -1278,6 +1366,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glUniform1iv")
     {
+        contexts[context_index].uniform_change(frames);
         const GLint location = call->mArgs[0]->GetAsInt();
         if (location != -1)
         {
@@ -1300,6 +1389,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     // glProgramUniform1i and glProgramUniform1iv also apply because they are functional mirrors of the above.
     else if (call->mCallName == "glProgramUniform1i")
     {
+        contexts[context_index].uniform_change(frames);
         const GLuint program = call->mArgs[0]->GetAsUInt();
         const GLint location = call->mArgs[1]->GetAsInt();
         if (location != -1)
@@ -1316,6 +1406,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glProgramUniform1iv")
     {
+        contexts[context_index].uniform_change(frames);
         const GLuint program = call->mArgs[0]->GetAsUInt();
         const GLint location = call->mArgs[1]->GetAsInt();
         if (location != -1)
@@ -1338,6 +1429,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName.find("glUniform") != std::string::npos || call->mCallName.find("glProgramUniform") != std::string::npos) // other uniforms
     {
+        contexts[context_index].uniform_change(frames);
         GLint location = 0;
         GLuint program_id = 0;
         int program_index = UNBOUND;
@@ -1399,6 +1491,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glBindProgramPipeline" || call->mCallName == "glBindProgramPipelineEXT")
     {
+        contexts[context_index].state_change(frames);
         GLuint id = call->mArgs[0]->GetAsUInt();
         if (id != 0)
         {
@@ -1419,6 +1512,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glUseProgramStages" || call->mCallName == "glUseProgramStagesEXT")
     {
+        contexts[context_index].state_change(frames);
         const GLuint pipeline = call->mArgs[0]->GetAsUInt();
         const GLuint stages = call->mArgs[1]->GetAsUInt();
         const GLuint program = call->mArgs[2]->GetAsUInt();
@@ -1453,6 +1547,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glDrawBuffers")
     {
+        contexts[context_index].state_change(frames);
         unsigned count = call->mArgs[0]->GetAsUInt();
         assert(call->mArgs[1]->IsArray());
         assert(call->mArgs[1]->mArrayLen == count);
@@ -1512,6 +1607,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glPatchParameteri" || call->mCallName == "glPatchParameteriEXT")
     {
+        contexts[context_index].state_change(frames);
         GLenum pname = call->mArgs[0]->GetAsUInt();
         if (pname == GL_PATCH_VERTICES)
         {
@@ -1520,20 +1616,24 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glDepthMask")
     {
+        contexts[context_index].state_change(frames);
         contexts[context_index].fillstate.depthmask = call->mArgs[0]->GetAsUInt();
     }
     else if (call->mCallName == "glDepthFunc")
     {
+        contexts[context_index].state_change(frames);
         contexts[context_index].fillstate.depthfunc = call->mArgs[0]->GetAsUInt();
     }
     else if (call->mCallName == "glStencilMask")
     {
+        contexts[context_index].state_change(frames);
         const GLuint mask = call->mArgs[0]->GetAsUInt();
         contexts[context_index].fillstate.stencilmask[GL_FRONT] = mask;
         contexts[context_index].fillstate.stencilmask[GL_BACK] = mask;
     }
     else if (call->mCallName == "glStencilMaskSeparate")
     {
+        contexts[context_index].state_change(frames);
         const GLenum face = call->mArgs[0]->GetAsUInt();
         const GLuint mask = call->mArgs[1]->GetAsUInt();
         if (face == GL_FRONT_AND_BACK)
@@ -1548,6 +1648,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glColorMask")
     {
+        contexts[context_index].state_change(frames);
         contexts[context_index].fillstate.colormask[0] = call->mArgs[0]->GetAsUInt();
         contexts[context_index].fillstate.colormask[1] = call->mArgs[1]->GetAsUInt();
         contexts[context_index].fillstate.colormask[2] = call->mArgs[2]->GetAsUInt();
@@ -1555,6 +1656,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glClearColor")
     {
+        contexts[context_index].state_change(frames);
         contexts[context_index].fillstate.clearcolor[0] = call->mArgs[0]->GetAsFloat();
         contexts[context_index].fillstate.clearcolor[1] = call->mArgs[1]->GetAsFloat();
         contexts[context_index].fillstate.clearcolor[2] = call->mArgs[2]->GetAsFloat();
@@ -1562,14 +1664,17 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glClearStencil")
     {
+        contexts[context_index].state_change(frames);
         contexts[context_index].fillstate.clearstencil = call->mArgs[0]->GetAsInt();
     }
     else if (call->mCallName == "glClearDepthf")
     {
+        contexts[context_index].state_change(frames);
         contexts[context_index].fillstate.cleardepth = call->mArgs[0]->GetAsFloat();
     }
     else if (call->mCallName.compare(0, 10, "glDispatch") == 0)
     {
+        contexts[context_index].state_change(frames);
         const int current_program = contexts[context_index].program_index;
         contexts[context_index].programs[current_program].stats.dispatches++;
         contexts[context_index].programs[current_program].stats_per_frame[frames].dispatches++;
@@ -1583,6 +1688,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glClear")
     {
+       contexts[context_index].state_change(frames);
        GLbitfield mask = call->mArgs[0]->GetAsUInt();
        if (mask & GL_COLOR_BUFFER_BIT) // interacts with glDrawBuffers()
        {
@@ -1630,6 +1736,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glClearBufferfi")
     {
+       contexts[context_index].state_change(frames);
        GLenum buffertype = call->mArgs[0]->GetAsUInt();
        assert(buffertype == GL_DEPTH_STENCIL);
        GLint drawbuffer = call->mArgs[1]->GetAsInt();
@@ -1649,6 +1756,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName.compare(0, 13, "glClearBuffer") == 0) // except glClearBufferfi which is handled above
     {
+       contexts[context_index].state_change(frames);
        GLenum buffertype = call->mArgs[0]->GetAsUInt();
        GLint drawbuffer = call->mArgs[1]->GetAsInt();
        GLenum attachment;
@@ -1686,9 +1794,28 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
        find_duplicate_clears(fillstate, at, buffertype, fbo, call->mCallName);
        at.clears.push_back(fillstate);
     }
+    else if (call->mCallName.compare(0, 7, "glBlend") == 0
+             || call->mCallName == "glCullFace"
+             || call->mCallName == "glDepthRangef"
+             || call->mCallName == "glFrontFace"
+             || call->mCallName == "glPolygonOffset"
+             || call->mCallName == "glPixelStorei"
+             || call->mCallName == "glSampleCoverage"
+             || call->mCallName.compare(0, 9, "glStencil") == 0
+             || call->mCallName.compare(0, 9, "glEnablei") == 0
+             || call->mCallName.compare(0, 10, "glDisablei") == 0
+             || call->mCallName.compare(0, 14, "glVertexAttrib") == 0
+             || call->mCallName == "glPolygonOffsetClampEXT"
+             || call->mCallName == "glVertexAttribDivisorEXT")
+    {
+        contexts[context_index].state_change(frames);
+    }
     else if (call->mCallName.compare(0, 6, "glDraw") == 0 && call->mCallName != "glDrawBuffers")
     {
+        contexts[context_index].draws_since_last_state_change++;
+        contexts[context_index].draws_since_last_state_or_uniform_change++;
         contexts[context_index].draw_calls_per_frame[frames]++;
+        contexts[context_index].draws_since_last_state_or_index_buffer_change++;
         if (contexts[context_index].program_index == UNBOUND && contexts[context_index].program_pipeline_index == UNBOUND)
         {
             return; // valid for GLES1 content!
@@ -1739,6 +1866,26 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         }
         rp.draw_calls++;
         DrawParams params = getDrawCallCount(call);
+        if (contexts[context_index].last_index_count != params.vertices || contexts[context_index].last_index_buffer != params.index_buffer
+            || contexts[context_index].last_index_type != params.value_type)
+        {
+            contexts[context_index].index_buffer_change(frames);
+        }
+        if (contexts[context_index].last_index_buffer) // bound gpu index buffer
+        {
+            if (params.value_type == GL_UNSIGNED_BYTE) contexts[context_index].bound_index_ui8_calls_per_frame[frames]++;
+            else if (params.value_type == GL_UNSIGNED_SHORT) contexts[context_index].bound_index_ui16_calls_per_frame[frames]++;
+            else if (params.value_type == GL_UNSIGNED_INT) contexts[context_index].bound_index_ui32_calls_per_frame[frames]++;
+        }
+        else // client buffer
+        {
+            if (params.value_type == GL_UNSIGNED_BYTE) contexts[context_index].client_index_ui8_calls_per_frame[frames]++;
+            else if (params.value_type == GL_UNSIGNED_SHORT) contexts[context_index].client_index_ui16_calls_per_frame[frames]++;
+            else if (params.value_type == GL_UNSIGNED_INT) contexts[context_index].client_index_ui32_calls_per_frame[frames]++;
+        }
+        contexts[context_index].last_index_count = params.vertices;
+        contexts[context_index].last_index_type = params.value_type;
+        contexts[context_index].last_index_buffer = params.index_buffer;
         // TBD the below does not take into account primitive restart
         for (const auto pair : program_stages)
         {

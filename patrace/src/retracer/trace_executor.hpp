@@ -18,18 +18,6 @@ namespace retracer
     template <class T> class hmap;
 }
 
-    // OS dependent time frequency
-#if defined(_WIN32) || defined(__APPLE__)
-    // runtime variable on Windows and MacOSX
-    extern long long timeFrequency;
-#elif defined(__linux__)
-    // nanoseconds on Linux
-    static const long long timeFrequency = 1000000000LL;
-#else
-    // microseconds on Unices
-    static const long long timeFrequency = 1000000LL;
-#endif
-
 typedef std::set<std::string> AttributeList_t;
 typedef std::unordered_map<int, AttributeList_t> ProgramAttributeListMap_t;
 typedef std::vector<Json::Value> ProgramInfoList_t;

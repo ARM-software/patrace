@@ -23,7 +23,7 @@ InFile::InFile():
     mFrameNo(0),
     mMaxSigId(),
     mIsOpen(false),
-    mStatus(UNKOWN),
+    mStatus(UNKNOWN),
     callChunkQueue(MAX_CHUNK_QUEUE_SIZE),
     pendChunkQueue(MAX_PRELOAD_QUEUE_SIZE),
     freeChunkQueue(MAX_CHUNK_QUEUE_SIZE + 1),

@@ -2,7 +2,6 @@
 #include <GLES2/gl2ext.h>
 #include <fstream>
 
-//#include "common/json.hpp"
 #include "image/image.hpp"
 #include "image/image_io.hpp"
 #include "dump.hpp"

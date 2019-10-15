@@ -132,7 +132,19 @@ class Dispatcher:
         print '    if (!%s) {' % (pvalue,)
         print '        static bool has_warned = false;'
         print '        bool has_warned_cached = has_warned;'
-        print '        %s = (%s)%s(_name);' % (pvalue, ptype, getProcAddressName)
+        if function.name == 'eglQueryString':
+            print '#if defined RETRACE && defined ANDROID'
+            print '        %s = (%s)%s("eglQueryStringImplementationANDROID");' % (pvalue, ptype, getProcAddressName)
+            print '        if (!%s) {' % (pvalue)
+            print '            %s = (%s)%s("_Z35eglQueryStringImplementationANDROIDPvi");' % (pvalue, ptype, getProcAddressName)
+            print '            if (!%s)' % (pvalue)
+            print '                %s = (%s)%s(_name);' % (pvalue, ptype, getProcAddressName)
+            print '        }'
+            print '#else'
+            print '        %s = (%s)%s(_name);' % (pvalue, ptype, getProcAddressName)
+            print '#endif'
+        else :
+            print '        %s = (%s)%s(_name);' % (pvalue, ptype, getProcAddressName)
         print '        if (!%s) {' % (pvalue,)
         if function.name in synonyms: # try different version of same function
             print '            const char *_name2 = "%s";' % synonyms[function.name]

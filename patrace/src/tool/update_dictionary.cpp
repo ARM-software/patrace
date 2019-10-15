@@ -36,10 +36,20 @@ namespace os
 
 void myread(void *data, size_t size, FILE *fp, const char *where)
 {
-	if (fread(data, size, 1, fp) != 1)
+	size_t written = 0;
+	size_t r;
+	int err;
+	do
 	{
-		printf("%s: %s\n", where, strerror(ferror(fp)));
-		exit(1);
+		r = fread(data + written, 1, size, fp);
+		size -= r;
+		written += r;
+		err = ferror(fp);
+	} while (size > 0 && err != EWOULDBLOCK && err != EINTR);
+	if (err)
+	{
+		printf("Failed to read %s: %s\n", where, strerror(err));
+		abort();
 	}
 }
 
@@ -48,7 +58,7 @@ void mywrite(const void *data, size_t size, FILE *fp)
 	if (WRITE_RA_FILE && fwrite(data, size, 1, fp) != 1)
 	{
 		printf("Failed to write: %s\n", strerror(ferror(fp)));
-		exit(1);
+		abort();
 	}
 }
 
@@ -141,6 +151,7 @@ int main(int argc, char **argv)
 		// Read chunk length
 		if (!read_compressed_length(&compressed_length, in))
 		{
+			printf("Done reading first round\n");
 			break;
 		}
 		buffer_compressed.resize(compressed_length);
@@ -148,8 +159,9 @@ int main(int argc, char **argv)
 		if (snappy::GetUncompressedLength(buffer_compressed.data(), buffer_compressed.size(), &size) == false)
 		{
 			printf("Error checking chunk size (pass 1)\n");
+			abort();
 		}
-		//printf("Chunk size %lu kb\n", (unsigned long)size / 1024);
+		printf("Chunk size %lu kb\n", (unsigned long)size / 1024);
 		uncompressed_length += size;
 	}
 	fseek(in, start_pos, SEEK_SET);
@@ -163,6 +175,7 @@ int main(int argc, char **argv)
 		// Read chunk length
 		if (!read_compressed_length(&compressed_length, in))
 		{
+			printf("Done reading second round\n");
 			break;
 		}
 		buffer_compressed.resize(compressed_length);
@@ -170,12 +183,12 @@ int main(int argc, char **argv)
 		if (snappy::GetUncompressedLength(buffer_compressed.data(), buffer_compressed.size(), &size) == false)
 		{
 			printf("Error checking chunk size (pass 2)\n");
-			exit(1);
+			abort();
 		}
 		if (snappy::RawUncompress(buffer_compressed.data(), buffer_compressed.size(), &big_buffer.data()[big_counter]) == false)
 		{
 			printf("Error decompressing chunk (pass 2)\n");
-			exit(1);
+			abort();
 		}
 		mywrite(&big_buffer.data()[big_counter], size, ra);
 		big_counter += size;

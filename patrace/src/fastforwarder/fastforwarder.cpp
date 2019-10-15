@@ -65,13 +65,15 @@ struct FastForwardOptions
     std::string mOutputFileName;
     std::string mComment;
     unsigned int mTargetFrame;
+    unsigned int mEndFrame;
     unsigned int mFlags;
 
     FastForwardOptions()
         : mOutputFileName("fastforward.pat")
         , mComment("")
         , mTargetFrame(0)
-        , mFlags(0)
+        , mEndFrame(0)
+        , mFlags(FASTFORWARD_RESTORE_TEXTURES)
     {}
 };
 
@@ -584,15 +586,15 @@ public:
             const unsigned int traceTextureId = it.first;
             const unsigned int retraceTextureId = it.second;
 
+            if (retraceTextureId == 0)
+            {
+                continue;
+            }
+
             //assert(revTextures[retraceTextureId] == traceTextureId);
             if (revTextures.at(retraceTextureId) != traceTextureId)
             {
                 DBG_LOG("WARNING: Reverse texture lookup failed: retrace-ID %d's rev. was %d, but should be %d.\n", retraceTextureId, revTextures.at(retraceTextureId), traceTextureId);
-            }
-
-            if (retraceTextureId == 0)
-            {
-                continue;
             }
 
             bool ok = false;
@@ -1294,11 +1296,65 @@ static void injectClear(retracer::Context& retracerContext, common::OutFile& out
     }
 }
 
+using namespace retracer;
+
+static void saveData(common::OutFile &out, unsigned int flags, Json::Value& ffJson)
+{
+    retracer::Retracer& retracer = gRetracer;
+
+    RetraceAndTrim::checkError("RetraceAndTrim state-saving begin");
+
+    // Should have a valid GL state at this point
+    char* version = (char*) _glGetString(GL_VERSION);
+    ffJson["GL_VERSION"]  = version;
+    ffJson["GL_VENDOR"]   = (char*) _glGetString(GL_VENDOR);
+    ffJson["GL_RENDERER"] = (char*) _glGetString(GL_RENDERER);
+
+    // Sync
+    _glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    _glFinish();
+
+    // Save buffers
+    {
+    RetraceAndTrim::BufferSaver::run(retracer.getCurrentContext(), retracer.mFile, out, retracer.getCurTid());
+    }
+
+    // Save texture
+    if (flags & FASTFORWARD_RESTORE_TEXTURES)
+    {
+        RetraceAndTrim::TextureSaver ts(retracer.getCurrentContext(), retracer.mFile, out, retracer.getCurTid());
+        ts.run();
+    }
+
+    injectClear(retracer.getCurrentContext(), out, retracer);
+
+    RetraceAndTrim::checkError("RetraceAndTrim state-saving end");
+}
+
+class TrimWork : public Work
+{
+public:
+    TrimWork(int tid, unsigned frameId, unsigned callID, void* fptr, char* src, const char* name, common::UnCompressedChunk *chunk, common::OutFile &out, unsigned int flags, Json::Value& ffJson)
+        : Work(tid, frameId, callID, fptr, src, name, chunk), mOut(out), mFlags(flags), mFfJson(ffJson)
+    {
+    }
+
+    ~TrimWork()
+    {
+    }
+
+    void run()
+    {
+        saveData(mOut, mFlags, mFfJson);
+    }
+
+    common::OutFile& mOut;
+    unsigned int mFlags;
+    Json::Value& mFfJson;
+};
 
 static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOptions, Json::Value& ffJson)
 {
-    using namespace retracer;
-
     RetraceAndTrim::ScratchBuffer buffer;
     retracer::Retracer& retracer = gRetracer;
 
@@ -1319,6 +1375,8 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
         os::abort();
     }
 
+    unsigned int dispatchFrameNo = 0;
+    unsigned int curCallNo = 0;
 
     for ( ;; retracer.IncCurCallId())
     {
@@ -1333,42 +1391,28 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
         }
 
         const char *funcName = retracer.mFile.ExIdToName(retracer.mCurCall.funcId);
+        const bool isSwapBuffers = (retracer.mCurCall.funcId == retracer.mFile.NameToExId("eglSwapBuffers"));
 
-        if (retracer.GetCurFrameId() == ffOptions.mTargetFrame-1 && strcmp(funcName, "eglSwapBuffers") == 0)
+        if (dispatchFrameNo == ffOptions.mTargetFrame-1 && strcmp(funcName, "eglSwapBuffers") == 0)
         {
             DBG_LOG("Started saving GL state\n");
-            RetraceAndTrim::checkError("RetraceAndTrim state-saving begin");
 
-            // Should have a valid GL state at this point
-            char* version = (char*) _glGetString(GL_VERSION);
-            ffJson["GL_VERSION"]  = version;
-            ffJson["GL_VENDOR"]   = (char*) _glGetString(GL_VENDOR);
-            ffJson["GL_RENDERER"] = (char*) _glGetString(GL_RENDERER);
-
-            // Sync
-            _glMemoryBarrier(GL_ALL_BARRIER_BITS);
-            _glFlush();
-            _glFinish();
-
-            // Save buffers
+            if (!retracer.mOptions.mMultiThread)
             {
-                RetraceAndTrim::BufferSaver::run(retracer.getCurrentContext(), retracer.mFile, out, retracer.getCurTid());
+                saveData(out, ffOptions.mFlags, ffJson);
+            }
+            else
+            {
+                TrimWork* work = new TrimWork(retracer.mCurCall.tid, dispatchFrameNo, curCallNo, NULL, NULL, funcName, NULL, out, ffOptions.mFlags, ffJson);
+                retracer.DispatchWork(work);
+                WorkThread* wThread = retracer.findWorkThread(retracer.mCurCall.tid);
+                wThread->waitIdle();
             }
 
-            // Save texture
-            if (ffOptions.mFlags & FASTFORWARD_RESTORE_TEXTURES)
-            {
-                RetraceAndTrim::TextureSaver ts(retracer.getCurrentContext(), retracer.mFile, out, retracer.getCurTid());
-                ts.run();
-            }
-
-            injectClear(retracer.getCurrentContext(), out, retracer);
-
-            RetraceAndTrim::checkError("RetraceAndTrim state-saving end");
             DBG_LOG("Done saving GL state\n");
         }
 
-        if (retracer.getCurTid() != retracer.mOptions.mRetraceTid)
+        if (!retracer.mOptions.mMultiThread && retracer.mCurCall.tid != retracer.mOptions.mRetraceTid)
         {
             continue; // we're skipping calls from out file here, too; probably what user wants?
         }
@@ -1384,8 +1428,8 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
                 || (strstr(funcName, "glClearBuffer")) // Matches glClearBuffer*
                 || (strcmp(funcName, "glBlitFramebuffer") == 0) // NOTE: strCMP == 0
                 || (strcmp(funcName, "glClear") == 0); // NOTE: strCMP == 0
-            bool targetFrameOrLater = (retracer.GetCurFrameId() >= ffOptions.mTargetFrame);
-            if (strstr(funcName, "SwapBuffers") && (retracer.GetCurFrameId()+1 == ffOptions.mTargetFrame))
+            bool targetFrameOrLater = (dispatchFrameNo >= ffOptions.mTargetFrame);
+            if (strstr(funcName, "SwapBuffers") && (dispatchFrameNo+1 == ffOptions.mTargetFrame))
             {
                 // We save the call before the call is executed, and GetCurFrameId() isn't
                 // updated until the call (SwapBuffers) is made. This handles the case where this
@@ -1394,7 +1438,6 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
                 // of frame 0.)
                 targetFrameOrLater = true;
             }
-
 
             // Until the target frame, output everything but skipped calls. After that, output everything.
             if (targetFrameOrLater || !shouldSkip)
@@ -1440,7 +1483,28 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
         // Call function
         if (fptr)
         {
-            (*(RetraceFunc)fptr)(src); // increments src to point to end of parameter block
+            if (!retracer.mOptions.mMultiThread)
+            {
+                (*(RetraceFunc)fptr)(src); // increments src to point to end of parameter block
+            }
+            else
+            {
+                Work* work = new Work(retracer.mCurCall.tid, dispatchFrameNo, curCallNo, fptr, src, funcName);
+                retracer.DispatchWork(work);
+                WorkThread* wThread = retracer.findWorkThread(retracer.mCurCall.tid);
+                wThread->waitIdle();
+            }
+
+            curCallNo++;
+            if (isSwapBuffers && retracer.mCurCall.tid == retracer.mOptions.mRetraceTid)
+            {
+                dispatchFrameNo++;
+            }
+        }
+
+        if (dispatchFrameNo > ffOptions.mEndFrame)
+        {
+            retracer.mFinish = true;
         }
     }
 
@@ -1461,9 +1525,11 @@ usage(const char *argv0)
         "  --input <input_trace> Target frame to fastforward [REQUIRED]\n"
         "  --output <output_file_name> Where to write fastforwarded trace file [REQUIRED]\n"
         "  --targetFrame <target> The frame number that should be fastforwarded to [REQUIRED]\n"
+        "  --endFrame <end> The frame number that should be ended (by default fastforward to the last frame)\n"
+        "  --multithread Run in multithread mode\n"
         "  --offscreen Run in offscreen mode\n"
         "  --noscreen Run in pbuffer output mode\n"
-        "  --restoretex When generating a fastforward trace, inject commands to restore the contents of textures to what the would've been when retracing the original. (NOTE: EXPERIMENTAL FEATURE)\n"
+        "  --norestoretex When generating a fastforward trace, don't inject commands to restore the contents of textures to what the would've been when retracing the original. (NOTE: NOT RECOMMEND)\n"
         "  --version Output the version of this program\n"
         "\n"
         , argv0);
@@ -1506,6 +1572,9 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
         {
             cmdOpts.forceOffscreen = true;
         }
+        else if (!strcmp(arg, "--multithread"))
+        {   cmdOpts.multiThread = true;
+        }
         else if (!strcmp(arg, "--input"))
         {
             cmdOpts.fileName = argv[++i];
@@ -1514,7 +1583,6 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
         else if (!strcmp(arg, "--noscreen"))
         {
             cmdOpts.pbufferRendering = true;
-            gotInput = true;
         }
         else if (!strcmp(arg, "--output"))
         {
@@ -1530,9 +1598,18 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
             ffOptions.mTargetFrame = readValidValue(argv[++i]);
             gotTargetFrame = true;
         }
-        else if (!strcmp(arg, "--restoretex"))
+        else if (!strcmp(arg, "--endFrame"))
         {
-            ffOptions.mFlags |= FASTFORWARD_RESTORE_TEXTURES;
+            ffOptions.mEndFrame = readValidValue(argv[++i]);
+            if (ffOptions.mEndFrame < ffOptions.mTargetFrame)
+            {
+                DBG_LOG("WARNING: the endFrame is less than targetFrame! Set endFrame to default to fastforward to the last frame.\n");
+                ffOptions.mEndFrame = 0;
+            }
+        }
+        else if (!strcmp(arg, "--norestoretex"))
+        {
+            ffOptions.mFlags &= ~FASTFORWARD_RESTORE_TEXTURES;
         }
         else if (!strcmp(arg, "--version"))
         {
@@ -1575,8 +1652,6 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
 extern "C"
 int main(int argc, char** argv)
 {
-    using namespace retracer;
-
     CmdOptions cmdOptions;
     FastForwardOptions ffOptions;
     if (!ParseCommandLine(argc, argv, /*out*/ ffOptions, /*out*/ cmdOptions))
@@ -1619,6 +1694,9 @@ int main(int argc, char** argv)
     {
         // Target frame
         ffJson["originalFrame"] = ffOptions.mTargetFrame;
+        // End Frame if not 0
+        if (ffOptions.mEndFrame != 0)
+            ffJson["endFrame"] = ffOptions.mEndFrame;
 
         // Misc.
         std::stringstream cmdlineSS;

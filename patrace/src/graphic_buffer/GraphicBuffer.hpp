@@ -3,8 +3,14 @@
 #include "DynamicLibrary.hpp"
 #include <cstdint>
 #include <cerrno>
+#include <EGL/egl.h>
+
+#ifdef ANDROID
+#include <android/rect.h>
+#endif
 
 struct ANativeWindowBuffer;
+typedef struct AHardwareBuffer AHardwareBuffer;
 
 namespace android
 {
@@ -36,24 +42,24 @@ namespace android
 // utils/Errors.h
 enum status_t
 {
-    OK					= 0,
-    UNKNOWN_ERROR		= (-2147483647-1),
-    NO_MEMORY			= -ENOMEM,
-    INVALID_OPERATION	= -ENOSYS,
-    BAD_VALUE			= -EINVAL,
-    BAD_TYPE			= (UNKNOWN_ERROR + 1),
-    NAME_NOT_FOUND		= -ENOENT,
-    PERMISSION_DENIED	= -EPERM,
-    NO_INIT				= -ENODEV,
-    ALREADY_EXISTS		= -EEXIST,
-    DEAD_OBJECT			= -EPIPE,
-    FAILED_TRANSACTION	= (UNKNOWN_ERROR + 2),
-    BAD_INDEX			= -E2BIG,
-    NOT_ENOUGH_DATA		= (UNKNOWN_ERROR + 3),
-    WOULD_BLOCK			= (UNKNOWN_ERROR + 4),
-    TIMED_OUT			= (UNKNOWN_ERROR + 5),
+    OK                  = 0,
+    UNKNOWN_ERROR       = (-2147483647-1),
+    NO_MEMORY           = -ENOMEM,
+    INVALID_OPERATION   = -ENOSYS,
+    BAD_VALUE           = -EINVAL,
+    BAD_TYPE            = (UNKNOWN_ERROR + 1),
+    NAME_NOT_FOUND      = -ENOENT,
+    PERMISSION_DENIED   = -EPERM,
+    NO_INIT             = -ENODEV,
+    ALREADY_EXISTS      = -EEXIST,
+    DEAD_OBJECT         = -EPIPE,
+    FAILED_TRANSACTION  = (UNKNOWN_ERROR + 2),
+    BAD_INDEX           = -E2BIG,
+    NOT_ENOUGH_DATA     = (UNKNOWN_ERROR + 3),
+    WOULD_BLOCK         = (UNKNOWN_ERROR + 4),
+    TIMED_OUT           = (UNKNOWN_ERROR + 5),
     UNKNOWN_TRANSACTION = (UNKNOWN_ERROR + 6),
-    FDS_NOT_ALLOWED		= (UNKNOWN_ERROR + 7),
+    FDS_NOT_ALLOWED     = (UNKNOWN_ERROR + 7),
 };
 
 #define HAL_PIXEL_FORMAT_YCbCr_420_888 HAL_PIXEL_FORMAT_YCBCR_420_888
@@ -113,55 +119,55 @@ enum PixelFormat{
 
 
     // product/android/gralloc/src/mali_gralloc_formats.h
-	/* Internal definitions for HAL formats. */
-	MALI_GRALLOC_FORMAT_INTERNAL_RGBA_8888 = HAL_PIXEL_FORMAT_RGBA_8888,
-	MALI_GRALLOC_FORMAT_INTERNAL_RGBX_8888 = HAL_PIXEL_FORMAT_RGBX_8888,
-	MALI_GRALLOC_FORMAT_INTERNAL_RGB_888 = HAL_PIXEL_FORMAT_RGB_888,
-	MALI_GRALLOC_FORMAT_INTERNAL_RGB_565 = HAL_PIXEL_FORMAT_RGB_565,
-	MALI_GRALLOC_FORMAT_INTERNAL_BGRA_8888 = HAL_PIXEL_FORMAT_BGRA_8888,
+    /* Internal definitions for HAL formats. */
+    MALI_GRALLOC_FORMAT_INTERNAL_RGBA_8888 = HAL_PIXEL_FORMAT_RGBA_8888,
+    MALI_GRALLOC_FORMAT_INTERNAL_RGBX_8888 = HAL_PIXEL_FORMAT_RGBX_8888,
+    MALI_GRALLOC_FORMAT_INTERNAL_RGB_888 = HAL_PIXEL_FORMAT_RGB_888,
+    MALI_GRALLOC_FORMAT_INTERNAL_RGB_565 = HAL_PIXEL_FORMAT_RGB_565,
+    MALI_GRALLOC_FORMAT_INTERNAL_BGRA_8888 = HAL_PIXEL_FORMAT_BGRA_8888,
 #if PLATFORM_SDK_VERSION >= 26
-	MALI_GRALLOC_FORMAT_INTERNAL_RGBA_1010102 = HAL_PIXEL_FORMAT_RGBA_1010102,
-	MALI_GRALLOC_FORMAT_INTERNAL_RGBA_16161616 = HAL_PIXEL_FORMAT_RGBA_FP16,
+    MALI_GRALLOC_FORMAT_INTERNAL_RGBA_1010102 = HAL_PIXEL_FORMAT_RGBA_1010102,
+    MALI_GRALLOC_FORMAT_INTERNAL_RGBA_16161616 = HAL_PIXEL_FORMAT_RGBA_FP16,
 #endif /* PLATFORM_SDK_VERSION >= 26 */
-	MALI_GRALLOC_FORMAT_INTERNAL_YV12 = HAL_PIXEL_FORMAT_YV12,
-	MALI_GRALLOC_FORMAT_INTERNAL_Y8 = HAL_PIXEL_FORMAT_Y8,
-	MALI_GRALLOC_FORMAT_INTERNAL_Y16 = HAL_PIXEL_FORMAT_Y16,
-	MALI_GRALLOC_FORMAT_INTERNAL_YUV420_888 = HAL_PIXEL_FORMAT_YCbCr_420_888,
+    MALI_GRALLOC_FORMAT_INTERNAL_YV12 = HAL_PIXEL_FORMAT_YV12,
+    MALI_GRALLOC_FORMAT_INTERNAL_Y8 = HAL_PIXEL_FORMAT_Y8,
+    MALI_GRALLOC_FORMAT_INTERNAL_Y16 = HAL_PIXEL_FORMAT_Y16,
+    MALI_GRALLOC_FORMAT_INTERNAL_YUV420_888 = HAL_PIXEL_FORMAT_YCbCr_420_888,
 
-	/* Camera specific HAL formats */
-	MALI_GRALLOC_FORMAT_INTERNAL_RAW16 = HAL_PIXEL_FORMAT_RAW16,
-	MALI_GRALLOC_FORMAT_INTERNAL_RAW12 = HAL_PIXEL_FORMAT_RAW12,
-	MALI_GRALLOC_FORMAT_INTERNAL_RAW10 = HAL_PIXEL_FORMAT_RAW10,
-	MALI_GRALLOC_FORMAT_INTERNAL_BLOB = HAL_PIXEL_FORMAT_BLOB,
+    /* Camera specific HAL formats */
+    MALI_GRALLOC_FORMAT_INTERNAL_RAW16 = HAL_PIXEL_FORMAT_RAW16,
+    MALI_GRALLOC_FORMAT_INTERNAL_RAW12 = HAL_PIXEL_FORMAT_RAW12,
+    MALI_GRALLOC_FORMAT_INTERNAL_RAW10 = HAL_PIXEL_FORMAT_RAW10,
+    MALI_GRALLOC_FORMAT_INTERNAL_BLOB = HAL_PIXEL_FORMAT_BLOB,
 
-	/* Flexible YUV formats would be parsed but not have any representation as
+    /* Flexible YUV formats would be parsed but not have any representation as
      * internal format itself but one of the ones below
      */
 
-	/* The internal private formats that have no HAL equivivalent are defined
+    /* The internal private formats that have no HAL equivivalent are defined
      * afterwards starting at a specific base range */
-	MALI_GRALLOC_FORMAT_INTERNAL_NV12 = MALI_GRALLOC_FORMAT_INTERNAL_RANGE_BASE,
-	MALI_GRALLOC_FORMAT_INTERNAL_NV21,
-	MALI_GRALLOC_FORMAT_INTERNAL_YUV422_8BIT,
+    MALI_GRALLOC_FORMAT_INTERNAL_NV12 = MALI_GRALLOC_FORMAT_INTERNAL_RANGE_BASE,
+    MALI_GRALLOC_FORMAT_INTERNAL_NV21,
+    MALI_GRALLOC_FORMAT_INTERNAL_YUV422_8BIT,
 
-	/* Extended YUV formats
+    /* Extended YUV formats
      *
      * NOTE: P010, P210, and Y410 are only supported uncompressed.
      */
-	MALI_GRALLOC_FORMAT_INTERNAL_Y0L2,
-	MALI_GRALLOC_FORMAT_INTERNAL_P010,
-	MALI_GRALLOC_FORMAT_INTERNAL_P210,
-	MALI_GRALLOC_FORMAT_INTERNAL_Y210,
-	MALI_GRALLOC_FORMAT_INTERNAL_Y410,
+    MALI_GRALLOC_FORMAT_INTERNAL_Y0L2,
+    MALI_GRALLOC_FORMAT_INTERNAL_P010,
+    MALI_GRALLOC_FORMAT_INTERNAL_P210,
+    MALI_GRALLOC_FORMAT_INTERNAL_Y210,
+    MALI_GRALLOC_FORMAT_INTERNAL_Y410,
 
-	/* Add more internal formats here. Make sure decode_internal_format() is updated. */
+    /* Add more internal formats here. Make sure decode_internal_format() is updated. */
 
-	/* These are legacy 0.3 gralloc formats used only by the wrap/unwrap macros. */
-	MALI_GRALLOC_FORMAT_INTERNAL_YV12_WRAP,
-	MALI_GRALLOC_FORMAT_INTERNAL_Y8_WRAP,
-	MALI_GRALLOC_FORMAT_INTERNAL_Y16_WRAP,
+    /* These are legacy 0.3 gralloc formats used only by the wrap/unwrap macros. */
+    MALI_GRALLOC_FORMAT_INTERNAL_YV12_WRAP,
+    MALI_GRALLOC_FORMAT_INTERNAL_Y8_WRAP,
+    MALI_GRALLOC_FORMAT_INTERNAL_Y16_WRAP,
 
-	MALI_GRALLOC_FORMAT_INTERNAL_RANGE_LAST,
+    MALI_GRALLOC_FORMAT_INTERNAL_RANGE_LAST,
 };
 
 struct android_ycbcr {
@@ -179,20 +185,23 @@ struct android_ycbcr {
 // ui/GraphicBuffer.h in Android source code
 struct GraphicBufferFunctions
 {
-    typedef void					(*genericFunc)			();
-    typedef status_t				(*initCheckFunc)		(android::GraphicBuffer* buffer);
-    typedef status_t				(*lockFunc)				(android::GraphicBuffer* buffer, uint32_t usage, void** vaddr);
-    typedef status_t				(*unlockFunc)			(android::GraphicBuffer* buffer);
-    typedef ANativeWindowBuffer*	(*getNativeBufferFunc)	(const android::GraphicBuffer* buffer);
+    typedef void                    (*genericFunc)          ();
+    typedef status_t                (*initCheckFunc)        (android::GraphicBuffer* buffer);
+    typedef status_t                (*lock3Func)            (android::GraphicBuffer* buffer, uint32_t usage, void** vaddr);
+    typedef status_t                (*lock5Func)            (android::GraphicBuffer* buffer, uint32_t usage, void** vaddr, int32_t* outBytesPerPixel, int32_t* outBytesPerStride);
+    typedef status_t                (*unlockFunc)           (android::GraphicBuffer* buffer);
+    typedef ANativeWindowBuffer*    (*getNativeBufferFunc)  (const android::GraphicBuffer* buffer);
     typedef status_t                (*lockYCbCrFunc)        (android::GraphicBuffer* buffer, uint32_t inUsage, android_ycbcr* ycbcr);
 
     bool                            useConstructor4;
-    genericFunc						constructor;
-    genericFunc						destructor;
-    lockFunc						lock;
-    unlockFunc						unlock;
-    getNativeBufferFunc				getNativeBuffer;
-    initCheckFunc					initCheck;
+    genericFunc                     constructor;
+    genericFunc                     destructor;
+    bool                            useLock3;
+    lock3Func                       lock3;
+    lock5Func                       lock5;
+    unlockFunc                      unlock;
+    getNativeBufferFunc             getNativeBuffer;
+    initCheckFunc                   initCheck;
     lockYCbCrFunc                   lockYCbCr;
     DynamicLibrary                  library;
     GraphicBufferFunctions(const char *fileName);
@@ -205,26 +214,26 @@ class GraphicBuffer
 public:
     // ui/GraphicBuffer.h, hardware/gralloc.h in Android source code
     enum {
-        USAGE_SW_READ_NEVER		= 0x00000000,
-        USAGE_SW_READ_RARELY	= 0x00000002,
-        USAGE_SW_READ_OFTEN		= 0x00000003,
-        USAGE_SW_READ_MASK		= 0x0000000f,
+        USAGE_SW_READ_NEVER     = 0x00000000,
+        USAGE_SW_READ_RARELY    = 0x00000002,
+        USAGE_SW_READ_OFTEN     = 0x00000003,
+        USAGE_SW_READ_MASK      = 0x0000000f,
 
-        USAGE_SW_WRITE_NEVER	= 0x00000000,
-        USAGE_SW_WRITE_RARELY	= 0x00000020,
-        USAGE_SW_WRITE_OFTEN	= 0x00000030,
-        USAGE_SW_WRITE_MASK		= 0x000000f0,
+        USAGE_SW_WRITE_NEVER    = 0x00000000,
+        USAGE_SW_WRITE_RARELY   = 0x00000020,
+        USAGE_SW_WRITE_OFTEN    = 0x00000030,
+        USAGE_SW_WRITE_MASK     = 0x000000f0,
 
-        USAGE_SOFTWARE_MASK		= USAGE_SW_READ_MASK | USAGE_SW_WRITE_MASK,
+        USAGE_SOFTWARE_MASK     = USAGE_SW_READ_MASK | USAGE_SW_WRITE_MASK,
 
-        USAGE_PROTECTED			= 0x00004000,
+        USAGE_PROTECTED         = 0x00004000,
 
-        USAGE_HW_TEXTURE		= 0x00000100,
-        USAGE_HW_RENDER			= 0x00000200,
-        USAGE_HW_2D				= 0x00000400,
-        USAGE_HW_COMPOSER		= 0x00000800,
-        USAGE_HW_VIDEO_ENCODER	= 0x00010000,
-        USAGE_HW_MASK			= 0x00071F00,
+        USAGE_HW_TEXTURE        = 0x00000100,
+        USAGE_HW_RENDER         = 0x00000200,
+        USAGE_HW_2D             = 0x00000400,
+        USAGE_HW_COMPOSER       = 0x00000800,
+        USAGE_HW_VIDEO_ENCODER  = 0x00010000,
+        USAGE_HW_MASK           = 0x00071F00,
     };
 
     GraphicBuffer(uint32_t width, uint32_t height, PixelFormat format, uint32_t usage);
@@ -251,3 +260,76 @@ private:
     GraphicBufferFunctions *functions;
     android::GraphicBuffer *impl = nullptr;
 };
+
+#ifdef ANDROID
+
+/**
+ * Buffer description. Used for allocating new buffers and querying
+ * parameters of existing ones.
+*/
+/* libs/nativewindow/include/android/hardware_buffer.h in Android Source Code */
+typedef struct AHardwareBuffer_Desc {
+    uint32_t    width;      ///< Width in pixels.
+    uint32_t    height;     ///< Height in pixels.
+
+    /**
+     * Number of images in an image array. AHardwareBuffers with one
+     * layer correspond to regular 2D textures. AHardwareBuffers with
+     * more than layer correspond to texture arrays. If the layer count
+     * is a multiple of 6 and the usage flag
+     * AHARDWAREBUFFER_USAGE_GPU_CUBE_MAP is present, the buffer is
+     * a cube map or a cube map array.
+     */
+     uint32_t    layers;
+     uint32_t    format;    ///< One of AHardwareBuffer_Format.
+     uint64_t    usage;      ///< Combination of AHardwareBuffer_UsageFlags.
+     uint32_t    stride;     ///< Row stride in pixels, ignored for AHardwareBuffer_allocate()
+     uint32_t    rfu0;       ///< Initialize to zero, reserved for future use.
+     uint64_t    rfu1;       ///< Initialize to zero, reserved for future use.
+}AHardwareBuffer_Desc;
+
+struct HardwareBufferFunctions
+{
+    typedef int     (*allocateFunc)(const AHardwareBuffer_Desc* desc, AHardwareBuffer** outBuffer);
+    typedef void    (*describeFunc)(const AHardwareBuffer* buffer, AHardwareBuffer_Desc* outDesc);
+    typedef int     (*lockFunc)(AHardwareBuffer* buffer, uint64_t usage, int32_t fence, const ARect* rect, void ** outVirtAddress);
+    typedef int     (*unlockFunc)(AHardwareBuffer* buffer, int32_t* fence);
+    typedef void    (*acquireFunc)(AHardwareBuffer* buffer);
+    typedef void    (*releaseFunc)(AHardwareBuffer* buffer);
+
+    allocateFunc    allocate;
+    describeFunc    describe;
+    lockFunc        lock;
+    unlockFunc      unlock;
+    acquireFunc     acquire;
+    releaseFunc     release;
+
+    DynamicLibrary  library;
+    HardwareBufferFunctions(const char *fileName);
+};
+
+extern bool useGraphicBuffer;
+extern bool useHardwareBuffer;
+
+class HardwareBuffer
+{
+public:
+    HardwareBuffer(uint32_t width, uint32_t height, uint32_t format, uint32_t usage);
+    HardwareBuffer(void *ptr);
+    ~HardwareBuffer();
+
+    int allocate(const AHardwareBuffer_Desc* desc);
+    void describe(AHardwareBuffer_Desc* outDesc);
+    int lock(uint64_t usage, int32_t fence, const ARect* rect, void **outVirtAddress);
+    int unlock(int32_t* fence);
+    void acquire();
+    void release();
+
+    EGLClientBuffer eglGetNativeClientBufferANDROID(void *funcPtr);
+    void *getImpl() const;
+
+private:
+    HardwareBufferFunctions *functions;
+    AHardwareBuffer *ahb_impl = NULL;
+};
+#endif

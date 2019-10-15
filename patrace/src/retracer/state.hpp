@@ -7,6 +7,7 @@
 
 #include <common/trace_limits.hpp>
 #include <common/os_thread.hpp>
+#include <common/gl_utility.hpp>
 #include <retracer/value_map.hpp>
 #include <retracer/retrace_options.hpp> // enum Profile
 #include "dispatch/eglimports.hpp"
@@ -108,8 +109,8 @@ public:
     }
 
     virtual void swapBuffers(void) = 0;
-
     virtual void swapBuffersWithDamage(int *rects, int n_rects) = 0;
+    virtual void setDamage(int* array, int length) {}
 
     // default behavior is just to replay without stop
     virtual void processStepEvent();
@@ -251,6 +252,7 @@ public:
     OffscreenManager* _offscrMgr;
 #ifdef ANDROID
     std::vector<GraphicBuffer *> mGraphicBuffers;
+    std::vector<HardwareBuffer *> mHardwareBuffers;
 #else
     std::vector<egl_image_fixture *> mGraphicBuffers;
 #endif
@@ -532,7 +534,7 @@ public:
         }
     }
 
-    Context* getContext()
+    inline Context* getContext() const
     {
         return mpCurrentContext;
     }
@@ -551,7 +553,7 @@ public:
         }
     }
 
-    Drawable* getDrawable()
+    inline Drawable* getDrawable() const
     {
         return mpCurrentDrawable;
     }

@@ -132,14 +132,21 @@ bool SysfsCollector::collect(int64_t now)
 
     if (read(mFD, buf, sizeof(buf) - 1) == -1)
     {
-        perror("read");
+        DBG_LOG("%s: Failed to read %s: %s\n", mName.c_str(), mSysfsFile.c_str(), strerror(errno));
         return false;
     }
 
     if (lseek(mFD, 0, SEEK_SET) == -1)
     {
-        perror("lseek");
-        return false;
+        // workaround for weird hikey implementation
+        close(mFD);
+        mFD = open(mSysfsFile.c_str(), O_RDONLY);
+        if (mFD < 0)
+        {
+            DBG_LOG("%s: Failed to both seek and re-open %s: %s\n", mName.c_str(), mSysfsFile.c_str(), strerror(errno));
+            mFD = -1;
+            return false;
+        }
     }
 
     if (!parse(buf))

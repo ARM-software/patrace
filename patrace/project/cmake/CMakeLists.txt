@@ -6,7 +6,7 @@ set (PYTHON_EXECUTABLE python)
 message(STATUS "main ar: ${CMAKE_AR}")
 
 set (PATRACE_VERSION_MAJOR 2)
-set (PATRACE_VERSION_MINOR 14)
+set (PATRACE_VERSION_MINOR 15)
 set (PATRACE_VERSION_PATCH 0)
 
 IF(DEFINED ENV{SVN_REVISION})
@@ -174,7 +174,7 @@ add_subdirectory(newfastforwarder)
 
 if (NOT FF_ONLY)
     add_subdirectory(eglretrace)
-    add_subdirectory(${THIRDPARTY_INCLUDE_DIRS}/libcollector ${CMAKE_CURRENT_BINARY_DIR}/libcollector)
+    add_subdirectory(${THIRDPARTY_INCLUDE_DIRS}/libcollector ${CMAKE_BINARY_DIR}/libcollector)
 
     if (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT WINDOWSYSTEM MATCHES "udriver")
         add_subdirectory(egltrace)
@@ -256,7 +256,6 @@ endif ()
     if (WINDOWSYSTEM MATCHES "x11")
         add_subdirectory(pat_editor)
         add_subdirectory(pat_editor_gui)
-        add_subdirectory(traceview)
     endif ()
 endif ()
 

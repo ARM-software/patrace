@@ -115,8 +115,7 @@ LOCAL_C_INCLUDES        := \
                     $(LOCAL_PATH)/../../thirdparty/libcollector \
                     $(LOCAL_PATH)/../../thirdparty/libcollector/collectors \
                     $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty \
-                    $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty/jsoncpp \
-                    $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty/jsoncpp/json
+                    $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty/jsoncpp
 
 LOCAL_CFLAGS            := -O3 -frtti -D__arm__ -D__gnu_linux__ -pthread
 LOCAL_CPPFLAGS          += -std=c++11
@@ -138,7 +137,6 @@ LOCAL_C_INCLUDES := \
                     $(LOCAL_PATH)/../../thirdparty/libcollector/collectors \
                     $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty \
                     $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty/jsoncpp \
-                    $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty/jsoncpp/json \
                     $(LOCAL_PATH)/../..
 
 LOCAL_LDLIBS    := -L$(SYSROOT)/usr/lib -nodefaultlibs -lc -lm -ldl -llog -latomic

@@ -222,6 +222,16 @@ static ProgramState getProgramInfo(GLuint id)
     return p;
 }
 
+static int sum_map_range(std::map<int, int> &map)
+{
+    int val = 0;
+    for (const auto pair : map)
+    {
+        if (pair.first >= startframe && pair.first < lastframe) val += pair.second;
+    }
+    return val;
+}
+
 static int sum_map(std::map<int, int> &map)
 {
     return std::accumulate(map.cbegin(), map.cend(), 0, [](const int lhs, const std::pair<int ,int> &rhs) { return lhs + rhs.second; });
@@ -1707,10 +1717,8 @@ static Json::Value json_fb(const StateTracker::Context& c, int idx, int frame)
             attachment["height"] = tex.height;
             attachment["depth"] = tex.depth;
             attachment["internal_format"] = texEnum(tex.internal_format);
-            {
-                fb["attachments"].append(attachment);
-            }
         }
+        if (pair.second.index != UNBOUND) fb["attachments"].append(attachment);
     }
     return fb;
 }
@@ -1886,6 +1894,28 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
         v["draw_calls"] = sum_map(c.draw_calls_per_frame);
         v["flush_calls"] = sum_map(c.flush_calls_per_frame);
         v["finish_calls"] = sum_map(c.finish_calls_per_frame);
+        v["bound_ui8_indexed_draws"] = sum_map(c.bound_index_ui8_calls_per_frame);
+        v["bound_ui16_indexed_draws"] = sum_map(c.bound_index_ui16_calls_per_frame);
+        v["bound_ui32_indexed_draws"] = sum_map(c.bound_index_ui32_calls_per_frame);
+        v["client_ui8_indexed_draws"] = sum_map(c.client_index_ui8_calls_per_frame);
+        v["client_ui16_indexed_draws"] = sum_map(c.client_index_ui16_calls_per_frame);
+        v["client_ui32_indexed_draws"] = sum_map(c.client_index_ui32_calls_per_frame);
+        v["no_state_changed_draws"] = sum_map(c.no_state_changed_draws_per_frame);
+        v["no_state_or_uniform_changed_draws"] = sum_map(c.no_state_or_uniform_changed_draws_per_frame);
+        v["no_state_or_index_buffer_changed_draws"] = sum_map(c.no_state_or_index_buffer_changed_draws_per_frame);
+        v["framerange"] = Json::Value();
+        v["framerange"]["draw_calls"] = sum_map_range(c.draw_calls_per_frame);
+        v["framerange"]["flush_calls"] = sum_map_range(c.flush_calls_per_frame);
+        v["framerange"]["finish_calls"] = sum_map_range(c.finish_calls_per_frame);
+        v["framerange"]["bound_ui8_indexed_draws"] = sum_map_range(c.bound_index_ui8_calls_per_frame);
+        v["framerange"]["bound_ui16_indexed_draws"] = sum_map_range(c.bound_index_ui16_calls_per_frame);
+        v["framerange"]["bound_ui32_indexed_draws"] = sum_map_range(c.bound_index_ui32_calls_per_frame);
+        v["framerange"]["client_ui8_indexed_draws"] = sum_map_range(c.client_index_ui8_calls_per_frame);
+        v["framerange"]["client_ui16_indexed_draws"] = sum_map_range(c.client_index_ui16_calls_per_frame);
+        v["framerange"]["client_ui32_indexed_draws"] = sum_map_range(c.client_index_ui32_calls_per_frame);
+        v["framerange"]["no_state_changed_draws"] = sum_map_range(c.no_state_changed_draws_per_frame);
+        v["framerange"]["no_state_or_uniform_changed_draws"] = sum_map_range(c.no_state_or_uniform_changed_draws_per_frame);
+        v["framerange"]["no_state_or_index_buffer_changed_draws"] = sum_map_range(c.no_state_or_index_buffer_changed_draws_per_frame);
         v["transform_feedback_objects"] = (int)c.transform_feedbacks.all().size();
         v["attribute_buffers"] = Json::arrayValue;
         std::map<std::tuple<GLenum, GLint, GLsizei>, int> buffer_combos;

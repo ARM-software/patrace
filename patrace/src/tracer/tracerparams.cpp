@@ -28,12 +28,9 @@ TracerParams::TracerParams()
         DBG_LOG("EnableActiveAttribCheck: %s\n", EnableActiveAttribCheck ? "true" : "false");
         DBG_LOG("InteractiveIntercept: %s\n", InteractiveIntercept ? "true" : "false");
         DBG_LOG("FlushTraceFileEveryFrame: %s\n", FlushTraceFileEveryFrame ? "true" : "false");
-        if (StateDumpAfterSnapshot) {
-            DBG_LOG("StateDumpAfterSnapshot: true\n");
-        }
-        if (StateDumpAfterDrawCall) {
-            DBG_LOG("StateDumpAfterDrawCall: true\n");
-        }
+        if (DisableErrorReporting) DBG_LOG("DisableErrorReporting: true\n");
+        if (StateDumpAfterSnapshot) DBG_LOG("StateDumpAfterSnapshot: true\n");
+        if (StateDumpAfterDrawCall) DBG_LOG("StateDumpAfterDrawCall: true\n");
         if (FilterSupportedExtension) {
             DBG_LOG("%sFilterSupportedExtension true%s\n",redOnBlack, resetColor);
             for (unsigned int i = 0; i < SupportedExtensions.size(); ++i) {
@@ -119,6 +116,8 @@ void TracerParams::LoadParams()
             FlushTraceFileEveryFrame = (strParamValue.compare("true") == 0);
         } else if (strParamName.compare("StateDumpAfterSnapshot") == 0) {
             StateDumpAfterSnapshot = (strParamValue.compare("true") == 0);
+        } else if (strParamName.compare("DisableErrorReporting") == 0) {
+            DisableErrorReporting = (strParamValue.compare("true") == 0);
         } else if (strParamName.compare("StateDumpAfterDrawCall") == 0) {
             StateDumpAfterDrawCall = (strParamValue.compare("true") == 0);
             stateLoggingEnabled = StateDumpAfterDrawCall;

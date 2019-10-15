@@ -875,6 +875,6 @@ unsigned int remap_handle(unsigned int idx, unsigned int name)
     }
     else
     {
-        return name + idx*THREAD_REMAP_BASE;
+        return (name == 0) ? 0 : (name + idx*THREAD_REMAP_BASE);
     }
 }

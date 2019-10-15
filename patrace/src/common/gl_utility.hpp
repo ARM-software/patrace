@@ -6,6 +6,8 @@
 // This file contains functions that call underscored GL functions, and
 // useful GL memory structure definitions.
 
+#define BUFFER_OFFSET(i) ((char *)NULL + (i))
+
 struct __attribute__((packed)) IndirectCompute
 {
     GLuint x, y,z;

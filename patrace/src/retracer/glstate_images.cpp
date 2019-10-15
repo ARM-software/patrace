@@ -206,6 +206,11 @@ void getTexRenderBufInfo(GLenum attachment, GLenum &readTexFormat, GLenum &readT
             readTexType = GL_UNSIGNED_INT_2_10_10_10_REV;
             channel = 4;        // 32bits, need a 4-channel png file to store it
         }
+        else if (redSize == 8 && greenSize == 8 && blueSize == 8 && alphaSize == 0) // GL_RGB8
+        {
+            readTexType = GL_RGB;
+            channel = 3;
+        }
         else if (redSize == 4 && greenSize == 4 && blueSize == 4 && alphaSize == 4) // GL_RGBA4
         {
             readTexType = GL_UNSIGNED_SHORT_4_4_4_4;
@@ -275,6 +280,14 @@ void getTexRenderBufInfo(GLenum attachment, GLenum &readTexFormat, GLenum &readT
             isDepth = true;
             bytesPerPixel = 4;
             channel = 4;        // 32bits, need a 4-channel png file to store it
+        }
+        else if (internalFormat == GL_DEPTH_COMPONENT16)
+        {
+            readTexFormat = GL_DEPTH_COMPONENT;
+            readTexType = GL_UNSIGNED_INT;
+            isDepth = true;
+            bytesPerPixel = 4;
+            channel = 4;
         }
         else
         {

@@ -434,4 +434,7 @@ eglapi.addFunctions([
 
     # Fake call to store extra window information
     GlFunction(EGLSurface, "eglCreateWindowSurface2", [(EGLDisplay, "dpy"), (EGLConfig, "config"), (EGLNativeWindowType, "win"), (EGLAttribList, "attrib_list"), (EGLint, "x"), (EGLint, "y"), (EGLint, "width"), (EGLint, "height")]),
+
+    # EGL_KHR_partial_update
+    GlFunction(EGLBoolean, "eglSetDamageRegionKHR", [(EGLDisplay, "dpy"), (EGLSurface, "surface"), (EGLRectList, "rects"), (EGLint, "n_rects")]),
 ])

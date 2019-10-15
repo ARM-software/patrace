@@ -1,7 +1,8 @@
 #ifndef _TRACER_OUT_FILE_HPP_
 #define _TRACER_OUT_FILE_HPP_
 
-#include <fstream>
+#include <stdio.h>
+#include <errno.h>
 #include <string>
 
 #include <common/file_format.hpp>
@@ -57,13 +58,30 @@ private:
         return mCacheLen - UsedSize();
     }
 
+    inline void filewrite(const char* ptr, size_t size)
+    {
+        size_t written = 0;
+        int err = 0;
+        do {
+            written = fwrite(ptr, 1, size, mStream);
+            ptr += written;
+            size -= written;
+            err = ferror(mStream);
+        } while (size > 0 && (err == EAGAIN || err == EWOULDBLOCK || err == EINTR));
+        if (err)
+        {
+            DBG_LOG("Failed to write: %s\n", strerror(err));
+            os::abort();
+        }
+    }
+
     void WriteCompressedLength(unsigned int len) {
         unsigned char buf[4];
         buf[0] = len & 0xff; len >>= 8;
         buf[1] = len & 0xff; len >>= 8;
         buf[2] = len & 0xff; len >>= 8;
         buf[3] = len & 0xff; len >>= 8;
-        mStream.write((const char *)buf, sizeof(buf));
+        filewrite((char*)buf, sizeof(buf));
     }
 
     void FlushHeader();
@@ -73,14 +91,13 @@ private:
     os::String AutogenTraceFileName();
 
     bool                mIsOpen;
-    std::fstream        mStream;
+    FILE*               mStream = nullptr;
 
     char*               mCache;
     int                 mCacheLen;
     char*               mCacheP;
     char*               mCompressedCache;
     int                 mCompressedCacheLen;
-
 
     std::string         mFileName;
 };

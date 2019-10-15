@@ -71,15 +71,6 @@
                             android:text="multiple"
                             android:checked="false"
                             android:textSize="18sp"/>
-                        <CheckBox
-                            android:layout_marginLeft="5dp"
-                            android:layout_marginRight="5dp"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:id="@+id/option_enable_insequence"
-                            android:text="Insequence"
-                            android:checked="false"
-                            android:textSize="18sp"/>
                     <TextView
                     android:layout_marginLeft="5dp"
                     android:layout_marginRight="5dp"

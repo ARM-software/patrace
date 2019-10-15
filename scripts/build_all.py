@@ -1,52 +1,4 @@
 #!/usr/bin/env python
-'''
-This script is used to build PATrace under different platforms.
-To use this script, please create a empty directory and run it with the path to the root source directory of the content_capturing.
-The script will create two directories, 'build' and 'install'.
-The new-created directory 'build' is the place all 'cmake' & 'make' commands happen.
-While the directory 'install' is used to store all built binary files. The structure of 'install' directory is like the following:
-    patrace
-    ----fbdev
-    --------debug
-    ------------bin
-    ------------log.txt
-    --------release
-    ------------bin
-    ------------log.txt
-    ----x11_x64
-    --------debug
-    ------------bin
-    ------------tools
-    ------------python_tools
-    ------------log.txt
-    --------release
-    ------------bin
-    ------------tools
-    ------------python_tools
-    ------------log.txt
-    ----x11_x32
-    --------debug
-    ------------bin
-    ------------log.txt
-    --------release
-    ------------bin
-    ------------log.txt
-    ----android
-    --------release
-    ------------egltrace
-    ------------eglretrace
-    ------------fakedriver
-    ------------log.txt
-    ----udriver_x64
-    --------debug
-    ------------bin
-    ------------log.txt
-    --------release
-    ------------bin
-    ------------log.txt
-
-If you get any errors during the compilation, you will get some error messages in the shell. You could refer to the log files under the install directory for more details.
-'''
 
 import sys
 import os
@@ -85,7 +37,6 @@ linux_platforms = [
 ]
 
 all_platforms = linux_platforms + [
-    #'win',
     'android',
 ]
 
@@ -516,30 +467,3 @@ set and pointed to the directory where ndk-build resides."""
                 )
 
     return SUCCESS
-
-
-def main():
-    # Parse options
-    parser = OptionParser()
-
-    (options, args) = parser.parse_args()
-
-    # Ser directory variables
-    script_dir = os.path.dirname(os.path.realpath(__file__))
-    src_path = os.path.join(script_dir, '..')
-
-    build_base_dir = os.path.join(script_dir, '..', 'builds')
-    if not os.path.exists(build_base_dir):
-        os.mkdir(build_base_dir)
-
-    install_base_dir = os.path.join(script_dir, '..', 'install')
-    if not os.path.exists(install_base_dir):
-        os.mkdir(install_base_dir)
-
-    # Build
-    build_cmake(src_path, build_base_dir, install_base_dir)
-    build_android(src_path, ['patrace'], install_base_dir)
-
-
-if __name__ == '__main__':
-    main()
