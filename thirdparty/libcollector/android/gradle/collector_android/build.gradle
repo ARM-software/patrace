@@ -1,0 +1,90 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 28
+
+    defaultConfig {
+        applicationId "org.arm.collector_android"
+        minSdkVersion 15
+        targetSdkVersion 28
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++11 -frtti -fexceptions"
+                cFlags "-O3 -frtti -D__arm__ -D__gnu_linux__"
+            }
+        }
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86"
+        }
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("android_assets/release-key.jks")
+            storePassword "painfra"
+            keyAlias "painfra"
+            keyPassword "painfra"
+        }
+        debug {
+            storeFile file("android_assets/release-key.jks")
+            storePassword "painfra"
+            keyAlias "painfra"
+            keyPassword "painfra"
+        }
+    }
+
+    buildTypes {
+        debug {
+            externalNativeBuild {
+                cmake {
+                    arguments "-DANDROID_TOOLCHAIN=clang",
+                            "-DANDROID_PLATFORM=android-28",
+                            "-DCMAKE_BUILD_TYPE=Debug"
+                }
+            }
+            jniDebuggable true
+        }
+        release {
+            externalNativeBuild {
+                cmake {
+                    arguments "-DANDROID_TOOLCHAIN=clang",
+                            "-DANDROID_PLATFORM=android-28",
+                            "-DCMAKE_BUILD_TYPE=Release"
+                }
+            }
+            debuggable true
+            signingConfig signingConfigs.debug
+            jniDebuggable true
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'android_assets/AndroidManifest.xml'
+            resources.srcDirs = ['android_assets/res']
+            res.srcDirs = ['android_assets/res']
+            assets.srcDirs = ['android_assets/assets']
+            jniLibs {
+                  srcDir "${System.env.ANDROID_NDK}/sources/third_party/vulkan/src/build-android/jniLibs"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt"
+        }
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.android.support:appcompat-v7:28.0.0-rc01'
+    implementation 'com.android.support.constraint:constraint-layout:1.1.2'
+    testImplementation 'junit:junit:4.12'
+    androidTestImplementation 'com.android.support.test:runner:1.0.2'
+    androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
+}
