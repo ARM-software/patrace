@@ -15,7 +15,7 @@ public:
     ~GlwsEgl();
     virtual void Init(Profile profile = PROFILE_ES2);
     virtual void Cleanup(void);
-    virtual Drawable* CreateDrawable(int width, int height, int win);
+    virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList);
     virtual Drawable* CreatePbufferDrawable(EGLint const* attrib_list);
     virtual Context* CreateContext(Context *shareContext, Profile profile);
     virtual bool MakeCurrent(Drawable *drawable, Context *context);
@@ -52,7 +52,7 @@ public:
 class EglDrawable : public Drawable
 {
 public:
-    EglDrawable(int w, int h, EGLDisplay eglDisplay, EGLConfig eglConfig, NativeWindow* nativeWindow);
+    EglDrawable(int w, int h, EGLDisplay eglDisplay, EGLConfig eglConfig, NativeWindow* nativeWindow, EGLint const* attribList);
     virtual ~EglDrawable();
 
     void resize(int w, int h);
@@ -63,6 +63,7 @@ public:
     EGLSurface getSurface() const { return mSurface; }
 
     virtual void setDamage(int* array, int length);
+    virtual void querySurface(int attribute, int* value);
 
 private:
     EGLSurface _createWindowSurface();
@@ -71,6 +72,7 @@ private:
     EGLConfig mEglConfig;
     NativeWindow* mNativeWindow;
     EGLSurface mSurface;
+    std::vector<int> mAttribList;
 };
 
 class EglPbufferDrawable : public PbufferDrawable

@@ -76,18 +76,16 @@ static void get_strides_heights(const mali_tpi_egl_pixmap_format format,
     }
 }
 
-#ifdef ENABLE_FBDEV
 struct dma_buf_te_ioctl_alloc
 {
     uint64_t size; /* size of buffer to allocate, in pages */
 };
-#endif
 
-static int alloc_memory(egl_image_fixture *const fix, const size_t pages)
+static int alloc_memory(egl_image_fixture *const fix, const size_t pages, bool dmaSharedMemory)
 {
     int fd;
 
-#ifdef ENABLE_FBDEV
+    if (!dmaSharedMemory)
     {
         dma_buf_te_ioctl_alloc data;
         data.size = pages;
@@ -95,7 +93,7 @@ static int alloc_memory(egl_image_fixture *const fix, const size_t pages)
 
         return fd;
     }
-#else //On model or X86 where shared memory is created
+    else // On model or x86 where shared memory is created
     {
         char ufname[1024];
         snprintf(ufname, sizeof(ufname), "/dmabuf_egl_%lu", (unsigned long int) getpid());
@@ -112,11 +110,10 @@ static int alloc_memory(egl_image_fixture *const fix, const size_t pages)
         }
         return fd;
     }
-#endif
 }
 
 static int alloc_and_map_fixture_memory_buf(egl_image_fixture *const fix,
-        const size_t size, const unsigned index)
+        const size_t size, bool dmaSharedMemory, const unsigned index)
 {
     unsigned pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
     int fd;
@@ -124,7 +121,7 @@ static int alloc_and_map_fixture_memory_buf(egl_image_fixture *const fix,
 
     fix->memory_sizes[index] = pages * PAGE_SIZE;
 
-    fd = alloc_memory(fix, pages);
+    fd = alloc_memory(fix, pages, dmaSharedMemory);
     if (fd < 0)
     {
         DBG_LOG("alloc_memory failed\n");
@@ -183,9 +180,9 @@ void unmap_fixture_memory_bufs(egl_image_fixture *const fix)
     }
 }
 
-static int memory_init(egl_image_fixture *const fix)
+static int memory_init(egl_image_fixture *const fix, bool dmaSharedMemory)
 {
-#ifdef ENABLE_FBDEV
+    if (!dmaSharedMemory)
     {
         /* We store the dma_bufs allocated in the fixture so they can be cleaned-up.
          * Ensure there are no dma_bufs already there that would be leaked. */
@@ -196,7 +193,6 @@ static int memory_init(egl_image_fixture *const fix)
             return -1;
         }
     }
-#endif
     return 0;
 }
 
@@ -208,24 +204,25 @@ int fill_image_attributes(egl_image_fixture *const fix,
                           uint32_t fourccformat,
                           const GLint width,
                           const GLint height,
+                          bool dmaSharedMemory,
                           int &attrib_size,
                           EGLint *attribs)
 {
-    if (-1 == memory_init(fix))
+    if (-1 == memory_init(fix, dmaSharedMemory))
     {
         return -1;
     }
 
     get_strides_heights(format, width, height, strides, heights);
 
-    if (alloc_and_map_fixture_memory_buf(fix, strides[0]*heights[0], 0))
+    if (alloc_and_map_fixture_memory_buf(fix, strides[0]*heights[0], dmaSharedMemory, 0))
     {
         DBG_LOG("alloc_and_map_fixture_memory_buf failed for dma_buf[0]\n");
         goto err_dma_buf;
     }
     if (strides[1] && heights[1])
     {
-        if (alloc_and_map_fixture_memory_buf(fix, strides[1]*heights[1], 1))
+        if (alloc_and_map_fixture_memory_buf(fix, strides[1]*heights[1], dmaSharedMemory, 1))
         {
             DBG_LOG("alloc_and_map_fixture_memory_buf failed for dma_buf[1]\n");
             goto err_dma_buf;
@@ -234,7 +231,7 @@ int fill_image_attributes(egl_image_fixture *const fix,
 
     if (strides[2] && heights[2])
     {
-        if (alloc_and_map_fixture_memory_buf(fix, strides[2]*heights[2], 2))
+        if (alloc_and_map_fixture_memory_buf(fix, strides[2]*heights[2], dmaSharedMemory, 2))
         {
             DBG_LOG("alloc_and_map_fixture_memory_buf failed for dma_buf[2]\n");
             goto err_dma_buf;

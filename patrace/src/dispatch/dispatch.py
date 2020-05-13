@@ -36,6 +36,17 @@ import specs.stdapi as stdapi
 
 # Map commonly used extension functions to core functions.
 synonyms = {
+    'glGenFramebuffersOES'  : 'glGenFramebuffers',
+    'glGenRenderbuffersOES' : 'glGenRenderbuffers',
+    'glBindFramebufferOES'  : 'glBindFramebuffer',
+    'glBindRenderbufferOES' : 'glBindRenderbuffer',
+    'glDeleteFramebuffersOES'   : 'glDeleteFramebuffers',
+    'glDeleteRenderbuffersOES'  : 'glDeleteRenderbuffers',
+    'glFramebufferTexture2DOES' : 'glFramebufferTexture2D',
+    'glRenderbufferStorageOES'  : 'glRenderbufferStorage',
+    'glFramebufferRenderbufferOES' : 'glFramebufferRenderbuffer',
+    'glCheckFramebufferStatusOES'  : 'glCheckFramebufferStatus',
+    'glRenderbufferStorageMultisampleEXT' : 'glRenderbufferStorageMultisample',
     'glTexSubImage1DOES' : 'glTexSubImage1D',
     'glTexSubImage2DOES' : 'glTexSubImage2D',
     'glTexSubImage3DOES' : 'glTexSubImage3D',

@@ -36,12 +36,12 @@ private:
 };
 
 
-Drawable* GlwsEglUdriver::CreateDrawable(int width, int height, int /*win*/)
+Drawable* GlwsEglUdriver::CreateDrawable(int width, int height, int /*win*/, EGLint const* attribList)
 {
     Drawable* handler = NULL;
     NativeWindowMutex.lock();
     gWinNameToNativeWindowMap[0] = new UdriverWindow(width, height, "0");
-    handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, gWinNameToNativeWindowMap[0]);
+    handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, gWinNameToNativeWindowMap[0], attribList);
     NativeWindowMutex.unlock();
     return handler;
 }

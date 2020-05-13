@@ -11,7 +11,7 @@ public:
     ~GlwsIos();
     virtual void Init(Profile profile = PROFILE_ES2);
     virtual void Cleanup(void);
-    virtual Drawable* CreateDrawable(int width, int height, int win);
+    virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList);
     virtual Drawable* CreatePbufferDrawable(EGLint const* attrib_list);
     virtual Context* CreateContext(Context *shareContext, Profile profile);
     virtual bool MakeCurrent(Drawable *drawable, Context *context);

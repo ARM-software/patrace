@@ -201,7 +201,7 @@ public:
     void CheckGlError();
 
     void reportAndAbort(const char *format, ...) NORETURN;
-    void saveResult(int64_t endTime, float duration);
+    void saveResult();
     bool addResultInformation();
 
     void OnFrameComplete();
@@ -276,6 +276,9 @@ public:
     Collection*         mCollectors;
 
     bool mMosaicNeedToBeFlushed = false;
+
+    bool delayedPerfmonInit = false;
+    void perfMonInit();
 
 private:
     bool loadRetraceOptionsByThreadId(int tid);

@@ -5,6 +5,24 @@
 #include "retracer/retrace_api.hpp"
 #include "tool/parse_interface.h"
 
+#include <unordered_set>
+#include <unordered_map>
+
+typedef std::unordered_map<std::string, std::string> cache_type;
+
+struct RenderpassJson
+{
+    Json::Value data; // final output
+    std::string filename;
+    std::string dirname;
+    std::unordered_set<int> stored_programs;
+    bool started = false;
+
+    cache_type shader_cache;
+    cache_type index_cache;
+    cache_type vertex_cache;
+};
+
 class ParseInterfaceRetracing : public ParseInterfaceBase
 {
 public:
@@ -18,7 +36,11 @@ public:
 
     int64_t getCpuCycles() { return mCpuCycles; }
 
+    virtual void completed_drawcall(int frame, const DrawParams& params, const StateTracker::RenderPass &rp, int fb_index);
+    virtual void completed_renderpass(int index, const StateTracker::RenderPass &rp);
+
 private:
+    RenderpassJson mRenderpass;
     int64_t mCpuCycles = 0;
     common::CallTM* mCall;
 };

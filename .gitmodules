@@ -7,3 +7,6 @@
 [submodule "thirdparty/opencl-headers"]
 	path = thirdparty/opencl-headers
 	url = https://github.com/KhronosGroup/OpenCL-Headers.git
+[submodule "thirdparty/hwcpipe"]
+	path = thirdparty/hwcpipe
+	url = https://github.com/ARM-software/HWCPipe.git

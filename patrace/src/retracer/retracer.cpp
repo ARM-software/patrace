@@ -9,6 +9,7 @@
 #include "retracer/forceoffscreen/offscrmgr.h"
 #include "retracer/glws.hpp"
 #include "retracer/cmd_options.hpp"
+#include "retracer/config.hpp"
 
 #include "libcollector/interface.hpp"
 
@@ -21,6 +22,8 @@
 #include "common/os_string.hpp"
 #include "common/pa_exception.h"
 #include "common/gl_extension_supported.hpp"
+
+#include "hwcpipe/hwcpipe.h"
 
 #include "jsoncpp/include/json/writer.h"
 #include "jsoncpp/include/json/reader.h"
@@ -66,6 +69,114 @@ static inline uint64_t gettime()
     return ((uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec);
 }
 
+/// -- Mali HWCPipe support
+
+struct mali_hwc
+{
+	Json::Value::Int64 cpu_cycles;
+	Json::Value::Int64 cpu_instructions;
+	Json::Value::Int64 gpu_cycles;
+	Json::Value::Int64 fragment_cycles;
+	Json::Value::Int64 vertex_cycles;
+	Json::Value::Int64 read_bw;
+	Json::Value::Int64 write_bw;
+	Json::Value::Int64 vertex_jobs;
+	Json::Value::Int64 fragment_jobs;
+} mali_samples;
+static hwcpipe::HWCPipe *hwcpipe = nullptr;
+static bool is_mali = false;
+static bool mali_perf_started = false;
+
+static void mali_perf_init(const char *vendor)
+{
+    mali_samples = {};
+    if (strncasecmp(vendor, "arm", 3) == 0) // was "ARM" but name should now be "Arm"
+    {
+        is_mali = true;
+    }
+    hwcpipe::CpuCounterSet cpu{
+        hwcpipe::CpuCounter::Cycles,
+        hwcpipe::CpuCounter::Instructions,
+    };
+    hwcpipe::GpuCounterSet mali_gpu{
+        hwcpipe::GpuCounter::GpuCycles,
+        hwcpipe::GpuCounter::VertexComputeCycles,
+        hwcpipe::GpuCounter::FragmentCycles,
+        hwcpipe::GpuCounter::Pixels,
+        hwcpipe::GpuCounter::ExternalMemoryReadBytes,
+        hwcpipe::GpuCounter::ExternalMemoryWriteBytes,
+        hwcpipe::GpuCounter::VertexComputeJobs,
+        hwcpipe::GpuCounter::FragmentJobs,
+    };
+    if (is_mali)
+    {
+        hwcpipe = new hwcpipe::HWCPipe(cpu, mali_gpu);
+    }
+    else
+    {
+        hwcpipe = new hwcpipe::HWCPipe(cpu, hwcpipe::GpuCounterSet{});
+    }
+}
+
+static void mali_perf_run()
+{
+    hwcpipe->run();
+    mali_perf_started = true;
+}
+
+static void mali_perf_sample()
+{
+    if (!mali_perf_started) return;
+    const hwcpipe::Measurements& m = hwcpipe->sample();
+    if (m.cpu)
+    {
+        for (const auto& pair : *m.cpu)
+        {
+            const Json::Value::Int64 value = pair.second.get<int64_t>();
+            if (pair.first == hwcpipe::CpuCounter::Cycles) mali_samples.cpu_cycles += value;
+            else if (pair.first == hwcpipe::CpuCounter::Instructions) mali_samples.cpu_instructions += value;
+        }
+    }
+    if (m.gpu)
+    {
+        for (const auto& pair : *m.gpu)
+        {
+            const Json::Value::Int64 value = pair.second.get<int64_t>();
+            switch (pair.first)
+            {
+            case hwcpipe::GpuCounter::GpuCycles: mali_samples.gpu_cycles += value; break;
+            case hwcpipe::GpuCounter::FragmentCycles: mali_samples.fragment_cycles += value; break;
+            case hwcpipe::GpuCounter::VertexComputeCycles : mali_samples.vertex_cycles += value; break;
+            case hwcpipe::GpuCounter::ExternalMemoryReadBytes : mali_samples.read_bw += value; break;
+            case hwcpipe::GpuCounter::ExternalMemoryWriteBytes : mali_samples.write_bw += value; break;
+            case hwcpipe::GpuCounter::VertexComputeJobs : mali_samples.vertex_jobs += value; break;
+            case hwcpipe::GpuCounter::FragmentJobs : mali_samples.fragment_jobs += value; break;
+            default: break; // ignore
+            }
+        }
+    }
+}
+
+static void mali_perf_end(Json::Value& v)
+{
+    if (mali_perf_started)
+    {
+        hwcpipe->stop();
+    }
+    mali_perf_started = false;
+    delete hwcpipe;
+    hwcpipe = nullptr;
+    if (mali_samples.cpu_cycles) v["cpu_cycles"] = mali_samples.cpu_cycles;
+    if (mali_samples.cpu_instructions) v["cpu_instructions"] = mali_samples.cpu_instructions;
+    if (mali_samples.gpu_cycles) v["gpu_active"] = mali_samples.gpu_cycles;
+    if (mali_samples.fragment_cycles) v["fragment_active"] = mali_samples.fragment_cycles;
+    if (mali_samples.vertex_cycles) v["vertex_active"] = mali_samples.vertex_cycles;
+    if (mali_samples.read_bw) v["read_bytes"] = mali_samples.read_bw;
+    if (mali_samples.write_bw) v["write_bytes"] = mali_samples.write_bw;
+    if (mali_samples.vertex_jobs) v["vertex_jobs"] = mali_samples.vertex_jobs;
+    if (mali_samples.fragment_jobs) v["fragment_jobs"] = mali_samples.fragment_jobs;
+}
+
 /// --- AMD performance counter extension support
 
 #define GL_COUNTER_TYPE_AMD               0x8BC0
@@ -80,16 +191,21 @@ static GLuint pm_monitor = 0;
 static bool amd_perf_activated = false;
 #ifdef ANDROID
 const char *perfmon_filename = "/sdcard/perfmon.csv";
+const char *perfmon_counters = "/sdcard/perfmon_counters.csv";
+const char *perfmon_settings = "/sdcard/perfmon.conf";
 #else
 const char *perfmon_filename = "perfmon.csv";
+const char *perfmon_counters = "perfmon_counters.csv";
+const char *perfmon_settings = "perfmon.conf";
 #endif
 
 static void perfmon_list()
 {
+    (void)_glGetError(); // reset state
     GLint numGroups = 0;
     _glGetPerfMonitorGroupsAMD(&numGroups, 0, NULL);
     std::vector<GLuint> groups(numGroups);
-    FILE* pm_fp = fopen("/sdcard/perfmon_counters.csv", "w");
+    FILE* pm_fp = fopen(perfmon_counters, "w");
     if (!pm_fp)
     {
         DBG_LOG("Could not open file for writing perfmon counter list: %s\n", strerror(errno));
@@ -97,27 +213,31 @@ static void perfmon_list()
     }
     fprintf(pm_fp, "Group Idx,Group ID,Counter Idx,CounterID,Group Name,Counter Name,Type\n");
     _glGetPerfMonitorGroupsAMD(NULL, numGroups, groups.data());
-    for (int i = 0 ; i < numGroups; i++)
+    bool ok = (_glGetError() == GL_NO_ERROR);
+    if (!ok) { DBG_LOG("list: Failed to enumerate groups\n"); }
+    for (int i = 0 ; ok && i < numGroups; i++)
     {
         GLint numCounters = 0;
         GLint maxActiveCounters = 0;
         char curGroupName[256];
         memset(curGroupName, 0, sizeof(curGroupName));
         _glGetPerfMonitorGroupStringAMD(groups[i], 256, NULL, curGroupName);
+        ok = (_glGetError() == GL_NO_ERROR);
+        if (!ok) { DBG_LOG("list: glGetPerfMonitorGroupStringAMD failed\n"); continue; }
         _glGetPerfMonitorCountersAMD(groups[i], &numCounters, &maxActiveCounters, 0, NULL);
-        bool ok = (_glGetError() == GL_NO_ERROR);
-        if (!ok) { DBG_LOG("list: glGetPerfMonitorCountersAMD failed\n"); continue; }
+        ok = (_glGetError() == GL_NO_ERROR);
+        if (!ok) { DBG_LOG("list: glGetPerfMonitorCountersAMD for %s get count failed\n", curGroupName); continue; }
         std::vector<GLuint> counterList(numCounters);
         _glGetPerfMonitorCountersAMD(groups[i], NULL, NULL, numCounters, counterList.data());
         ok = (_glGetError() == GL_NO_ERROR);
-        if (!ok) { DBG_LOG("list: glGetPerfMonitorCountersAMD (2) failed\n"); continue; }
+        if (!ok) { DBG_LOG("list: glGetPerfMonitorCountersAMD for %s get data failed\n", curGroupName); continue; }
         for (int j = 0; j < numCounters; j++)
         {
             char curCounterName[256];
             memset(curCounterName, 0, sizeof(curCounterName));
             _glGetPerfMonitorCounterStringAMD(groups[i], counterList[j], 256, NULL, curCounterName);
-            bool ok = (_glGetError() == GL_NO_ERROR);
-            if (!ok) { DBG_LOG("list: glGetPerfMonitorCounterStringAMD failed\n"); continue; }
+            ok = (_glGetError() == GL_NO_ERROR);
+            if (!ok) { DBG_LOG("list: glGetPerfMonitorCounterStringAMD failed\n"); break; }
             GLenum type;
             _glGetPerfMonitorCounterInfoAMD(groups[i], counterList[j], GL_COUNTER_TYPE_AMD, &type);
             fprintf(pm_fp, "%d,%u,%d,%u,%s,%s,0x%04x\n", i, groups[i], j, counterList[j], curGroupName, curCounterName, type);
@@ -126,18 +246,17 @@ static void perfmon_list()
     fclose(pm_fp);
 }
 
-static void perfmon_init()
+static void amd_perf_init(const char *vendor)
 {
     unsigned pm_current_group = 0;
     std::vector<GLuint> perfset;
     amd_perf_activated = false;
-    const char *vendor = (const char *)_glGetString(GL_VENDOR);
     if (!isGlesExtensionSupported("GL_AMD_performance_monitor") && strncasecmp(vendor, "qualcomm", 8) != 0)
     {
         return;
     }
     perfmon_list();
-    FILE* pm_fp = fopen("/sdcard/perfmon.conf", "r");
+    FILE* pm_fp = fopen(perfmon_settings, "r");
     if (pm_fp)
     {
         int r = fscanf(pm_fp, "%u\n", &pm_current_group);
@@ -228,18 +347,27 @@ static void perfmon_init()
     }
     fprintf(pm_fp, "\n");
     fclose(pm_fp);
+    amd_perf_activated = true;
+}
+
+static void amd_perf_run()
+{
+    if (!amd_perf_activated)
+    {
+        return;
+    }
     _glBeginPerfMonitorAMD(pm_monitor);
-    ok = (_glGetError() == GL_NO_ERROR);
+    bool ok = (_glGetError() == GL_NO_ERROR);
     if (!ok)
     {
         DBG_LOG("perfmon : FAILED at begin\n");
         _glDeletePerfMonitorsAMD(1, &pm_monitor);
+        amd_perf_activated = false;
         return;
     }
-    amd_perf_activated = true;
 }
 
-static void perfmon_end()
+static void amd_perf_end(Json::Value& v)
 {
     if (!amd_perf_activated)
     {
@@ -269,28 +397,56 @@ static void perfmon_end()
         repeat++;
     }
     while (dataAvail == GL_FALSE && repeat < 20);
+    if (!dataAvail) DBG_LOG("Failed to find any perfmon data!\n");
     GLsizei written = 0;
     GLuint resultSize = 0;
     _glGetPerfMonitorCounterDataAMD(pm_monitor, GL_PERFMON_RESULT_SIZE_AMD, sizeof(GLuint), &resultSize, NULL);
+    ok = (_glGetError() == GL_NO_ERROR);
+    if (!ok) DBG_LOG("perfmon end : Could not fetch data size\n");
     std::vector<GLuint> result(resultSize / sizeof(GLuint));
     _glGetPerfMonitorCounterDataAMD(pm_monitor, GL_PERFMON_RESULT_AMD, resultSize, (GLuint*)result.data(), &written);
-    fprintf(pm_fp, "run"); // TBD trace file name here
+    ok = (_glGetError() == GL_NO_ERROR);
+    if (!ok) DBG_LOG("perfmon end : Could not fetch data itself\n");
+    fprintf(pm_fp, "run");
     GLsizei wordCount = 0;
     while (wordCount * (GLsizei)sizeof(GLuint) < written)
     {
         GLuint groupId = result[wordCount];
         GLuint counterId = result[wordCount + 1];
-        (void)groupId;
-        (void)counterId;
         uint64_t counterResult = 0;
         memcpy(&counterResult, &result[wordCount + 2], sizeof(uint64_t));
         if (pm_fp) fprintf(pm_fp, ",%llu", (unsigned long long)counterResult);
+        if (groupId == 0 && counterId == 2) v["gpu_active"] = (Json::Value::Int64)counterResult;
         wordCount += 4;
     }
     fprintf(pm_fp, "\n");
     fclose(pm_fp);
     _glDeletePerfMonitorsAMD(1, &pm_monitor);
     amd_perf_activated = false;
+    DBG_LOG("Perfmon data successfully written (%d words, %u result size)\n", (int)wordCount, (unsigned)resultSize);
+}
+
+/// --- Performance monitoring
+
+static void perfmon_init()
+{
+    const char *vendor = (const char *)_glGetString(GL_VENDOR);
+    mali_perf_init(vendor);
+    amd_perf_init(vendor);
+
+    mali_perf_run();
+    amd_perf_run();
+}
+
+static void perfmon_frame()
+{
+    mali_perf_sample();
+}
+
+static void perfmon_end(Json::Value& v)
+{
+    mali_perf_end(v);
+    amd_perf_end(v);
 }
 
 /// ---
@@ -820,11 +976,17 @@ bool Retracer::overrideWithCmdOptions( const CmdOptions &cmdOptions )
         mOptions.mFlushWork = true;
     }
 
+    if (cmdOptions.perfmon)
+    {
+        mOptions.mPerfmon = true;
+    }
+
     if (cmdOptions.collectors || cmdOptions.collectors_streamline)
     {
         gRetracer.mCollectors = new Collection(Json::Value());
         std::vector<std::string> collectors = gRetracer.mCollectors->available();
         std::vector<std::string> filtered;
+        gRetracer.mCollectors->setDebug(gRetracer.mOptions.mDebug);
         for (const std::string& s : collectors)
         {
             if ((s == "rusage" || s == "gpufreq" || s == "procfs" || s == "cpufreq" || s == "perf") && cmdOptions.collectors)
@@ -943,6 +1105,10 @@ bool Retracer::overrideWithCmdOptions( const CmdOptions &cmdOptions )
     if (cmdOptions.skipCallSet != 0x0) {
         delete mOptions.mSkipCallSet;
         mOptions.mSkipCallSet = cmdOptions.skipCallSet;
+    }
+
+    if (cmdOptions.dmaSharedMemory) {
+        mOptions.dmaSharedMemory = true;
     }
 
     return true;
@@ -1237,7 +1403,7 @@ void Retracer::TakeSnapshot(unsigned int callNo, unsigned int frameNo, const cha
 #endif
             if (gRetracer.mOptions.mForceOffscreen) {
                 _glBindFramebuffer(GL_DRAW_FRAMEBUFFER, ON_SCREEN_FBO);
-                gRetracer.mpOffscrMgr->BindOffscreenReadFBO();
+                _glBindFramebuffer(GL_READ_FRAMEBUFFER, drawFboId);
             }
             else {
                 _glBindFramebuffer(GL_READ_FRAMEBUFFER, drawFboId);
@@ -1574,14 +1740,15 @@ void forceRenderMosaicToScreen()
 
             if (!gRetracer.mState.GetDrawable(last_non_zero_draw)) {
                 int win = gRetracer.mState.GetWin(last_non_zero_draw);
-                int parameter[7];
+                int parameter[8];
                 parameter[0] = 0;                   // dpy, useless in retrace_eglCreateWindowSurface
                 parameter[1] = 0;                   // config, useless in retrace_eglCreateWindowSurface
                 parameter[2] = win;                 // native_window
-                parameter[3] = sizeof(int) * 2;     // byte size of attrib_list
+                parameter[3] = sizeof(int) * 3;     // byte size of attrib_list
                 parameter[4] = EGL_RENDER_BUFFER;
                 parameter[5] = EGL_BACK_BUFFER;
-                parameter[6] = last_non_zero_draw;  // ret
+                parameter[6] = EGL_NONE;
+                parameter[7] = last_non_zero_draw;  // ret
                 retrace_eglCreateWindowSurface(reinterpret_cast<char *>(parameter));
             }
 
@@ -1618,6 +1785,7 @@ static void report_cpu_mask()
     {
         descr += CPU_ISSET(i, &mask) ? "1" : "0";
     }
+    while (descr.back() == '0') descr.pop_back(); // on Android, string will be very long otherwise
     DBG_LOG("Current CPU mask: %s\n", descr.c_str());
 }
 
@@ -1642,6 +1810,12 @@ static void set_cpu_mask(const std::string& descr)
     {
         DBG_LOG("Failed to set CPU mask: %s\n", strerror(errno));
     }
+}
+
+void Retracer::perfMonInit()
+{
+    perfmon_init();
+    delayedPerfmonInit = false;
 }
 
 bool Retracer::Retrace()
@@ -1671,6 +1845,7 @@ bool Retracer::Retrace()
     if (!mOptions.mPreload && mOptions.mBeginMeasureFrame == 0 && mCurFrameNo == 0)
     {
         StartMeasuring(); // special case, otherwise triggered by eglSwapBuffers()
+        if (mOptions.mPerfmon) delayedPerfmonInit = true;
     }
 
     for (;;mCurCallNo++)
@@ -1687,13 +1862,11 @@ bool Retracer::Retrace()
 
             glFinish_call.tid = mCurCall.tid;
             DispatchWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo, glFinish_fptr, glFinish_src, glFinish_name, 0);
-            int64_t endTime;
-            const float duration = getDuration(mTimerBeginTime, &endTime);
-            perfmon_end();
-
-            GLWS::instance().Cleanup();
             if (!mOutOfMemory)
-                saveResult(endTime, duration);
+            {
+                saveResult();
+            }
+            GLWS::instance().Cleanup();
             CloseTraceFile();
 #if ANDROID
             if (!mOptions.mForceSingleWindow)
@@ -1724,6 +1897,7 @@ bool Retracer::Retrace()
         if (mOptions.mPreload && mOptions.mBeginMeasureFrame==0 && mTimerBeginTime==0)
         {
             StartMeasuring(); // special case for preload from 0. otherwise triggered by eglSwapBuffers
+            if (mOptions.mPerfmon) delayedPerfmonInit = true;
         }
 
         if (!mOptions.mMultiThread && mCurCall.tid != mOptions.mRetraceTid)
@@ -1806,6 +1980,7 @@ bool Retracer::Retrace()
                 if (isSwapBuffers && mCurCall.tid == mOptions.mRetraceTid)
                 {
                     mDispatchFrameNo++;
+                    if (mOptions.mPerfmon) perfmon_frame();
                 }
             }
             else
@@ -1896,7 +2071,6 @@ void Retracer::StartMeasuring()
     {
         mCollectors->start();
     }
-    perfmon_init();
     DBG_LOG("================== Start timer (Frame: %u) ==================\n", mCurFrameNo);
     mTimerBeginTime = os::getTime();
     mEndFrameTime = mTimerBeginTime;
@@ -1930,6 +2104,7 @@ void Retracer::OnNewFrame()
                 sync(); // force all pending output to disk before this point
             }
             StartMeasuring();
+            if (mOptions.mPerfmon) perfmon_init();
         }
         // Per frame measurement
         if (mCollectors && mCurFrameNo > mOptions.mBeginMeasureFrame && mCurFrameNo <= mOptions.mEndMeasureFrame)
@@ -1999,7 +2174,7 @@ void Retracer::reportAndAbort(const char *format, ...)
     char buf[256];
     va_list ap;
     memset(buf, 0, sizeof(buf));
-    if ( !workThreadPool[getCurTid()] || !GetCurWork(getCurTid()) )
+    if ( mOptions.mMultiThread && (!workThreadPool[getCurTid()] || !GetCurWork(getCurTid())) )
     {
         sprintf(buf, "[c%u,f%u] ", 0, 0);
     }
@@ -2022,26 +2197,39 @@ void Retracer::reportAndAbort(const char *format, ...)
 #endif
 }
 
-void Retracer::saveResult(int64_t endTime, float duration)
+void Retracer::saveResult()
 {
+    int64_t endTime;
+    float duration = getDuration(mTimerBeginTime, &endTime);
     unsigned int numOfFrames = mCurFrameNo - mOptions.mBeginMeasureFrame;
+    Json::Value result;
 
     if(mTimerBeginTime != 0) {
+        const float fps = ((double)numOfFrames) / duration;
         DBG_LOG("================== End timer (Frame: %u) ==================\n", mCurFrameNo);
         DBG_LOG("Duration = %f\n", duration);
-        DBG_LOG("Frame cnt = %d, FPS = %f\n", numOfFrames, numOfFrames/duration);
+        DBG_LOG("Frame cnt = %d, FPS = %f\n", numOfFrames, fps);
+        result["fps"] = fps;
     } else {
         DBG_LOG("Never rendered anything.\n");
         numOfFrames = 0;
         duration = 0;
+        result["fps"] = 0;
     }
+
+    result["time"] = duration;
+    result["frames"] = numOfFrames;
+    result["start_time"] = ((double)mTimerBeginTime) / os::timeFrequency;
+    result["end_time"] = ((double)endTime) / os::timeFrequency;
+    result["patrace_version"] = PATRACE_VERSION;
+    if (mOptions.mPerfmon) perfmon_end(result);
 
     if (mCollectors)
     {
         mCollectors->stop();
     }
     DBG_LOG("Saving results...\n");
-    if (!TraceExecutor::writeData(numOfFrames, duration, mTimerBeginTime, endTime))
+    if (!TraceExecutor::writeData(result, numOfFrames, duration))
     {
         reportAndAbort("Error writing result file!");
     }
@@ -2356,12 +2544,14 @@ void hardcode_glDeleteBuffers(int n, unsigned int* oldIds)
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context.getBufferMap();
+    hmap<unsigned int>& idRevMap = context.getBufferRevMap();
     for (int i = 0; i < n; ++i)
     {
         unsigned int oldId = oldIds[i];
         unsigned int newId = idMap.RValue(oldId);
         glDeleteBuffers(1, &newId);
         idMap.LValue(oldId) = 0;
+        idRevMap.LValue(newId) = 0;
     }
 }
 
@@ -2401,12 +2591,14 @@ void hardcode_glDeleteRenderbuffers(int n, unsigned int* oldIds)
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context.getRenderbufferMap();
+    hmap<unsigned int>& idRevMap = context.getRenderbufferRevMap();
     for (int i = 0; i < n; ++i)
     {
         unsigned int oldId = oldIds[i];
         unsigned int newId = idMap.RValue(oldId);
         glDeleteRenderbuffers(1, &newId);
         idMap.LValue(oldId) = 0;
+        idRevMap.LValue(newId) = 0;
     }
 }
 
@@ -2415,12 +2607,14 @@ void hardcode_glDeleteTextures(int n, unsigned int* oldIds)
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context.getTextureMap();
+    hmap<unsigned int>& idRevMap = context.getTextureRevMap();
     for (int i = 0; i < n; ++i)
     {
         unsigned int oldId = oldIds[i];
         unsigned int newId = idMap.RValue(oldId);
         glDeleteTextures(1, &newId);
         idMap.LValue(oldId) = 0;
+        idRevMap.LValue(newId) = 0;
     }
 }
 
@@ -2457,12 +2651,14 @@ void hardcode_glDeleteSamplers(int n, unsigned int* oldIds)
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context.getSamplerMap();
+    hmap<unsigned int>& idRevMap = context.getSamplerRevMap();
     for (int i = 0; i < n; ++i)
     {
         unsigned int oldId = oldIds[i];
         unsigned int newId = idMap.RValue(oldId);
         glDeleteSamplers(1, &newId);
         idMap.LValue(oldId) = 0;
+        idRevMap.LValue(newId) = 0;
     }
 }
 

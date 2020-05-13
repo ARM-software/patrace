@@ -39,6 +39,7 @@ bool isUsingPBO = false;
 
 struct MyEGLSurface
 {
+    MyEGLAttribs config;
     EGLint x;
     EGLint y;
     EGLint width;
@@ -56,6 +57,7 @@ struct MyEGLContext
 };
 
 static std::map<EGLContext, TraceContext*> gCtxMap;
+static std::map<EGLSurface, TraceSurface*> gSurfMap;
 static unsigned int next_thread_id = 0;
 static os::thread_specific_ptr<unsigned int> thread_id_specific_ptr;
 static std::vector<std::unordered_map<int, int>> timesEGLConfigIdUsed;
@@ -252,6 +254,7 @@ void BinAndMeta::writeHeader(bool cleanExit)
         v["height"] = s.height;
         v["index"] = s.index;
         v["id"] = (Json::Value::UInt64)s.id;
+        addEGLConfigToJSON(v, s.config);
         jsonRoot["surfaces"].append(v);
     }
 
@@ -381,10 +384,10 @@ unsigned char GetThreadId()
 // This function is called from each traced EGL/GL call, see trace.py and its output egltrace_auto.cpp
 void UpdateTimesEGLConfigUsed(int threadid)
 {
-    const TraceContext* traceCtxPtr = GetCurTraceContext(threadid);
-    if (traceCtxPtr && traceCtxPtr->mEGLCtx)
+    const TraceSurface *traceSurf = GetCurTraceSurface(threadid);
+    if (traceSurf && traceSurf->mEGLSurf)
     {
-        timesEGLConfigIdUsed[threadid][traceCtxPtr->mEGLConfigId]++;
+        timesEGLConfigIdUsed[threadid][traceSurf->mEGLConfigId]++;
     }
 }
 
@@ -412,6 +415,32 @@ TraceContext::~TraceContext()
         return;
     }
     gCtxMap.erase(it);
+}
+
+TraceSurface* GetCurTraceSurface(unsigned char tid)
+{
+    return gTraceThread.at(tid).mCurSurf;
+}
+
+TraceSurface::TraceSurface(EGLSurface surf, EGLint configId): mEGLSurf(surf), mEGLConfigId(configId)
+{
+    if (gSurfMap.find(mEGLSurf) != gSurfMap.end())
+    {
+        DBG_LOG("Error: EGLSurface %p already exists!\n", surf);
+        return;
+    }
+    gSurfMap.insert(std::pair<EGLSurface, TraceSurface*>(surf, this));
+}
+
+TraceSurface::~TraceSurface()
+{
+    std::map<EGLSurface, TraceSurface*>::iterator it = gSurfMap.find(mEGLSurf);
+    if (it == gSurfMap.end())
+    {
+        DBG_LOG("Error: EGLSurface %p doesn't exist!\n", mEGLSurf);
+        return;
+    }
+    gSurfMap.erase(it);
 }
 
 static int GetGLESVersion(const EGLint *attrib_list)
@@ -503,6 +532,14 @@ void after_glMapBufferRange(GLenum target, GLsizeiptr length, GLbitfield access,
         {
             contents.resize(length);
         }
+    }
+
+    if (data.access & GL_MAP_PERSISTENT_BIT_EXT)
+    {
+        DBG_LOG("WARNING! GL_MAP_PERSISTENT_BIT is set to parameter 'access' of glMapBufferRange(). \n");
+        DBG_LOG("It may cause the trace to work abnormal.\n");
+        DBG_LOG("Suggest adding a parameter to /system/lib/egl/tracerparams.cfg to disable the GL_EXT_buffer_storage extension:\n");
+        DBG_LOG("    echo \"DisableBufferStorage true\" >> /system/lib/egl/tracerparams.cfg\n");
     }
 }
 
@@ -913,38 +950,60 @@ void after_eglInitialize(EGLDisplay dpy)
 
 void after_eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLSurface surf, EGLint x, EGLint y, EGLint width, EGLint height)
 {
+    EGLint configId;
+    _eglQuerySurface(dpy, surf, EGL_CONFIG_ID, &configId);
+    const MyEGLAttribs &e = configIdToConfigAttribsMap.at(configId);
+
+    if (gSurfMap.find(surf) == gSurfMap.end())
+    {
+        new TraceSurface(surf, configId);
+    }
+
     gTraceOut->mpBinAndMeta->updateWinSurfSize(width, height);
     const int idx = surfaces.size();
     const uint64_t id = reinterpret_cast<uint64_t>(surf);
-    surfaces.push_back({x, y, width, height, idx, id});
+    surfaces.push_back({e, x, y, width, height, idx, id});
 }
 
 void after_eglCreateContext(EGLContext ctx, EGLDisplay dpy, EGLConfig config, const EGLint * attrib_list)
 {
-    EGLint configId; _eglQueryContext(dpy, ctx, EGL_CONFIG_ID, &configId);
-    TraceContext* newTraceCtx = new TraceContext(ctx, configId);
-    newTraceCtx->profile = GetGLESVersion(attrib_list);
+    EGLint configId;
+    _eglQueryContext(dpy, ctx, EGL_CONFIG_ID, &configId);
+    int profile = GetGLESVersion(attrib_list);
+
+    if (gCtxMap.find(ctx) == gCtxMap.end())
+    {
+        TraceContext* newTraceCtx = new TraceContext(ctx, configId);
+        newTraceCtx->profile = profile;
+    }
     const MyEGLAttribs &e = configIdToConfigAttribsMap.at(configId);
     const int idx = contexts.size();
     const uint64_t id = reinterpret_cast<uint64_t>(ctx);
-    contexts.push_back({e, newTraceCtx->profile, idx, id});
+    contexts.push_back({e, profile, idx, id});
 }
 
 void after_eglMakeCurrent(EGLDisplay dpy, EGLSurface drawSurf, EGLContext ctx)
 {
     unsigned char tid = GetThreadId();
 
-    // 1. Check the previous context
+    // 1. Check the previous context & surface
     if (gTraceThread.at(tid).mCurCtx != NULL && gTraceThread.at(tid).mCurCtx->isEglDestroyContextInvoked)
     {
         delete gTraceThread.at(tid).mCurCtx;
         gTraceThread.at(tid).mCurCtx = NULL;
     }
 
-    // 2. Check the coming context
+    if (gTraceThread.at(tid).mCurSurf != NULL && gTraceThread.at(tid).mCurSurf->isEglDestroySurfaceInvoked)
+    {
+        delete gTraceThread.at(tid).mCurSurf;
+        gTraceThread.at(tid).mCurSurf = NULL;
+    }
+
+    // 2. Check the coming context & surface
     if (ctx == EGL_NO_CONTEXT)
     {
         gTraceThread.at(tid).mCurCtx = NULL;
+        gTraceThread.at(tid).mCurSurf = NULL;
         return;
     }
 
@@ -957,6 +1016,18 @@ void after_eglMakeCurrent(EGLDisplay dpy, EGLSurface drawSurf, EGLContext ctx)
 
     TraceContext* traceCtx = it->second;
     gTraceThread.at(tid).mCurCtx = traceCtx;
+
+    std::map<EGLSurface, TraceSurface*>::iterator itr = gSurfMap.find(drawSurf);
+    if (drawSurf == EGL_NO_SURFACE || itr == gSurfMap.end())
+    {
+        DBG_LOG("Note: EGLSurface is EGL_NO_SURFACE or %p doesn't exit!\n", drawSurf);
+        gTraceThread.at(tid).mCurSurf = NULL;
+    }
+    else
+    {
+        TraceSurface* traceSurf = itr->second;
+        gTraceThread.at(tid).mCurSurf = traceSurf;
+    }
 
     if (gTraceOut->mpBinAndMeta == NULL)
     {
@@ -1256,9 +1327,32 @@ void after_eglSwapBuffers()
     gTraceOut->frameNo++;
 }
 
-void after_eglDestroySurface()
+void after_eglDestroySurface(EGLSurface surf)
 {
     gTraceOut->frameNo++;
+    std::map<EGLSurface, TraceSurface*>::iterator it = gSurfMap.find(surf);
+    if (it == gSurfMap.end())
+    {
+        DBG_LOG("Error: EGLSurface %p doesn't exist!\n", surf);
+        return;
+    }
+
+    TraceSurface *traceSurf = it->second;
+
+    bool isCurrent = false;
+    for (auto& thread : gTraceThread)
+    {
+        if (thread.mCurSurf == traceSurf)
+        {
+            isCurrent = true;
+            traceSurf->isEglDestroySurfaceInvoked = true;
+            break;
+        }
+    }
+    if (!isCurrent)
+    {
+        delete traceSurf;
+    }
 }
 
 void _glVertexPointer_fake(GLint size, GLenum type, GLsizei stride, const GLvoid * pointer, unsigned int _size)

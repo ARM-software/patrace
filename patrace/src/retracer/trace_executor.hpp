@@ -81,7 +81,7 @@ class TraceExecutor{
         static void initFromJson(const std::string& json_data, const std::string& trace_dir, const std::string& result_file);
         static void addError(TraceExecutorErrorCode code, const std::string &error_description = std::string());
         static void writeError(TraceExecutorErrorCode code, const std::string &error_description = std::string());
-        static bool writeData(int frames, double time, long long startTime, long long endTime);
+        static bool writeData(Json::Value result_data_value, int frames, float duration);
         static void clearResult();
         static void clearError();
         static bool isSetup();

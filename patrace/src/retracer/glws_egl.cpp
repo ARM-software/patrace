@@ -7,13 +7,29 @@
 
 using namespace retracer;
 
-EglDrawable::EglDrawable(int w, int h, EGLDisplay eglDisplay, EGLConfig eglConfig, NativeWindow* nativeWindow)
+EglDrawable::EglDrawable(int w, int h, EGLDisplay eglDisplay, EGLConfig eglConfig, NativeWindow* nativeWindow, EGLint const* attribList)
     : Drawable(w, h)
     , mEglDisplay(eglDisplay)
     , mEglConfig(eglConfig)
     , mNativeWindow(nativeWindow)
-    , mSurface(_createWindowSurface())
 {
+    if (attribList)
+    {
+        unsigned int i = 0;
+        while (attribList[i] != EGL_NONE)
+        {
+            mAttribList.push_back(attribList[i]);
+            mAttribList.push_back(attribList[i+1]);
+            i += 2;
+        }
+        mAttribList.push_back(attribList[i]);
+    }
+    else
+    {
+        mAttribList.push_back(EGL_NONE);
+    }
+
+    mSurface = _createWindowSurface();
     show();
 }
 
@@ -29,6 +45,14 @@ void EglDrawable::setDamage(int* array, int length)
     if (eglSetDamageRegionKHR(mEglDisplay, mSurface, array, length) == EGL_FALSE)
     {
         DBG_LOG("eglSetDamageRegionKHR failed on replay and succeeded in original content\n");
+    }
+}
+
+void EglDrawable::querySurface(int attribute, int* value)
+{
+    if (eglQuerySurface(mEglDisplay, mSurface, attribute, value) == EGL_FALSE)
+    {
+        DBG_LOG("eglQuerySurface failed on replay.\n");
     }
 }
 
@@ -90,7 +114,7 @@ void EglDrawable::swapBuffersWithDamage(int *rects, int n_rects)
 EGLSurface EglDrawable::_createWindowSurface()
 {
     EGLNativeWindowType handle = mNativeWindow->getHandle();
-    EGLSurface surface = eglCreateWindowSurface(mEglDisplay, mEglConfig, handle, NULL);
+    EGLSurface surface = eglCreateWindowSurface(mEglDisplay, mEglConfig, handle, &mAttribList[0]);
     if (surface == EGL_NO_SURFACE)
     {
         gRetracer.reportAndAbort("Error creating window surface! size (%dx%d), eglGetError: 0x%04x",
@@ -454,7 +478,7 @@ void GlwsEgl::Cleanup()
     }
 }
 
-Drawable* GlwsEgl::CreateDrawable(int /*width*/, int /*height*/, int /*win*/)
+Drawable* GlwsEgl::CreateDrawable(int /*width*/, int /*height*/, int /*win*/, EGLint const* attribList)
 {
     return 0;
 }

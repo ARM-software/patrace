@@ -40,11 +40,14 @@ draw_array_function_names = set([
     "glMultiDrawArrays",
     "glMultiDrawArraysEXT",
     "glMultiModeDrawArraysIBM",
+    "glMultiDrawArraysIndirectEXT",
 ])
 
 draw_indirect_function_names = set((
     "glDrawArraysIndirect",
     "glDrawElementsIndirect",
+    "glMultiDrawArraysIndirectEXT",
+    "glMultiDrawElementsIndirectEXT",
 ))
 
 draw_instanced_function_names = set((
@@ -74,6 +77,7 @@ draw_elements_function_names = set([
     "glMultiDrawElementsBaseVertex",
     "glMultiDrawElementsEXT",
     "glMultiModeDrawElementsIBM",
+    "glMultiDrawElementsIndirectEXT",
 ])
 
 draw_function_names = draw_array_function_names | draw_instanced_function_names | draw_elements_function_names

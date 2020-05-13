@@ -55,7 +55,7 @@ class GlwsEglWayland : public GlwsEgl
 public:
     GlwsEglWayland();
     ~GlwsEglWayland();
-    virtual Drawable* CreateDrawable(int width, int height, int win);
+    virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList);
     virtual void processStepEvent();
 
     EGLNativeDisplayType getNativeDisplay();

@@ -462,7 +462,7 @@ void GlwsEglWayland::releaseNativeDisplay(EGLNativeDisplayType display)
     mEglNativeDisplay = 0;
 }
 
-Drawable* GlwsEglWayland::CreateDrawable(int width, int height, int win)
+Drawable* GlwsEglWayland::CreateDrawable(int width, int height, int win, EGLint const* attribList)
 {
     Drawable* handler = NULL;
     NativeWindowMutex.lock();
@@ -504,7 +504,7 @@ Drawable* GlwsEglWayland::CreateDrawable(int width, int height, int win)
         gWinNameToNativeWindowMap[win] = window;
     }
 
-    handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, window);
+    handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, window, attribList);
     NativeWindowMutex.unlock();
     return handler;
 }

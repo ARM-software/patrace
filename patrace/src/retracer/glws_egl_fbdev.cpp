@@ -55,14 +55,14 @@ private:
 };
 
 
-Drawable* GlwsEglFbdev::CreateDrawable(int width, int height, int /*win*/)
+Drawable* GlwsEglFbdev::CreateDrawable(int width, int height, int /*win*/, EGLint const* attribList)
 {
     // TODO: Delete
     // fbdev only supports one single native window. Therefor, map everything to 0.
     Drawable* handler = NULL;
     NativeWindowMutex.lock();
     gWinNameToNativeWindowMap[0] = new FbdevWindow(width, height, "0");
-    handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, gWinNameToNativeWindowMap[0]);
+    handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, gWinNameToNativeWindowMap[0], attribList);
     NativeWindowMutex.unlock();
     return handler;
 }

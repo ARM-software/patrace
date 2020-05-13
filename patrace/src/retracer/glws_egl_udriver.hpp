@@ -10,7 +10,7 @@ public:
     GlwsEglUdriver();
     ~GlwsEglUdriver();
     virtual void processStepEvent();
-    virtual Drawable* CreateDrawable(int width, int height, int win);
+    virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList);
 };
 
 }

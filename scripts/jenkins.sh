@@ -52,7 +52,7 @@ elif [ "${target}" == "rhe6_x32" ]; then
     module load arm/cluster
     module load gnu/tar/1.23
     module load python/argparse_py2.7/1.2.1
-    module load gnu/cmake/3.4.3
+    module load gnu/cmake/3.14.3
     module load python/python/2.7.8
     module load gnu/gcc/4.9.1_lto
     module list
@@ -67,7 +67,7 @@ elif [ "${target}" == "rhe6_x64" ]; then
     module load arm/cluster
     module load gnu/tar/1.23
     module load python/argparse_py2.7/1.2.1
-    module load gnu/cmake/3.4.3
+    module load gnu/cmake/3.14.3
     module load python/python/2.7.8
     module load gnu/gcc/4.9.1_lto
     module list

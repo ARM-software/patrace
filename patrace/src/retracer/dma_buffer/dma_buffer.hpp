@@ -337,6 +337,7 @@ int fill_image_attributes(egl_image_fixture *const fix,
                           uint32_t fourccformat,
                           const GLint width,
                           const GLint height,
+                          bool dmaSharedMemory,
                           int &attrib_size,
                           EGLint *attribs);
 

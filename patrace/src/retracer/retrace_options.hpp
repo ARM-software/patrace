@@ -84,6 +84,7 @@ struct RetraceOptions
     int                 mPerfFreq = 1000;
 
     bool                mFinishBeforeSwap = false;
+    bool                mPerfmon = false;
 
     std::vector<unsigned int> mLinkErrorWhiteListCallNum;
 #if __ANDROID__
@@ -96,6 +97,7 @@ struct RetraceOptions
 
     std::string         mCpuMask;
 
+    bool                dmaSharedMemory = false;
 private:
     // Noncopyable because of owned CallSet pointer members
     RetraceOptions(const RetraceOptions&);

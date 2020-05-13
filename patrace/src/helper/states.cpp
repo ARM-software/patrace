@@ -1649,21 +1649,27 @@ void StateLogger::logState(unsigned char tid)
     _logState(ss, tid, 0, indexArray, CONFIG_FLAGS);
 }
 
-void StateLogger::logDrawElementsIndirect(unsigned char tid, GLenum type, const void *indirect)
+void StateLogger::logDrawElementsIndirect(unsigned char tid, GLenum type, const void *indirect, int count)
 {
-    IndirectDrawElements params;
-    if (getIndirectBuffer(&params, sizeof(params), indirect))
+    for (int i = 0; i < count; i++)
     {
-        logState(tid, params.count, type, (const GLvoid *)(params.firstIndex * _gl_type_size(type)), params.instanceCount);
+        IndirectDrawElements params;
+        if (getIndirectBuffer(&params, sizeof(params), (char*)indirect + sizeof(params) * i))
+        {
+            logState(tid, params.count, type, (const GLvoid *)(params.firstIndex * _gl_type_size(type)), params.instanceCount);
+        }
     }
 }
 
-void StateLogger::logDrawArraysIndirect(unsigned char tid, const void *indirect)
+void StateLogger::logDrawArraysIndirect(unsigned char tid, const void *indirect, int count)
 {
-    IndirectDrawArrays params;
-    if (getIndirectBuffer(&params, sizeof(params), indirect))
+    for (int i = 0; i < count; i++)
     {
-        logState(tid, params.first, params.count, params.primCount);
+        IndirectDrawArrays params;
+        if (getIndirectBuffer(&params, sizeof(params), (char*)indirect + sizeof(params) * i))
+        {
+             logState(tid, params.first, params.count, params.primCount);
+        }
     }
 }
 

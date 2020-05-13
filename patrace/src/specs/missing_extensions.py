@@ -43,9 +43,7 @@ for extension in root.findall('extensions/extension'):
         continue # no functions, not relevant
     if name in handled:
         continue
-    if 'GL_ARB' in name: # these are already supported through latest version
-        continue
-    if not 'GL_OES' in name and not 'GL_EXT' in name and not 'GL_KHR' in name and not 'GL_ARM' in name: # only want official ones
+    if not 'GL_OES' in name and not 'GL_EXT' in name and not 'GL_KHR' in name and not 'GL_ARM' in name and not 'GL_ANGLE' in name: # only want official ones
         continue
     print '%s' % name
 

@@ -41,8 +41,8 @@ public:
     void logState(unsigned char tid, GLsizei count, GLenum type, const GLvoid* indices, GLsizei instancecount);
     void logState(unsigned char tid, GLint first, GLsizei count, GLsizei instancecount);
     void logState(unsigned char tid);
-    void logDrawElementsIndirect(unsigned char tid, GLenum type, const void *indirect);
-    void logDrawArraysIndirect(unsigned char tid, const void *indirect);
+    void logDrawElementsIndirect(unsigned char tid, GLenum type, const void *indirect, int count);
+    void logDrawArraysIndirect(unsigned char tid, const void *indirect, int count);
     void logComputeIndirect(unsigned char tid, GLintptr offset);
     void logCompute(unsigned char tid, GLuint x, GLuint y, GLuint z);
     void open(const std::string& fileName);

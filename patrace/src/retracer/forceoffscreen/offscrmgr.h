@@ -55,7 +55,6 @@ private:
     void glDeleteRenderbuffers12(GLsizei n, const GLuint* renderbuffers);
     void glFramebufferTexture2D12(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
     void glRenderbufferStorage12(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
-    void glRenderbufferStorageMultisample23(GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height);
     void glFramebufferRenderbuffer12(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
     GLenum glCheckFramebufferStatus12(GLenum target);
 

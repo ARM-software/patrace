@@ -39,7 +39,7 @@ public:
     static GLWS& instance();
     virtual void Init(Profile profile = PROFILE_ES2) = 0;
     virtual void Cleanup(void) = 0;
-    virtual Drawable* CreateDrawable(int width, int height, int win) = 0;
+    virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList) = 0;
     virtual Drawable* CreatePbufferDrawable(EGLint const* attrib_list) = 0;
     virtual Context* CreateContext(Context *shareContext, Profile profile) = 0;
     virtual bool MakeCurrent(Drawable *drawable, Context *context) = 0;

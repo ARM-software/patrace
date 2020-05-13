@@ -6,5 +6,7 @@
 #include "jsoncpp/include/json/value.h"
 
 void addConversionEntry(Json::Value& header, const std::string& type, const std::string& source, const Json::Value& info);
+std::string getUserName();
+std::string getTimeStamp();
 
 #endif

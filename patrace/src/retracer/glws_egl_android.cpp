@@ -129,7 +129,7 @@ void GlwsEglAndroid::resizeNativeWindow(int width, int height, int format, int t
     jEnv->CallStaticVoidMethod(gNativeCls, gResizeWindowID, width, height, format, textureViewId);
 }
 
-Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win)
+Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint const* attribList)
 {
     Drawable* handler = NULL;
     NativeWindowMutex.lock();
@@ -168,7 +168,7 @@ Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win)
         winNameToTextureViewIdMap[win] = mTextureViewSize - 1;
     }
 
-    handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, window);
+    handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, window, attribList);
     NativeWindowMutex.unlock();
 
     return handler;

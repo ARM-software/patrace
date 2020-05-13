@@ -111,6 +111,7 @@ public:
     virtual void swapBuffers(void) = 0;
     virtual void swapBuffersWithDamage(int *rects, int n_rects) = 0;
     virtual void setDamage(int* array, int length) {}
+    virtual void querySurface(int attribute, int* value) {}
 
     // default behavior is just to replay without stop
     virtual void processStepEvent();

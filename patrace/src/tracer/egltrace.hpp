@@ -165,6 +165,16 @@ struct TraceContext
     ~TraceContext();
 };
 
+struct TraceSurface
+{
+    EGLSurface mEGLSurf;
+    EGLint mEGLConfigId;
+    bool isEglDestroySurfaceInvoked = false;
+
+    TraceSurface(EGLSurface surf, EGLint configId);
+    ~TraceSurface();
+};
+
 typedef std::map<EGLImageKHR, GLuint> EGLImageToTextureIdMap_t;
 
 struct SizeTargetAndAttrib {
@@ -187,12 +197,14 @@ typedef std::unordered_map<EGLImageKHR, SizeTargetAndAttrib> EGLImageInfoMap_t;
 struct TraceThread {
     TraceThread()
         : mCurCtx(NULL)
+        , mCurSurf(NULL)
         , mCallDepth(0)
         , mActiveAttributes()
         , mEglImageToTextureIdMap()
     {}
 
     TraceContext *mCurCtx;
+    TraceSurface *mCurSurf;
     int mCallDepth;
     StringListList_t mActiveAttributes;
     EGLImageToTextureIdMap_t mEglImageToTextureIdMap;
@@ -204,6 +216,7 @@ extern std::vector<TraceThread> gTraceThread;
 unsigned char GetThreadId();
 void UpdateTimesEGLConfigUsed(int threadid);
 TraceContext* GetCurTraceContext(unsigned char tid);
+TraceSurface* GetCurTraceSurface(unsigned char tid);
 
 void after_glBindAttribLocation(unsigned char tid, GLuint program, GLuint index);
 void after_glMapBufferRange(GLenum target, GLsizeiptr length, GLbitfield access, void* base);
@@ -224,7 +237,7 @@ void after_eglMakeCurrent(EGLDisplay dpy, EGLSurface drawSurf, EGLContext ctx);
 void after_eglDestroyContext(EGLContext ctx);
 void pre_eglSwapBuffers();
 void after_eglSwapBuffers();
-void after_eglDestroySurface();
+void after_eglDestroySurface(EGLSurface surf);
 GLuint pre_eglCreateImageKHR(EGLImageKHR image, EGLenum target, EGLClientBuffer buffer, const EGLint *attrib_list);
 GLuint pre_glEGLImageTargetTexture2DOES(EGLImageKHR image, EGLint *&attrib_list);
 void after_eglDestroyImageKHR(EGLDisplay dpy, EGLImageKHR image);

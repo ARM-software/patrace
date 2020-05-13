@@ -6,7 +6,7 @@ set (PYTHON_EXECUTABLE python)
 message(STATUS "main ar: ${CMAKE_AR}")
 
 set (PATRACE_VERSION_MAJOR 2)
-set (PATRACE_VERSION_MINOR 15)
+set (PATRACE_VERSION_MINOR 16)
 set (PATRACE_VERSION_PATCH 0)
 
 IF(DEFINED ENV{SVN_REVISION})
@@ -121,6 +121,10 @@ include_directories(BEFORE
 include_directories(${THIRDPARTY_INCLUDE_DIRS})
 include_directories(${SRC_INCLUDE_DIRS})
 
+set(HWCPIPE_INCLUDE_DIRS ${THIRDPARTY_INCLUDE_DIRS}/hwcpipe)
+add_subdirectory(${THIRDPARTY_INCLUDE_DIRS}/hwcpipe ${CMAKE_CURRENT_BINARY_DIR}/hwcpipe EXCLUDE_FROM_ALL)
+include_directories(${HWCPIPE_INCLUDE_DIRS})
+
 set (ZLIB_INCLUDE_DIRS ${THIRDPARTY_INCLUDE_DIRS}/zlib)
 add_subdirectory (${THIRDPARTY_INCLUDE_DIRS}/zlib ${CMAKE_CURRENT_BINARY_DIR}/zlib EXCLUDE_FROM_ALL)
 include_directories (${ZLIB_INCLUDE_DIRS})
@@ -170,7 +174,6 @@ add_custom_target(retrace_gles_auto_src_generation
 )
 
 add_subdirectory(fastforward)
-add_subdirectory(newfastforwarder)
 
 if (NOT FF_ONLY)
     add_subdirectory(eglretrace)

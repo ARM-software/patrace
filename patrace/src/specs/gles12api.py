@@ -999,6 +999,11 @@ gles_functions = [
 
     # Need function to replace glLinkProgram in order to store link status during tracing together with the call itself
     GlFunction(Void, "glLinkProgram2", [(GLprogram, "program"), (GLboolean, "status")]),
+
+    # GL_EXT_multi_draw_indirect
+    # (GLES extension does not support client-side buffers)
+    GlFunction(Void, "glMultiDrawArraysIndirectEXT", [(GLenum_mode, "mode"), (GLpointerConst, "indirect"), (GLsizei, "drawcount"), (GLsizei, "stride")]),
+    GlFunction(Void, "glMultiDrawElementsIndirectEXT", [(GLenum_mode, "mode"), (GLenum, "type"), (GLpointerConst, "indirect"), (GLsizei, "drawcount"), (GLsizei, "stride")]),
 ]
 
 glesapi = API('GLES')

@@ -228,6 +228,37 @@ install(TARGETS shader_repacker DESTINATION tools)
 
 ###
 
+add_executable(deduplicator
+    ${SRC_ROOT}/tool/deduplicator.cpp
+    ${SRC_ROOT}/common/analysis_utility.cpp
+    ${SRC_ROOT}/tool/parse_interface.cpp
+    ${SRC_ROOT}/specs/pa_func_to_version.cpp
+    ${SRC_ROOT}/tool/utils.cpp
+    ${SRC_ROOT}/tool/glsl_parser.cpp
+    ${SRC_ROOT}/tool/glsl_lookup.cpp
+    ${SRC_ROOT}/tool/glsl_utils.cpp
+    ${SRC_FOR_TOOLS}
+)
+target_compile_definitions(deduplicator PRIVATE RETRACE GLES_CALLCONVENTION= TOOL_BUILD)
+target_link_libraries(deduplicator
+    md5
+    dl
+    common
+    common_eglstate
+    ${SNAPPY_LIBRARIES}
+    md5
+    ${LIBRARY_MM_SYSTEM}
+    ${PNG_LIBRARIES}
+    ${ZLIB_LIBRARIES}
+    ${LIBRARIES_FOR_TOOLS}
+)
+add_dependencies(deduplicator
+    call_parser_src_generation
+)
+install(TARGETS deduplicator DESTINATION tools)
+
+###
+
 add_executable(shader_analyzer
     ${SRC_ROOT}/tool/shader_analyzer.cpp
     ${SRC_ROOT}/common/analysis_utility.cpp
@@ -313,6 +344,7 @@ target_link_libraries(analyze_trace
     ${PNG_LIBRARIES}
     ${ZLIB_LIBRARIES}
     jsoncpp
+    hwcpipe
     ${LIBRARIES_FOR_TOOLS}
     ${CMAKE_BINARY_DIR}/libcollector/libcollector.a
 )

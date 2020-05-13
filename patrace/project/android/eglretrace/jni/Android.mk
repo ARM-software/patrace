@@ -219,6 +219,10 @@ include $(CLEAR_VARS)
 LOCAL_MODULE        := eglretrace
 
 LOCAL_SRC_FILES     := \
+    ../../thirdparty/hwcpipe/hwcpipe.cpp \
+    ../../thirdparty/hwcpipe/vendor/arm/mali/mali_profiler.cpp \
+    ../../thirdparty/hwcpipe/vendor/arm/pmu/pmu_counter.cpp \
+    ../../thirdparty/hwcpipe/vendor/arm/pmu/pmu_profiler.cpp \
     dispatch/eglproc_retrace.cpp \
     dispatch/eglproc_auto.cpp \
     retracer/retracer.cpp \
@@ -245,14 +249,20 @@ LOCAL_C_INCLUDES    := \
     $(LOCAL_PATH) \
     $(LOCAL_PATH)/common \
     $(LOCAL_PATH)/../../thirdparty \
+    $(LOCAL_PATH)/../../thirdparty/collector \
+    $(LOCAL_PATH)/../../thirdparty/hwcpipe \
     $(LOCAL_PATH)/../../thirdparty/libcollector \
     $(LOCAL_PATH)/../../thirdparty/egl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers \
     $(LOCAL_PATH)/../../thirdparty/opengl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/snappy
 
-LOCAL_CFLAGS        := -Wall -frtti -DRETRACE $(PA_BUILD_64BIT) -Wno-attributes -pthread
-LOCAL_CPPFLAGS      += -std=c++11
+LOCAL_CFLAGS        := -Wall -frtti -DRETRACE $(PA_BUILD_64BIT) -pthread
+LOCAL_CPPFLAGS      += -std=c++11 -DHWCPIPE_NO_JSON
+
+ifeq ($(TARGET_ARCH_ABI),x86)
+LOCAL_CFLAGS            += -Wno-attributes
+endif
 
 LOCAL_STATIC_LIBRARIES := common graphicbuffer snappy md5 jsoncpp png collector_android
 LOCAL_LDLIBS        := -nodefaultlibs -lc -lm -llog -landroid -ldl -lz -pthread

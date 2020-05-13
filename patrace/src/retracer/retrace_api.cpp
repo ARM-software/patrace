@@ -151,7 +151,7 @@ unsigned int glGenGraphicBuffer_ARM(unsigned int _width, unsigned int _height, i
         break;
     }
     egl_image_fixture *fix = new egl_image_fixture(format);
-    fill_image_attributes(fix, format, linux_pix_format, _width, _height, fix->attrib_size, fix->attribs);
+    fill_image_attributes(fix, format, linux_pix_format, _width, _height, gRetracer.mOptions.dmaSharedMemory, fix->attrib_size, fix->attribs);
     context.mGraphicBuffers.push_back(fix);
 
     return context.mGraphicBuffers.size() - 1;

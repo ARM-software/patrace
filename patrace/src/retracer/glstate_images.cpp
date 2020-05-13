@@ -133,7 +133,7 @@ void getDepth(int width, int height, GLvoid *pixels, DepthDumper &depthDumper, G
     _glBlitFramebuffer(0, 0, width, height, 0, 0, width, height,
                        GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 
-    depthDumper.get_depth_texture_image(tex, width, height, pixels, DepthDumper::Tex2D, 0);
+    depthDumper.get_depth_texture_image(tex, width, height, pixels, internalFormat, DepthDumper::Tex2D, 0);
 
     // recover state machine
     _glBindFramebuffer(GL_READ_FRAMEBUFFER, prev_read_fbo);
@@ -167,7 +167,7 @@ void getTexRenderBufInfo(GLenum attachment, GLenum &readTexFormat, GLenum &readT
         Texture t;
         t.handle = context.getTextureMap().RValue(textureName);
         t.update(0, 0);
-        _glGetTexLevelParameteriv(t.target, 0, GL_TEXTURE_INTERNAL_FORMAT, &internalFormat);
+        internalFormat = t.internalFormat;
     }
 
     if (redSize && greenSize && blueSize)
@@ -208,7 +208,7 @@ void getTexRenderBufInfo(GLenum attachment, GLenum &readTexFormat, GLenum &readT
         }
         else if (redSize == 8 && greenSize == 8 && blueSize == 8 && alphaSize == 0) // GL_RGB8
         {
-            readTexType = GL_RGB;
+            readTexFormat = GL_RGB;
             channel = 3;
         }
         else if (redSize == 4 && greenSize == 4 && blueSize == 4 && alphaSize == 4) // GL_RGBA4

@@ -9,7 +9,7 @@ class GlwsEglX11 : public GlwsEgl
 public:
     GlwsEglX11();
     ~GlwsEglX11();
-    virtual Drawable* CreateDrawable(int width, int height, int win);
+    virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList);
     virtual void processStepEvent();
 
     EGLNativeDisplayType getNativeDisplay();

@@ -20,6 +20,6 @@ APP_CPPFLAGS      += -D__NDK_FPABI__= -fexceptions
 APP_CPP_FEATURES  += exceptions
 
 APP_STL := c++_static
-APP_ABI := armeabi-v7a arm64-v8a x86
+APP_ABI := armeabi-v7a arm64-v8a # x86
 APP_ALLOW_MISSING_DEPS := true
 LOCAL_ARM_MODE := thumb

@@ -47,6 +47,12 @@ if __name__ == '__main__':
         ))
 
     if args.platform == 'android':
+        # Run CMake first to create generated files
+        build_project('x11_x64', variant=args.type, build_dir=args.build_dir, install_dir=args.install_dir,
+            project_path=os.path.abspath(os.path.join(script_dir, '..', 'patrace', 'project', 'cmake')),
+            cmake_defines=[], stop_early=True
+        )
+        # Run Android build system
         returncode = build_android(
             src_path=os.path.join(script_dir, '..'),
             product_names=[args.project],

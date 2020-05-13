@@ -10,7 +10,7 @@ public:
     GlwsEglFbdev();
     ~GlwsEglFbdev();
     virtual EGLImageKHR createImageKHR(Context* context, EGLenum target, uintptr_t buffer, const EGLint* attrib_list) override;
-    virtual Drawable* CreateDrawable(int width, int height, int win);
+    virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList);
 };
 
 }

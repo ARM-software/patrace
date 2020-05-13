@@ -239,10 +239,11 @@ void OffscreenManager::Init()
         mRenderbufferStorage_depth_format = GL_DEPTH24_STENCIL8_OES;
     }
 
-    DBG_LOG("Offscreen FBO using %d%d%d%d color, %d depth, %d stencil.\n",
+    DBG_LOG("Offscreen FBO using %d%d%d%d color, %d depth, %d stencil, %d msaaSamples .\n",
             mConfig.offscreen_red_size, mConfig.offscreen_green_size,
             mConfig.offscreen_blue_size, mConfig.offscreen_alpha_size,
-            mConfig.offscreen_depth_size, mConfig.offscreen_stencil_size);
+            mConfig.offscreen_depth_size, mConfig.offscreen_stencil_size,
+            mMsaaSamples);
 
     CreateFBOs();
 }
@@ -458,7 +459,7 @@ void OffscreenManager::framebufferTexture(int w, int h)
             if (mMsaaSamples == 0)
                 glRenderbufferStorage12(GL_RENDERBUFFER, mRenderbufferStorage_depth_format, mOffscrFboW, mOffscrFboH);
             else
-                glRenderbufferStorageMultisample23(GL_RENDERBUFFER, mMsaaSamples, mRenderbufferStorage_depth_format, mOffscrFboW, mOffscrFboH);
+                _glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, mMsaaSamples, mRenderbufferStorage_depth_format, mOffscrFboW, mOffscrFboH);
             glFramebufferRenderbuffer12(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, mDepthBuffer[i]);
             if (mDepthStencil)
             {
@@ -473,7 +474,7 @@ void OffscreenManager::framebufferTexture(int w, int h)
             if (mMsaaSamples == 0)
                 glRenderbufferStorage12(GL_RENDERBUFFER, mRenderbufferStorage_stencil_format, mOffscrFboW, mOffscrFboH);
             else
-                glRenderbufferStorageMultisample23(GL_RENDERBUFFER, mMsaaSamples, mRenderbufferStorage_stencil_format, mOffscrFboW, mOffscrFboH);
+                _glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, mMsaaSamples, mRenderbufferStorage_stencil_format, mOffscrFboW, mOffscrFboH);
             glFramebufferRenderbuffer12(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, mStencilBuffer[i]);
             glBindRenderbuffer12(GL_RENDERBUFFER, ON_SCREEN_FBO);
         }
@@ -564,13 +565,6 @@ void OffscreenManager::glRenderbufferStorage12(GLenum target, GLenum internalfor
     mGlesVer == 1 ?
         _glRenderbufferStorageOES(target, internalformat, width, height) :
         _glRenderbufferStorage(target, internalformat, width, height);
-}
-
-void OffscreenManager::glRenderbufferStorageMultisample23(GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)
-{
-    mGlesVer <= 2 ?
-        _glRenderbufferStorageMultisampleEXT(target, samples, internalformat, width, height) :
-        _glRenderbufferStorageMultisample(target, samples, internalformat, width, height);
 }
 
 void OffscreenManager::glFramebufferRenderbuffer12(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)

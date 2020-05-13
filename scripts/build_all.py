@@ -163,7 +163,7 @@ def check_log_erros(log_file):
                 print_error(line)
 
 
-def build_project(platform, variant, build_dir, install_dir, project_path, log_file=sys.stdout, make_target='install', cmake_defines=[]):
+def build_project(platform, variant, build_dir, install_dir, project_path, log_file=sys.stdout, make_target='install', cmake_defines=[], stop_early=False):
     if platform == 'win':
         cmake_command = (
             'cmake'
@@ -231,6 +231,9 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
         os.makedirs(build_dir)
 
     run_command(cmake_command, log_file)
+
+    if stop_early:
+        return
 
     if platform == 'win':
         for project in ["eglretrace"]:
@@ -371,8 +374,7 @@ set and pointed to the directory where ndk-build resides."""
                 {
                     'name': 'egltrace',
                     'binaries': ('libs/armeabi-v7a/libinterceptor_patrace_arm.so',
-                                 'libs/arm64-v8a/libinterceptor_patrace_arm64.so',
-                                 'libs/x86/libinterceptor_patrace_x86.so', ),
+                                 'libs/arm64-v8a/libinterceptor_patrace_arm64.so',),
                     'update-version-functions': [update_cmake_versions]
                 },
                 {
@@ -380,16 +382,12 @@ set and pointed to the directory where ndk-build resides."""
                     'binaries': (
                         'libs/armeabi-v7a/libEGL_wrapper_arm.so',
                         'libs/arm64-v8a/libEGL_wrapper_arm64.so',
-                        'libs/x86/libEGL_wrapper_x86.so',
                         'libs/armeabi-v7a/libGLESv1_CM_wrapper_arm.so',
                         'libs/arm64-v8a/libGLESv1_CM_wrapper_arm64.so',
-                        'libs/x86/libGLESv1_CM_wrapper_x86.so',
                         'libs/armeabi-v7a/libGLESv2_wrapper_arm.so',
                         'libs/arm64-v8a/libGLESv2_wrapper_arm64.so',
-                        'libs/x86/libGLESv2_wrapper_x86.so',
                         'libs/armeabi-v7a/libGLES_wrapper_arm.so',
                         'libs/arm64-v8a/libGLES_wrapper_arm64.so',
-                        'libs/x86/libGLES_wrapper_x86.so',
                         'egl.cfg'
                     ),
                     'update-version-functions': [],

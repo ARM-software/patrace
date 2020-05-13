@@ -1,11 +1,10 @@
 #include <cassert>
 #include <numeric>
-#include <unordered_set>
+#include <set>
 #include <vector>
 #include <list>
 #include <map>
 #include <set>
-#include <unordered_map>
 #include <algorithm>
 #include <utility>
 #include <algorithm>
@@ -32,52 +31,31 @@
 #include "tool/config.hpp"
 #include "base/base.hpp"
 
-static std::string compiler; // path to malisc
 static int startframe = 0;
 static int lastframe = INT_MAX;
 static bool debug = false;
 static bool dump_to_text = false;
 static std::string dump_csv_filename;
 static int frames = 0;
-static std::unordered_set<int> renderpassframes;
+static std::set<int> renderpassframes;
 static bool complexity_only_mode = false;
 static bool dumpCallTime = false;
 static bool bareLog = false;
 static bool report_unused_shaders = false;
 static bool write_used_shaders = false;
-static std::unordered_map<int, double> heavinesses;
-static bool no_cycles = true;
+static std::map<int, double> heavinesses;
 
-struct ShaderState
+/// Helper to prune empty lists from a JSON object
+static void prune(Json::Value& v)
 {
-    int arithmetic = 0;
-    int loadstore = 0;
-    int texturing = 0;
-    bool spilling = false;
-    int uniform_registers = 0;
-};
-
-struct ProgramState
-{
-    GLint linkStatus = 0;
-    GLint activeAttributes = 0;
-    GLint activeUniforms = 0;
-    GLint activeUniformBlocks = 0;
-    GLint activeAtomicCounterBuffers = 0;
-    GLint activeInputs = 0;
-    GLint activeOutputs = 0;
-    GLint activeTransformFeedbackVaryings = 0;
-    GLint activeBufferVariables = 0;
-    GLint activeSSBOs = 0;
-    GLint activeTransformFeedbackBuffers = 0;
-    struct ProgramSampler
+    for (const auto s : v.getMemberNames())
     {
-        std::string name;
-        GLenum type;
-        GLint value;
-    };
-    std::vector<ProgramSampler> texture_bindings;
-};
+        if (v[s].isArray() && v[s].size() == 0)
+        {
+            v.removeMember(s);
+        }
+    }
+}
 
 static inline bool relevant(int frame)
 {
@@ -186,42 +164,6 @@ static int count_uniform_values(common::CallTM* call)
     return count;
 }
 
-static ProgramState getProgramInfo(GLuint id)
-{
-    ProgramState p;
-
-    _glGetProgramiv(id, GL_LINK_STATUS, &p.linkStatus);
-    _glGetProgramiv(id, GL_ACTIVE_ATTRIBUTES, &p.activeAttributes);
-    _glGetProgramInterfaceiv(id, GL_UNIFORM, GL_ACTIVE_RESOURCES, &p.activeUniforms);
-    _glGetProgramInterfaceiv(id, GL_UNIFORM_BLOCK, GL_ACTIVE_RESOURCES, &p.activeUniformBlocks);
-    _glGetProgramInterfaceiv(id, GL_ATOMIC_COUNTER_BUFFER, GL_ACTIVE_RESOURCES, &p.activeAtomicCounterBuffers);
-    _glGetProgramInterfaceiv(id, GL_PROGRAM_INPUT, GL_ACTIVE_RESOURCES, &p.activeInputs);
-    _glGetProgramInterfaceiv(id, GL_PROGRAM_OUTPUT, GL_ACTIVE_RESOURCES, &p.activeOutputs);
-    _glGetProgramInterfaceiv(id, GL_TRANSFORM_FEEDBACK_BUFFER, GL_ACTIVE_RESOURCES, &p.activeTransformFeedbackBuffers);
-    _glGetProgramInterfaceiv(id, GL_TRANSFORM_FEEDBACK_VARYING, GL_ACTIVE_RESOURCES, &p.activeTransformFeedbackVaryings);
-    _glGetProgramInterfaceiv(id, GL_SHADER_STORAGE_BLOCK, GL_ACTIVE_RESOURCES, &p.activeSSBOs);
-    for (int i = 0; i < p.activeUniforms; ++i)
-    {
-        GLsizei length = 0;
-        GLint size = 0;
-        GLenum type = GL_NONE;
-        GLchar tmp[128];
-        memset(tmp, 0, sizeof(tmp));
-        _glGetActiveUniform(id, i, sizeof(tmp) - 1, &length, &size, &type, tmp);
-        GLint location = _glGetUniformLocation(id, tmp);
-        for (int j = 0; location >= 0 && j < size; ++j)
-        {
-            if (isUniformSamplerType(type))
-            {
-                GLint param = 0;
-                _glGetUniformiv(id, location + j, &param); // arrays are guaranteed to be in sequential location
-                p.texture_bindings.push_back({ tmp, type, param });
-            }
-        }
-    }
-    return p;
-}
-
 static int sum_map_range(std::map<int, int> &map)
 {
     int val = 0;
@@ -247,7 +189,6 @@ static void printHelp()
     std::cout <<
         "Usage : analyze_trace [OPTIONS] trace_file\n"
         "Options:\n"
-        "  -c <path>     Mali shader compiler path\n"
         "  -f <f> <l>    Define frame interval, inclusive\n"
         "  -h            Print help\n"
         "  -v            Print version\n"
@@ -260,10 +201,10 @@ static void printHelp()
         "  -s            Report also on shaders that are not in use\n"
         "  -n            Do not save screenshots\n"
         "  -z            Show CPU cycles\n"
+        "  -b            Bare call logging - useful for making diffs between traces\n"
         "Options for per frame output:\n"
         "  -Z            Write out used shaders to disk\n"
-        "Options for trace log:\n"
-        "  -b            Bare log - useful for making diffs\n"
+        "  -j            Write out renderpass JSON data for selected frames\n"
         ;
 }
 
@@ -470,12 +411,6 @@ static std::vector<const char*> featurenames = { "VA", "VBO", "DrawIndirect", "S
 static std::vector<double> complexity_feature_value = { 0.02, 0.04, 0.2, 0.07, 0.06, 0.1, 0.2, 0.08, 0.08, 0.5, 0.15, 0.15, 0.05, 0.05, 0.3,
                                                         0.4, 0.3, 0.2, 0.2, 0.2, 0.15, 0.5, 0.6, 0.2, 0.3 };
 
-struct CallData
-{
-    long cycles;
-    long count;
-};
-
 class AnalyzeTrace
 {
 private:
@@ -515,8 +450,6 @@ private:
     int64_t clientsidebuffersize = 0; // total size of
     int last_changed_vertex_buffer = -1;
     struct Context {
-        std::map<unsigned, ShaderState> shaders;
-        std::map<unsigned, ProgramState> programs;
         int id;
         int index;
         int display;
@@ -529,7 +462,7 @@ private:
         BlendMode blendMode;
         std::map<GLuint, GLenum> shadertypes;
         std::map<GLuint, bool> textureIdCompressed;
-        std::unordered_set<GLuint> textureIdUsed; // has been in use this frame
+        std::set<GLuint> textureIdUsed; // has been in use this frame
         std::map<GLenum, std::map<GLuint, GLuint>> boundTextureIds; // target : texture unit : texture id
         GLuint activeTextureUnit = 0;
         Context(int _id, int _index, int _display, int _share) : id(_id), index(_index), display(_display), share_context(_share) {}
@@ -572,10 +505,9 @@ private:
     double calculate_heaviness(const ParseInterfaceRetracing& input, int frame);
     double calculate_dump_heaviness(const ParseInterfaceRetracing& input, int frame);
     double calculate_complexity(const ParseInterfaceRetracing& input);
-    std::map<std::string, CallData> mCallData;
 };
 
-static void write_callstats(const std::map<std::string, CallData>& calldata, const std::string& basename)
+static void write_callstats(const ParseInterfaceRetracing& input, const std::string& basename)
 {
     std::string filename = basename + "_callstats.csv";
     FILE *fp = fopen(filename.c_str(), "w");
@@ -584,21 +516,10 @@ static void write_callstats(const std::map<std::string, CallData>& calldata, con
         DBG_LOG("Could not open %s for writing: %s\n", filename.c_str(), strerror(errno));
         return;
     }
-    if (no_cycles)
+    fprintf(fp, "Function, Count, Duplicates, %% dupes\n");
+    for (auto& pair : input.callstats)
     {
-        fprintf(fp, "Function, Count\n");
-        for (auto& pair : calldata)
-        {
-            fprintf(fp, "%s, %ld\n", pair.first.c_str(), pair.second.count);
-        }
-    }
-    else
-    {
-        fprintf(fp, "Function, Cycles, Count, Average\n");
-        for (auto& pair : calldata)
-        {
-            fprintf(fp, "%s, %ld, %ld, %ld\n", pair.first.c_str(), pair.second.cycles, pair.second.count, pair.second.cycles / pair.second.count);
-        }
+        fprintf(fp, "%s, %ld, %ld, %f\n", pair.first.c_str(), pair.second.count, pair.second.dupes, (double)pair.second.dupes / (double)pair.second.count);
     }
     fclose(fp);
 }
@@ -659,6 +580,7 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
     {
         input.dumpFrameBuffers(true); // start dumping FBOs for this frame
         input.setQuickMode(false); // start analysing index buffers
+        input.setDumpRenderpassJSON(true);
         in_renderpass_frame = true;
     }
     while ((call = input.next_call()))
@@ -782,6 +704,7 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
             {
                 write_CSV((dump_csv_filename.empty() ? "frame" : dump_csv_filename) + "_draws_f" + std::to_string(frames - 1), perdraw, true);
                 input.setQuickMode(true);
+                input.setDumpRenderpassJSON(false);
                 heavinesses[frames - 1] = calculate_dump_heaviness(input, frames - 1);
             }
 
@@ -789,6 +712,7 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
             {
                 input.dumpFrameBuffers(true); // start dumping FBOs for this frame
                 input.setQuickMode(false); // start analysing index buffers
+                input.setDumpRenderpassJSON(true);
                 in_renderpass_frame = true;
             }
             else if (in_renderpass_frame)
@@ -951,84 +875,6 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
             contexts[context_index].shadertypes[mret] = type;
             shaders[type]++;
         }
-        else if (call->mCallName == "glShaderSource")
-        {
-            const GLuint shader = call->mArgs[0]->GetAsUInt();
-            const GLenum type = contexts[context_index].shadertypes[shader];
-            if (!compiler.empty())
-            {
-                std::string shtype;
-                switch (type)
-                {
-                case GL_VERTEX_SHADER: shtype = "--vert"; break;
-                case GL_FRAGMENT_SHADER: shtype = "--frag"; break;
-                case GL_COMPUTE_SHADER: shtype = "--comp"; break;
-                case GL_GEOMETRY_SHADER: shtype = "--geom"; break;
-                case GL_TESS_CONTROL_SHADER: shtype = "--tesc"; break;
-                case GL_TESS_EVALUATION_SHADER: shtype = "--tese"; break;
-                default:
-                    std::cerr << "Unknown shader type: " << type << std::endl;
-                    exit(1);
-                    break;
-                }
-                std::string tmpname = tmpnam(nullptr); // make sure we can run multiple analyze_trace in parallel
-                std::string tmpout = tmpnam(nullptr); // yes, yes... I know "tmpnam is dangerous"...
-                FILE *fp = fopen(tmpname.c_str(), "w");
-                if (!fp)
-                {
-                    fprintf(stderr, "Failed to open temporary output file %s: %s\n", tmpname.c_str(), strerror(errno));
-                    exit(1);
-                }
-                for (unsigned i = 0; i < call->mArgs[2]->mArrayLen; i++)
-                {
-                    std::string source = call->mArgs[2]->mArray[i].GetAsString();
-                    fwrite(source.c_str(), source.size(), 1, fp);
-                }
-                fclose(fp);
-                std::string command = compiler + " -V --core=Mali-G71 --revision=r0p0 " + shtype + + " -o " + tmpout + " " + tmpname;
-                unlink(tmpout.c_str());
-                char line[PATH_MAX];
-                FILE *result = popen(command.c_str(), "r");
-                if (!result)
-                {
-                    std::cerr << "Failed to open result pipe: " << strerror(errno) << std::endl;
-                    exit(1);
-                }
-                ShaderState s;
-                while (fgets(line, PATH_MAX, result) != NULL)
-                {
-                    int v;
-                    char tmp[10];
-
-                    if (sscanf(line, "arithmetic_cycles = %d", &v) == 1)
-                    {
-                        shadercycles[type].a += v;
-                        s.arithmetic = v;
-                    }
-                    else if (sscanf(line, "load_store_cycles = %d", &v) == 1)
-                    {
-                        shadercycles[type].l += v;
-                        s.loadstore = v;
-                    }
-                    else if (sscanf(line, "texture_cycles = %d", &v) == 1)
-                    {
-                        shadercycles[type].t += v;
-                        s.texturing = v;
-                    }
-                    else if (sscanf(line, "spilling_used = %s", tmp) == 1)
-                    {
-                        s.spilling = (strcmp(tmp, "true") == 0);
-                    }
-                    else if (sscanf(line, "uniform_registers_used = %d", &v) == 1)
-                    {
-                        s.uniform_registers = v;
-                    }
-                }
-                const int shaderidx = input.contexts[context_index].shaders.remap(shader);
-                contexts[context_index].shaders[shaderidx] = s;
-                pclose(result);
-            }
-        }
         else if (call->mCallName == "glBindFramebuffer")
         {
             GLenum target = call->mArgs[0]->GetAsUInt();
@@ -1172,11 +1018,12 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
         {
             if (last_changed_vertex_buffer == -1)
             {
+                StateTracker::VertexArrayObject& vao = input.contexts[context_index].vaos.at(input.contexts[context_index].vao_index);
                 if (relevant(frames))
                 {
                     buffer_changed(GL_ARRAY_BUFFER);
                 }
-                last_changed_vertex_buffer = input.contexts[context_index].boundBufferIds[GL_ARRAY_BUFFER][0].buffer;
+                last_changed_vertex_buffer = vao.boundBufferIds[GL_ARRAY_BUFFER][0].buffer;
             }
         }
         else if (call->mCallName == "glBindBuffer" || call->mCallName == "glBindBufferBase" || call->mCallName == "glBindBufferRange")
@@ -1423,12 +1270,8 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
             if (program_index >= 0) // will be zero for GLES1
             {
                 dumpstream << std::endl << "    ";
-                ProgramState p = getProgramInfo(input.contexts[context_index].programs[program_index].id);
-                if (contexts[context_index].programs.count(program_index) == 0)
-                {
-                    contexts[context_index].programs[program_index] = p;
-                }
-                for (const ProgramState::ProgramSampler& s : p.texture_bindings)
+                const StateTracker::Program& p = input.contexts[context_index].programs[program_index];
+                for (const StateTracker::Program::ProgramSampler& s : p.texture_bindings)
                 {
                     GLenum binding = samplerTypeToBindingType(s.type);
                     if (binding == GL_NONE)
@@ -1437,15 +1280,14 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
                         continue;
                     }
                     else if (input.contexts[context_index].textureUnits.count(s.value) == 0
-                        || input.contexts[context_index].textureUnits[s.value].count(binding) == 0) // sanity check
+                        || input.contexts[context_index].textureUnits[s.value].count(binding) == 0)
                     {
-                        DBG_LOG("Very strange texture binding for sampler %s at call %d\n", s.name.c_str(), (int)call->mCallNo);
-                        continue;
+                        continue; // no textures bound
                     }
                     const GLuint texture_id = input.contexts[context_index].textureUnits[s.value][binding];
-                    contexts[context_index].textureIdUsed.insert(texture_id);
                     dumpstream << "TextureUnit:" << s.value << "(" + texEnum(binding) + ") = TexureId:" << texture_id << ",SamplerId:"
                                << input.contexts[context_index].sampler_binding[s.value] << std::endl << "    ";
+                    if (texture_id == 0) continue;
                     StateTracker::SamplerState sampler;
                     const GLuint samplerObject = input.contexts[context_index].sampler_binding[s.value];
                     if (samplerObject) // do we have a sampler object bound?
@@ -1453,31 +1295,29 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
                         const int idx = input.contexts[context_index].samplers.remap(samplerObject);
                         sampler = input.contexts[context_index].samplers[idx].state;
                     }
-                    else if (texture_id != 0) // if not, use texture's sampler state
+                    else // if not, use texture's sampler state
                     {
                         const int idx = input.contexts[context_index].textures.remap(texture_id);
                         sampler = input.contexts[context_index].textures[idx].state;
                     }
-                    if (texture_id != 0)
+                    contexts[context_index].textureIdUsed.insert(texture_id);
+                    texturetypefilters[texEnum(binding)][texEnum(sampler.min_filter)]++;
+                    const int idx = input.contexts[context_index].textures.remap(texture_id);
+                    StateTracker::Texture& texture = input.contexts[context_index].textures[idx];
+                    texturetypesizes[texEnum(binding)][std::to_string(texture.width) + "x" + std::to_string(texture.height) + "x" + std::to_string(texture.depth)]++;
+                    perframe["textures"].values.back()++;
+                    perdraw["textures"].values.back()++;
+                    if (sampler.anisotropy > 1.0)
                     {
-                        texturetypefilters[texEnum(binding)][texEnum(sampler.min_filter)]++;
-                        const int idx = input.contexts[context_index].textures.remap(texture_id);
-                        StateTracker::Texture& texture = input.contexts[context_index].textures[idx];
-                        texturetypesizes[texEnum(binding)][std::to_string(texture.width) + "x" + std::to_string(texture.height) + "x" + std::to_string(texture.depth)]++;
-                        perframe["textures"].values.back()++;
-                        perdraw["textures"].values.back()++;
-                        if (sampler.anisotropy > 1.0)
-                        {
-                            features[FEATURE_ANISOTROPY] = 1;
-                        }
-                        if (input.contexts[context_index].render_passes.size() > 0 && input.contexts[context_index].render_passes.back().active
-                            && renderpassframes.count(frames))
-                        {
-                            textures_by_renderpass[input.contexts[context_index].render_passes.back().index].insert(texture_id);
-                        }
-                        texture.used_min_filters.insert(sampler.min_filter);
-                        texture.used_mag_filters.insert(sampler.mag_filter);
+                        features[FEATURE_ANISOTROPY] = 1;
                     }
+                    if (input.contexts[context_index].render_passes.size() > 0 && input.contexts[context_index].render_passes.back().active
+                        && renderpassframes.count(frames))
+                    {
+                        textures_by_renderpass[input.contexts[context_index].render_passes.back().index].insert(texture_id);
+                    }
+                    texture.used_min_filters.insert(sampler.min_filter);
+                    texture.used_mag_filters.insert(sampler.mag_filter);
                 }
             }
             if (input.contexts[context_index].render_passes.size() > 0 && input.contexts[context_index].render_passes.back().active)
@@ -1515,9 +1355,6 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
         if (relevant(frames))
         {
             calls++;
-            CallData& callData = mCallData[call->mCallName];
-            callData.cycles += input.getCpuCycles();
-            callData.count++;
             perframe["calls"].values.back()++;
         }
     }
@@ -1563,7 +1400,7 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
     // CSV
     write_CSV(dump_csv_filename.empty() ? "trace" : dump_csv_filename, perframe, true);
     // Dump out callstats
-    write_callstats(mCallData, dump_csv_filename.empty() ? "trace" : dump_csv_filename);
+    write_callstats(input, dump_csv_filename.empty() ? "trace" : dump_csv_filename);
 }
 
 static double ratio_with_cap(long limit, long value)
@@ -1665,13 +1502,13 @@ static Json::Value json_base(const StateTracker::Resource& base)
     Json::Value json;
     json["name"] = base.id;
     json["index"] = base.index;
-    json["frame_created"] = base.frame_created;
-    json["call_created"] = base.call_created;
-    if (base.frame_destroyed != -1)
+    if (!bareLog) json["frame_created"] = base.frame_created;
+    if (!bareLog) json["call_created"] = base.call_created;
+    if (base.frame_destroyed != -1 && !bareLog)
     {
         json["frame_destroyed"] = base.frame_destroyed;
     }
-    if (base.call_destroyed != -1)
+    if (base.call_destroyed != -1 && !bareLog)
     {
         json["call_destroyed"] = base.call_destroyed;
     }
@@ -1725,7 +1562,7 @@ static Json::Value json_fb(const StateTracker::Context& c, int idx, int frame)
 
 Json::Value AnalyzeTrace::json_program(const StateTracker::Context& context, const StateTracker::Program& program, int frame)
 {
-    const ProgramState& ps = contexts[context.index].programs[program.index];
+    const StateTracker::Program& ps = context.programs.at(program.index);
     Json::Value json = json_base(program);
     if (ps.activeAtomicCounterBuffers > 0)
     {
@@ -1763,23 +1600,14 @@ Json::Value AnalyzeTrace::json_program(const StateTracker::Context& context, con
     }
     json["shaders"] = Json::arrayValue;
     json["shader_ids"] = Json::arrayValue;
-    if (!compiler.empty())
-    {
-        json["arithmetic"] = Json::arrayValue;
-        json["loadstore"] = Json::arrayValue;
-        json["texturing"] = Json::arrayValue;
-        json["spilling"] = Json::arrayValue;
-        json["uniform_registers"] = Json::arrayValue;
-    }
     json["samplers"] = Json::arrayValue;
     json["compile_status"] = Json::arrayValue;
-    std::unordered_set<std::string> samplers;
+    std::set<std::string> samplers;
     int lines = 0;
     int bytes = 0;
     for (const auto& pair : program.shaders)
     {
         const StateTracker::Shader& shader = context.shaders.at(pair.second);
-        const ShaderState& s = contexts[context.index].shaders[shader.index];
         lines += std::count(shader.source_code.cbegin(), shader.source_code.cend(), '\n');
         bytes += shader.source_compressed.size();
         switch (pair.first)
@@ -1797,14 +1625,6 @@ Json::Value AnalyzeTrace::json_program(const StateTracker::Context& context, con
         case GL_TESS_CONTROL_SHADER: json["shaders"].append("tess control"); break;
         case GL_COMPUTE_SHADER: json["shaders"].append("compute"); break;
         default: json["shaders"].append("unknown"); break;
-        }
-        if (!compiler.empty())
-        {
-            json["arithmetic"].append(s.arithmetic);
-            json["loadstore"].append(s.loadstore);
-            json["texturing"].append(s.texturing);
-            json["spilling"].append(s.spilling);
-            json["uniform_registers"].append(s.uniform_registers);
         }
         if (shader.contains_invariants) json["contains_invariants"] = true;
         if (shader.contains_optimize_off_pragma) json["contains_optimize_off_pragma"] = true;
@@ -1850,8 +1670,8 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
     for (auto& c : input.contexts)
     {
         Json::Value v = json_base(c);
-        std::unordered_map<GLenum, long> used_texture_target_types;
-        std::unordered_map<GLenum, long> used_renderbuffer_target_types;
+        std::map<GLenum, long> used_texture_target_types;
+        std::map<GLenum, long> used_renderbuffer_target_types;
         for (const auto& r : c.render_passes)
         {
             for (const auto& tt : r.used_texture_targets)
@@ -1918,7 +1738,7 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
         v["framerange"]["no_state_or_index_buffer_changed_draws"] = sum_map_range(c.no_state_or_index_buffer_changed_draws_per_frame);
         v["transform_feedback_objects"] = (int)c.transform_feedbacks.all().size();
         v["attribute_buffers"] = Json::arrayValue;
-        std::map<std::tuple<GLenum, GLint, GLsizei>, int> buffer_combos;
+        std::map<std::tuple<GLenum, GLint, GLsizei, uint64_t, GLuint>, int> buffer_combos;
         for (const auto& buffer : c.buffers.all())
         {
             for (const auto& tuple : buffer.types)
@@ -1954,10 +1774,31 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
         }
         result["contexts"].append(v);
     }
+    if (input.jsonConfig.red <= 0 && input.jsonConfig.green <= 0 && input.jsonConfig.blue <= 0)
+    {
+        result["header_empty_egl_rgb_config"] = true; // this is usuallly a sign of a bad header
+    }
     result["surfaces"] = Json::arrayValue;
     for (auto& s : surfaces)
     {
         Json::Value v = json_base(input.surfaces[s.index]);
+        StateTracker::EglConfig& config = input.eglconfigs[input.surfaces[s.index].eglconfig];
+        if (config.samples > 0 && input.jsonConfig.samples < config.samples)
+        {
+            Json::Value msaa;
+            msaa["requested"] = config.samples;
+            msaa["trace_header"] = input.jsonConfig.samples;
+            v["msaa_discrepancy"] = msaa;
+        }
+        Json::Value conf;
+        conf["red_bits"] = config.red;
+        conf["green_bits"] = config.green;
+        conf["blue_bits"] = config.blue;
+        conf["alpha_bits"] = config.alpha;
+        conf["depth_bits"] = config.depth;
+        conf["stencil_bits"] = config.stencil;
+        if (config.samples > 0) conf["msaa_samples"] = config.samples;
+        v["egl_config"] = conf;
         v["display"] = s.display;
         v["activations"] = s.activations;
         v["gl_calls"] = s.glcount;
@@ -2026,12 +1867,6 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
         Json::Value v;
         v["name"] = SafeEnumString(s.first);
         v["count"] = s.second;
-        if (!compiler.empty())
-        {
-            v["average_arithmetic"] = shadercycles[s.first].a / s.second;
-            v["average_loadstore"] = shadercycles[s.first].l / s.second;
-            v["average_texture"] = shadercycles[s.first].t / s.second;
-        }
         result["shaders"].append(v);
     }
     addMapToJson(result, "texture_formats", tex_formats);
@@ -2113,36 +1948,35 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
     for (auto& c : input.contexts)
     {
         std::string digraph = "digraph frame_f" + std::to_string(frame) + " {\n";
-        std::unordered_set<int> used_fbos; // by index
-        std::unordered_set<int> used_rbs; // by index
-        std::unordered_set<int> used_texs; // by index
-        std::unordered_set<int> used_programs; // by index
+        std::set<int> used_fbos; // by index
+        std::set<int> used_rbs; // by index
+        std::set<int> used_texs; // by index
+        std::set<int> used_programs; // by index
         Json::Value subresult = json_base(c);
-        subresult["renderpasses"] = Json::arrayValue;
         subresult["programs"] = Json::arrayValue;
         subresult["textures"] = Json::arrayValue;
         subresult["framebuffers"] = Json::arrayValue;
         subresult["renderpasses"] = Json::arrayValue;
-        std::unordered_set<int> used_textures_by_id;
-        std::unordered_set<int> used_texture_targets_by_id;
+        std::set<int> used_textures_by_id;
+        std::set<int> used_texture_targets_by_id;
         for (auto& r : c.render_passes)
         {
             if (r.frame == frame)
             {
                 Json::Value v;
                 v["index"] = r.index;
-                v["first_drawcall"] = r.first_call;
-                v["last_drawcall"] = r.last_call;
+                if (!bareLog) v["first_drawcall"] = r.first_call;
+                if (!bareLog) v["last_drawcall"] = r.last_call;
                 v["framebuffer_id"] = r.drawframebuffer;
                 const GLuint fb_id = r.drawframebuffer;
-                const int fb_index = c.framebuffers.remap(fb_id);
+                const int fb_index = r.drawframebuffer_index;
                 StateTracker::Framebuffer& fb = c.framebuffers[fb_index];
                 used_fbos.insert(fb_index);
                 if (!fb.label.empty())
                 {
                     v["label"] = fb.label;
                 }
-                if (!r.snapshot_filename.empty())
+                if (!r.snapshot_filename.empty() && !bareLog)
                 {
                     v["snapshot"] = r.snapshot_filename;
                 }
@@ -2157,22 +1991,24 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
                         digraph += add_node("    fbo_", fb_id, "rb_", c.renderbuffers[t].id);
                         used_rbs.insert(t);
                     }
-                    v["used_renderbuffer_target_ids"] = list;
                 }
                 if (r.used_texture_targets.size() > 0)
                 {
                     list = Json::arrayValue;
+                    Json::Value formats = Json::arrayValue;
+                    Json::Value sizes = Json::arrayValue;
                     for (auto t : r.used_texture_targets)
                     {
                         assert(t < (int)c.textures.all().size());
                         assert(c.textures[t].id != 0);
                         list.append(c.textures[t].id);
+                        formats.append(texEnum(c.textures[t].internal_format));
+                        sizes.append(std::to_string(c.textures[t].width) + "x" + std::to_string(c.textures[t].height));
                         digraph += add_node("    fbo_", fb_id, "tex_", c.textures[t].id);
                         used_texs.insert(t);
                         used_textures_by_id.insert(c.textures[t].id);
                         used_texture_targets_by_id.insert(c.textures[t].id);
                     }
-                    v["used_texture_target_ids"] = list;
                 }
                 if (textures_by_renderpass[r.index].size() > 0)
                 {
@@ -2194,7 +2030,7 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
                 if (r.used_programs.size() > 0)
                 {
                     list = Json::arrayValue;
-                    std::unordered_set<int> vertexset; // by id
+                    std::set<int> vertexset; // by id
                     for (const auto t : r.used_programs)
                     {
                         assert(t < (int)c.programs.all().size());
@@ -2226,6 +2062,33 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
                 v["draw_calls"] = r.draw_calls;
                 v["primitives"] = (Json::Value::Int64)r.primitives;
                 v["vertices"] = (Json::Value::Int64)r.vertices;
+                v["attachments"] = Json::arrayValue;
+                v["size"] = Json::arrayValue;
+                v["size"].append(r.width);
+                v["size"].append(r.height);
+                if (r.depth > 1) v["depth"] = r.depth;
+                for (const auto& a : r.attachments)
+                {
+                    Json::Value av;
+                    switch (a.load_op)
+                    {
+                    case StateTracker::RenderPass::LOAD_OP_LOAD: av["load_op"] = "LOAD"; break;
+                    case StateTracker::RenderPass::LOAD_OP_CLEAR: av["load_op"] = "CLEAR"; break;
+                    case StateTracker::RenderPass::LOAD_OP_DONT_CARE: av["load_op"] = "DONT_CARE"; break;
+                    default: break;
+                    }
+                    switch (a.store_op)
+                    {
+                    case StateTracker::RenderPass::STORE_OP_STORE: av["store_op"] = "STORE"; break;
+                    case StateTracker::RenderPass::STORE_OP_DONT_CARE: av["store_op"] = "DONT_CARE"; break;
+                    default: break;
+                    }
+                    av["format"] = texEnum(a.format);
+                    av["id"] = a.id;
+                    av["index"] = a.index;
+                    av["type"] = texEnum(a.type);
+                    v["attachments"].append(av);
+                }
                 subresult["renderpasses"].append(v);
             }
         }
@@ -2326,6 +2189,7 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
         }
         result["total_clears"] = frame_clears;
         result["duplicate_clears"] = frame_dupes;
+        prune(subresult);
         result["contexts"].append(subresult);
     }
     return result;
@@ -2338,6 +2202,7 @@ int main(int argc, char **argv)
 
     bool display_mode = false;
     bool no_screenshots = false;
+    bool renderpassjson = false;
     int argIndex = 1;
     for (; argIndex < argc; ++argIndex)
     {
@@ -2384,11 +2249,14 @@ int main(int argc, char **argv)
         else if (arg == "-z")
         {
             dumpCallTime = true;
-            no_cycles = false;
         }
         else if (arg == "-b")
         {
             bareLog = true;
+        }
+        else if (arg == "-j")
+        {
+            renderpassjson = true;
         }
         else if (arg == "-n")
         {
@@ -2414,11 +2282,6 @@ int main(int argc, char **argv)
         {
             dump_to_text = true;
         }
-        else if (arg == "-c" && argIndex + 1 < argc)
-        {
-            compiler = argv[argIndex + 1];
-            argIndex++;
-        }
         else if (arg == "-o" && argIndex + 1 < argc)
         {
             dump_csv_filename = argv[argIndex + 1];
@@ -2441,7 +2304,10 @@ int main(int argc, char **argv)
     ParseInterfaceRetracing inputFile;
     inputFile.setDisplayMode(display_mode);
     inputFile.setQuickMode(true);
+    inputFile.setDumpRenderpassJSON(false);
     inputFile.setScreenshots(!no_screenshots);
+    inputFile.setOutputName(dump_csv_filename);
+    inputFile.setRenderpassJSON(renderpassjson);
     if (!inputFile.open(source_trace_filename))
     {
         std::cerr << "Failed to open for reading: " << source_trace_filename << std::endl;

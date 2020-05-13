@@ -51,7 +51,7 @@ public class RetraceActivity extends Activity
     private GLViewContainer mViewContainer = null;
     private HorizontalScrollView scroll = null;
 
-    private boolean force_single_window = true;
+    private boolean force_single_window = false;
     private boolean enOverlay = true;
     private int transparent = 100;
     private boolean enFullScreen = false;
@@ -63,7 +63,7 @@ public class RetraceActivity extends Activity
     @Override protected void onCreate(Bundle icicle) {
         super.onCreate(icicle);
         Intent parentIntent = getIntent();
-        force_single_window = parentIntent.getBooleanExtra("force_single_window", true);
+        force_single_window = parentIntent.getBooleanExtra("force_single_window", false);
         enOverlay = force_single_window? false : parentIntent.getBooleanExtra("enOverlay", true);
         transparent = parentIntent.getIntExtra("transparent", 100);
         enFullScreen = parentIntent.getBooleanExtra("enFullScreen", false);

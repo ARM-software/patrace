@@ -249,7 +249,7 @@ class DeserializeVisitor(stdapi.Visitor):
             print '        }'
             print '        else'
             print '        {'
-            print '            DBG_LOG("ERROR: Unsupported opaque type\\n");'
+            print '            gRetracer.reportAndAbort("Unsupported opaque type: %u", _opaque_type);'
             print '        }'
             print '    }'
         else:
@@ -592,6 +592,7 @@ class Retracer(object):
             print '    {'
             print '        %s(1, &%sNew);' % (autogenBindFuncs[func.name], arg.name)
             print '        %s = %sNew;' % (lookupHandleAsL(arg.type, arg.name), arg.name)
+            print '        %s = %s;' % (reverseLookupHandleAsL(arg.type, arg.name+'New'), arg.name)
             print '    }'
             arg.has_new_value = True
             return
@@ -639,6 +640,7 @@ class Retracer(object):
             print
             print '    Context& context = gRetracer.getCurrentContext();'
             print '    GLuint buffer = getBoundBuffer(target);'
+            print '    if (ret == 0) { DBG_LOG("map buffer failed: 0x%04x! binding is 0x%04x, access is 0x%04x, buffer is %u\\n", (unsigned)_glGetError(), (unsigned)target, (unsigned)access, (unsigned)buffer); }'
             print
             if func.name in ['glMapBuffer', 'glMapBufferOES']:
                 print '    if (access == GL_WRITE_ONLY)'
@@ -654,6 +656,16 @@ class Retracer(object):
             print '    {'
             print '        context._bufferToData_map[buffer] = 0;'
             print '    }'
+            if func.name in ['glMapBufferRange']:
+                print
+                print '    if (access & GL_MAP_PERSISTENT_BIT_EXT)'
+                print '    {'
+                print '        DBG_LOG("WARNING! GL_MAP_PERSISTENT_BIT is set to access parameter for glMapBufferRange(). \\n");'
+                print '        DBG_LOG("It may cause the retrace to work abnormally.\\n");'
+                print '        DBG_LOG("Suggest adding a parameter to /system/lib/egl/tracerparams.cfg to disable the GL_EXT_buffer_storage extension.\\n");'
+                print '        DBG_LOG("    echo \\"DisableBufferStorage true\\" >> /system/lib/egl/tracerparams.cfg\\n");'
+                print '        DBG_LOG("Then trace again to get a new pat file.\\n");'
+                print '    }'
             func.has_context = True
         elif func.name in ['glReadPixels', 'glReadnPixels', 'glReadnPixelsEXT', 'glReadnPixelsKHR']:
             print '    if (!isPixelPackBufferBound)'
@@ -777,9 +789,13 @@ class Retracer(object):
             print '        gRetracer.getStateLogger().logFunction(gRetracer.getCurTid(), "' + func.name + '", gRetracer.GetCurCallId(), gRetracer.GetCurDrawId());'
             instance_count = 'instancecount' if func.name in stdapi.draw_instanced_function_names else '0'
         if func.name == 'glDrawElementsIndirect':
-            print '        gRetracer.getStateLogger().logDrawElementsIndirect(gRetracer.getCurTid(), type, indirect);'
+            print '        gRetracer.getStateLogger().logDrawElementsIndirect(gRetracer.getCurTid(), type, indirect, 1);'
         elif func.name == 'glDrawArraysIndirect':
-            print '        gRetracer.getStateLogger().logDrawArraysIndirect(gRetracer.getCurTid(), indirect);'
+            print '        gRetracer.getStateLogger().logDrawArraysIndirect(gRetracer.getCurTid(), indirect, 1);'
+        elif func.name == 'glMultiDrawElementsIndirectEXT':
+            print '        gRetracer.getStateLogger().logDrawElementsIndirect(gRetracer.getCurTid(), type, indirect, drawcount);'
+        elif func.name == 'glMultiDrawArraysIndirectEXT':
+            print '        gRetracer.getStateLogger().logDrawArraysIndirect(gRetracer.getCurTid(), indirect, drawcount);'
         elif is_draw_array:
             print '        gRetracer.getStateLogger().logState(gRetracer.getCurTid(), first, count, %s);' % instance_count
         elif is_draw_elements:

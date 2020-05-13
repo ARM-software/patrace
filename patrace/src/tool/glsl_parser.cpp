@@ -140,29 +140,20 @@ static std::string replace_macro(std::string& s, const Define& define, const std
         const char* next = start;
         do
         {
+            int recursive = 0;
             next++;
             while (*next == ' ' || *next == '\t') next++; // skip spaces
-            const char* probe = strpbrk(next, "(,)");
-            if (*probe == '(') // function call inside function call
-            {
-                int recursive = 1;
-                probe++;
-                do
-                {
-                    probe = strpbrk(probe, "()");
-                    if (*probe == '(') recursive++;
-                    else if (*probe == ')') recursive--;
-                    probe++;
-                } while (probe && recursive);
-                replacements.push_back(macro_expansion(std::string(next, probe - next), defines));
-                probe = strpbrk(probe, ",)");
-            }
-            else
-            {
-                const char* lim = probe;
-                while (*lim == ' ' || *lim == '\t' || *lim == ',' || *lim == ')') lim--;
-                replacements.push_back(std::string(next, (lim + 1) - next));
-            }
+            const char* probe = next;
+            const char* lim = nullptr;
+repeat:
+            lim = probe = strpbrk(probe, "(,)");
+            if (*probe == '(') { recursive++; probe++; goto repeat; }
+            else if (*probe == ')' && recursive > 0) { recursive--; probe++; goto repeat; }
+            else if (*probe == ',' && recursive > 0) { probe++; goto repeat; }
+            else if (*probe == ')' || *probe == ',') lim--;
+            while (*lim == ' ' || *lim == '\t') lim--;
+            const std::string s = std::string(next, (lim + 1) - next);
+            replacements.push_back(macro_expansion(s, defines));
             next = probe;
             i++;
         }
@@ -846,6 +837,16 @@ static void test_scan(const std::string& k, Token::tokentype ty, const std::stri
 void GLSLParser::self_test()
 {
     special_test();
+
+    {
+        const std::unordered_map<std::string, Define> om{{"mix2", {" mix((a),(b),(t))", {"a", "b", "t"}}}};
+        std::string s = "mix2(c1.rgb,(c*upper) + ((1.0-c)*lower),opacity)";
+        std::string r = replace_macro(s, om.at("mix2"), om);
+        assert(r == " mix((c1.rgb),((c*upper) + ((1.0-c)*lower)),(opacity))");
+        std::string s2 = "mix2(texcolor.rgb,overlayBlend3(texcolor.rgb, texoverlay.rgb*vec3(0.5,0.5,0.5), overlayweights.r),overlaymask.r)";
+        r = replace_macro(s2, om.at("mix2"), om);
+        assert(r == " mix((texcolor.rgb),(overlayBlend3(texcolor.rgb, texoverlay.rgb*vec3(0.5,0.5,0.5), overlayweights.r)),(overlaymask.r))");
+    }
 
     const std::unordered_map<std::string, Define> om1{{"float2", {"vec2"}}};
     const char* v1 = " Square(float2 A)";

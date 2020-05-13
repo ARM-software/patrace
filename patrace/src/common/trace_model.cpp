@@ -366,9 +366,7 @@ long long ValueTM::GetAsInt64() const
         switch (mOpaqueType)
         {
         case BufferObjectReferenceType:
-            return mOpaqueIns->GetAsUInt64();
-        case ClientSideBufferObjectReferenceType:
-            return mOpaqueIns->GetAsUInt64();
+            return mOpaqueIns->GetAsInt64();
         default:
             break;
         }
@@ -397,9 +395,7 @@ unsigned long long ValueTM::GetAsUInt64() const
         switch (mOpaqueType)
         {
         case BufferObjectReferenceType:
-            return mOpaqueIns->GetAsInt64();
-        case ClientSideBufferObjectReferenceType:
-            return mOpaqueIns->GetAsInt64();
+            return mOpaqueIns->GetAsUInt64();
         default:
             break;
         }

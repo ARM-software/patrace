@@ -14,7 +14,7 @@ public:
     virtual EGLImageKHR createImageKHR(Context* context, EGLenum target, uintptr_t buffer, const EGLint* attrib_list) override;
     virtual void postInit() override;
     void setupJAVAEnv(JNIEnv *env);
-    virtual Drawable* CreateDrawable(int width, int height, int win) override;
+    virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList) override;
     void setNativeWindow(EGLNativeWindowType window, int textureViewSize);
 
 private:

@@ -63,7 +63,7 @@ public:
     EGLSurface mSurface;
     EGLint api;
 
-    EglDrawable(int w, int h):
+    EglDrawable(int w, int h, EGLint const* attribList):
         Drawable(w, h), hWnd(NULL), api(EGL_OPENGL_ES_API)
     {
         static bool first = true;
@@ -101,7 +101,7 @@ public:
             NULL);
         hDC = GetDC(hWnd);
 
-        mSurface = eglCreateWindowSurface(gEglDisplay, gConfig, (EGLNativeWindowType)hWnd, NULL);
+        mSurface = eglCreateWindowSurface(gEglDisplay, gConfig, (EGLNativeWindowType)hWnd, attribList);
         if (mSurface != EGL_NO_SURFACE)
         {
             show();
@@ -318,9 +318,9 @@ void GLWS::Cleanup()
     }
 }
 
-Drawable* GLWS::CreateDrawable(int width, int height)
+Drawable* GLWS::CreateDrawable(int width, int height, int /*win*/, EGLint const* attribList)
 {
-    return new EglDrawable(width, height);
+    return new EglDrawable(width, height, attribList);
 }
 
 Context* GLWS::CreateContext(Context* shareContext, Profile profile)

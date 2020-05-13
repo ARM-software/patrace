@@ -38,6 +38,7 @@ target_link_libraries(drawstate
     ${PNG_LIBRARIES}
     ${ZLIB_LIBRARIES}
     jsoncpp
+    hwcpipe
 )
 add_dependencies(drawstate
     retrace_gles_auto_src_generation

@@ -37,6 +37,7 @@ struct CmdOptions
     bool singleFrameOffscreen = false;
     int skipWork = -1;
     bool dumpStatic = false;
+    bool perfmon = false;
     bool callStats = false;
     bool collectors = false;
     bool collectors_streamline = false;
@@ -49,6 +50,7 @@ struct CmdOptions
     int perfFreq = -1;
     bool finishBeforeSwap = false;
     std::string cpuMask;
+    bool dmaSharedMemory = false;
 };
 
 #endif

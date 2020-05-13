@@ -41,7 +41,7 @@ void myread(void *data, size_t size, FILE *fp, const char *where)
 	int err;
 	do
 	{
-		r = fread(data + written, 1, size, fp);
+		r = fread((char*)data + written, 1, size, fp);
 		size -= r;
 		written += r;
 		err = ferror(fp);

@@ -25,7 +25,7 @@ static void callback(unsigned int source, unsigned int type, unsigned int id, un
 
 void getSurfaceDimensions(int* width, int* height)
 {
-    RetraceOptions& opt = gRetracer.mOptions;
+    const RetraceOptions& opt = gRetracer.mOptions;
     if(opt.mForceOffscreen)
     {
         // In offscreen only create a window surface large enough to hold the mosaic.
@@ -63,7 +63,7 @@ void retrace_eglCreateWindowSurface(char* src)
     src = ReadFixed(src, ret);
 
     gEGLMutex.lock();
-    RetraceOptions& opt = gRetracer.mOptions;
+    const RetraceOptions& opt = gRetracer.mOptions;
     GLESThread& thread = gRetracer.mState.mThreadArr[gRetracer.getCurTid()];
     //  ------------- retrace ---------------
     //DBG_LOG("[%d] retrace_eglCreateWindowSurface %d, %d\n", gRetracer.getCurTid(), config, ret);
@@ -97,18 +97,19 @@ void retrace_eglCreateWindowSurface(char* src)
 
         if (s.mSingleSurface)
         {
-            s.InsertDrawableMap(ret, s.mThreadArr[gRetracer.getCurTid()].getDrawable());
-            DBG_LOG("INFO: Ignoring creation of surface: 'forceSingleWindow' is set to 'true' in the header of the trace file\n");
+            s.InsertDrawableMap(ret, s.mSingleSurface);
+            DBG_LOG("INFO: Ignoring creation of surface %d: 'forceSingleWindow' is set to 'true' in the header of the trace file\n", ret);
             gEGLMutex.unlock();
             return;
         }
+        else DBG_LOG("'forceSingleWindow' is set to true but master window not yet created, not setting surface %d\n", ret); // very bad
     }
 
     int width = 0;
     int height = 0;
     getSurfaceDimensions(&width, &height);
 
-    DBG_LOG("Creating drawable: w=%d, h=%d...\n", width, height);
+    DBG_LOG("Creating drawable for surface %d: w=%d, h=%d...\n", ret, width, height);
     retracer::Drawable* d;
     if (gRetracer.mOptions.mPbufferRendering)
     {
@@ -117,7 +118,7 @@ void retrace_eglCreateWindowSurface(char* src)
     }
     else
     {
-        d = GLWS::instance().CreateDrawable(width, height, win);
+        d = GLWS::instance().CreateDrawable(width, height, win, attrib_list);
     }
     s.InsertDrawableMap(ret, d);
     s.InsertDrawableToWinMap(ret, win);
@@ -168,7 +169,7 @@ static void retrace_eglCreateWindowSurface2(char* src)
     src = ReadFixed(src, ret);
 
     gEGLMutex.lock();
-    RetraceOptions& opt = gRetracer.mOptions;
+    const RetraceOptions& opt = gRetracer.mOptions;
     GLESThread& thread = gRetracer.mState.mThreadArr[gRetracer.getCurTid()];
     //  ------------- retrace ---------------
     //DBG_LOG("[%d] retrace_eglCreateWindowSurface %d, %d\n", gRetracer.getCurTid(), config, ret);
@@ -202,11 +203,12 @@ static void retrace_eglCreateWindowSurface2(char* src)
 
         if (s.mSingleSurface)
         {
-            s.InsertDrawableMap(ret, s.mThreadArr[gRetracer.getCurTid()].getDrawable());
-            DBG_LOG("INFO: Ignoring creation of surface: 'forceSingleWindow' is set to 'true' in the header of the trace file\n");
+            s.InsertDrawableMap(ret, s.mSingleSurface);
+            DBG_LOG("INFO: Ignoring creation of surface %d: 'forceSingleWindow' is set to 'true' in the header of the trace file\n", ret);
             gEGLMutex.unlock();
             return;
         }
+        else DBG_LOG("'forceSingleWindow' is set to true but master window not yet created, not setting surface %d\n", ret); // very bad
     }
 
     if (opt.mForceOffscreen || (opt.mForceSingleWindow && !gRetracer.mOptions.mMultiThread) || opt.mDoOverrideResolution)
@@ -214,7 +216,7 @@ static void retrace_eglCreateWindowSurface2(char* src)
         getSurfaceDimensions(&surfWidth, &surfHeight);
     }
 
-    DBG_LOG("Creating drawable: x=%d, y=%d, w=%d, h=%d...\n", x, y, surfWidth, surfHeight);
+    DBG_LOG("Creating drawable for surface %d: x=%d, y=%d, w=%d, h=%d...\n", ret, x, y, surfWidth, surfHeight);
     retracer::Drawable* d;
     if (gRetracer.mOptions.mPbufferRendering)
     {
@@ -223,7 +225,7 @@ static void retrace_eglCreateWindowSurface2(char* src)
     }
     else
     {
-        d = GLWS::instance().CreateDrawable(surfWidth, surfHeight, win);
+        d = GLWS::instance().CreateDrawable(surfWidth, surfHeight, win, attrib_list);
     }
     s.InsertDrawableMap(ret, d);
 
@@ -461,9 +463,10 @@ void retrace_eglMakeCurrent(char* src)
                 }
                 else
                 {
-                    drawable = GLWS::instance().CreateDrawable(width, height, 0);
+                    EGLint const attribs[] = { EGL_NONE };
+                    drawable = GLWS::instance().CreateDrawable(width, height, 0, attribs);
                 }
-                RetraceOptions& opt = gRetracer.mOptions;
+                const RetraceOptions& opt = gRetracer.mOptions;
                 drawable->winWidth  = opt.mWindowWidth;
                 drawable->winHeight = opt.mWindowHeight;
                 if (opt.mDoOverrideResolution)
@@ -570,6 +573,7 @@ void retrace_eglMakeCurrent(char* src)
     if (context)
     {
         gGlesFeatures.Update();
+        if (gRetracer.delayedPerfmonInit) gRetracer.perfMonInit();
     }
 
     if (drawable && gRetracer.mOptions.mForceOffscreen)
@@ -594,7 +598,7 @@ void retrace_eglMakeCurrent(char* src)
             context->_offscrMgr->BindOffscreenFBO();
         }
 
-        if (gRetracer.getCurTid() == gRetracer.mOptions.mRetraceTid)
+        if (!gRetracer.mpOffscrMgr || gRetracer.getCurTid() == gRetracer.mOptions.mRetraceTid)
             gRetracer.mpOffscrMgr = context->_offscrMgr;
     }
 
@@ -642,16 +646,16 @@ static void retrace_eglCreateImageKHR(char* src)
                     DBG_LOG("Call %d eglCreateImageKHR, attrib_list[%d] = 0x%X is only compatible with tgt == EGL_NATIVE_BUFFER_ANDROID,"
                             " but in this call, target == 0x%X != EGL_NATIVE_BUFFER_ANDROID(0x%X)."
                             " It might be caused by a conversion of the format of this EGLImageKHR when tracing."
-                            " So here we'll ignore this attrib and continue retracing. But it might bring some aitifacts.\n", gRetracer.GetCurCallId(), i, attrib_list[i], tgt, EGL_NATIVE_BUFFER_ANDROID);
+                            " So here we'll ignore this attrib and continue retracing. But it might bring some artifacts.\n", gRetracer.GetCurCallId(), i, attrib_list[i], tgt, EGL_NATIVE_BUFFER_ANDROID);
+                    continue;
                 }
             }
-            else {
-                attrib_list2.push_back(attrib_list[i]);
-                if (attrib_list[i] != EGL_NONE)
-                    attrib_list2.push_back(attrib_list[i + 1]);
-            }
+            attrib_list2.push_back(attrib_list[i]);
+            if (attrib_list[i] != EGL_NONE)
+                attrib_list2.push_back(attrib_list[i + 1]);
         }
     }
+
     gEGLMutex.lock();
     uintptr_t buffer_new = 0;
     retracer::Context* context = gRetracer.mState.GetContext(ctx);
@@ -701,7 +705,7 @@ static void retrace_eglCreateImageKHR(char* src)
         try {
             fix = curContext.mGraphicBuffers.at(id);
         }
-        catch (std::out_of_range) {
+        catch (std::out_of_range&) {
             DBG_LOG("Cannot find the corresponding GraphicBuffer for eglCreateImageKHR in call %d. "
                     "Either a glGenGraphicBuffer missing or retracing a very old pat file.\n", gRetracer.GetCurCallId());
             goto retrace;
@@ -718,10 +722,16 @@ static void retrace_eglCreateImageKHR(char* src)
     //  ------------- retrace ---------------
 retrace:
     EGLImageKHR image;
-    if (attrib_list2.empty())
+
+    if (tgt == EGL_LINUX_DMA_BUF_EXT)
+    {
         image = GLWS::instance().createImageKHR(context, tgt, buffer_new, attrib_list);
+    }
     else
+    {
         image = GLWS::instance().createImageKHR(context, tgt, buffer_new, &attrib_list2[0]);
+    }
+
     if (image == NULL) {
         DBG_LOG("eglCreateImageKHR failed to create EGLImage = 0x%x at call %u.\n", ret, gRetracer.GetCurCallId());
     }
@@ -1029,7 +1039,32 @@ static void retrace_eglSetDamageRegionKHR(char* _src)
     _src = ReadFixed<int>(_src, old_ret);
     if (old_ret == EGL_FALSE) return; // failed in original, so fail here as well
 
-    gRetracer.mState.GetDrawable(surface)->setDamage(rects.v, rects.cnt);
+    gRetracer.mState.GetDrawable(surface)->setDamage(rects.v, n_rects);
+}
+
+static void retrace_eglQuerySurface(char* _src)
+{
+    int dpy;
+    int surface;
+    int attrib;
+    unsigned int valid;
+    int old_value;
+    int new_value;
+    int old_ret;
+
+    _src = ReadFixed(_src, dpy);
+    _src = ReadFixed(_src, surface);
+    _src = ReadFixed(_src, attrib);
+    _src = ReadFixed(_src, valid);
+    if (valid == 1)
+        _src = ReadFixed(_src, old_value);
+    _src = ReadFixed(_src, old_ret);
+
+    if (old_ret == EGL_FALSE){
+        DBG_LOG("eglQuerySurface return EGL_FALSE in original app.\n");
+    }
+
+    gRetracer.mState.GetDrawable(surface)->querySurface(attrib, &new_value);
 }
 
 const common::EntryMap retracer::egl_callbacks = {
@@ -1052,7 +1087,7 @@ const common::EntryMap retracer::egl_callbacks = {
     {"eglCreatePbufferSurface", (void*)retrace_eglCreatePbufferSurface},
     //{"eglCreatePixmapSurface", (void*)ignore},
     {"eglDestroySurface", (void*)retrace_eglDestroySurface},
-    {"eglQuerySurface", (void*)ignore},
+    {"eglQuerySurface", (void*)retrace_eglQuerySurface},
     {"eglBindAPI", (void*)retrace_eglBindAPI},
     {"eglQueryAPI", (void*)ignore},
     //{"eglWaitClient", (void*)ignore},

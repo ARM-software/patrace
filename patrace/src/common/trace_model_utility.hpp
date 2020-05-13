@@ -9,6 +9,7 @@
 #define GL_GLEXT_PROTOTYPES
 #include <GLES3/gl32.h>
 
+GLvoid* getBufferPointer(common::ValueTM *value);
 GLvoid* drawCallIndexPtr(const common::CallTM *call);
 GLenum drawCallIndexType(const common::CallTM *call);
 int drawCallCount(const common::CallTM *call);
@@ -18,3 +19,5 @@ static inline const std::string SafeEnumString(unsigned int enumToFind, const st
     const char *retval = EnumString(enumToFind, funName);
     return retval ? retval : "Unknown";
 }
+
+Json::Value saveProgramUniforms(GLuint program, int count);

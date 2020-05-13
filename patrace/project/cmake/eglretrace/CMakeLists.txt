@@ -64,6 +64,7 @@ target_link_libraries(paretrace
     ${PNG_LIBRARIES}
     ${ZLIB_LIBRARIES}
     jsoncpp
+    hwcpipe
 )
 set_target_properties(paretrace PROPERTIES LINK_FLAGS "-pthread" COMPILE_FLAGS "-pthread")
 target_compile_options(paretrace PRIVATE ${SANITIZER})

@@ -71,6 +71,11 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         options.mFinishBeforeSwap = true;
     }
 
+    if (value.get("flushWork", false).asBool())
+    {
+        options.mFlushWork = true;
+    }
+
     if (threadId < 0 && options.mRetraceTid < 0)
     {
         gRetracer.reportAndAbort("Missing thread ID. Must be in either trace header or JSON parameters.");
@@ -189,6 +194,8 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         options.mSnapshotPrefix = snapsDir;
     }
 
+    options.mSnapshotFrameNames = value.get("snapshotFrameNames", false).asBool();
+
     // Whether or not to upload taken snapshots.
     options.mUploadSnapshots = value.get("snapshotUpload", false).asBool();
 
@@ -248,6 +255,16 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         gRetracer.mCollectors = new Collection(value["collectors"]);
         gRetracer.mCollectors->initialize();
         DBG_LOG("libcollector instrumentation enabled through JSON.\n");
+    }
+
+    if (value.get("dmaSharedMem", false).asBool())
+    {
+        options.dmaSharedMemory = true;
+    }
+
+    if (value.get("perfmon", false).asBool())
+    {
+        options.mPerfmon = true;
     }
 
     DBG_LOG("Thread: %d - override: %s (%d, %d)\n",
@@ -404,7 +421,7 @@ void TraceExecutor::writeError(TraceExecutorErrorCode error_code, const std::str
     DBG_LOG("%s\n", error_description.c_str());
 #endif
     addError(error_code, error_description);
-    if (!writeData(0, 0.0, 0, 0))
+    if (!writeData(Json::Value(), 0, 0.0f))
     {
         DBG_LOG("Failed to output error log!\n");
     }
@@ -423,10 +440,11 @@ void TraceExecutor::clearError()
     mErrorList.clear();
 }
 
-bool TraceExecutor::writeData(int frames, double duration, long long startTime, long long endTime)
+bool TraceExecutor::writeData(Json::Value result_data_value, int frames, float duration)
 {
     Json::Value result_value;
-    if (!mErrorList.empty()) {
+    if (!mErrorList.empty())
+    {
         Json::Value error_list_value;
         Json::Value error_list_description;
         for (std::vector<TraceErrorType>::iterator it = mErrorList.begin(); it!=mErrorList.end(); ++it) {
@@ -438,19 +456,13 @@ bool TraceExecutor::writeData(int frames, double duration, long long startTime, 
         }
         result_value["error"] = error_list_value;
         result_value["error_description"] = error_list_description;
-    } else if (frames > 0 || duration > 0) {
+    }
+    else if (frames > 0 || duration > 0.0f)
+    {
         Json::Value result_list_value;
-        Json::Value result_data_value;
-        result_data_value["frames"] = frames;
-        result_data_value["time"] = duration;
-        result_data_value["fps"] = ((double)frames) / duration;
-        result_data_value["start_time"] = ((double)startTime) / os::timeFrequency;
-        result_data_value["end_time"] = ((double)endTime) / os::timeFrequency;
-
         if (gRetracer.mCollectors)
         {
             result_data_value["frame_data"] = gRetracer.mCollectors->results();
-
             try {
                 if (result_data_value["frame_data"].isMember("ferret")) {
                     if ( result_data_value["frame_data"]["ferret"].empty() ) {

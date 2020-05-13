@@ -55,10 +55,10 @@ namespace retracer
 
     }
 
-    Drawable* GlwsIos::CreateDrawable(int width, int height, int win)
+    Drawable* GlwsIos::CreateDrawable(int width, int height, int win, EGLint const* attribList)
     {
         DBG_LOG("Create CAEAGLDrawable(w=%d, h=%d)\n", width, height);
-        return new CAEAGLDrawable(width, height);
+        return new CAEAGLDrawable(width, height, attribList);
     }
 
     Context* GlwsIos::CreateContext(Context *shareContext, Profile profile)

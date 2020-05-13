@@ -15,7 +15,7 @@
 
 #include "tool/utils.hpp"
 
-static std::string getUserName()
+std::string getUserName()
 {
     uid_t uid = geteuid();
     struct passwd *pw = getpwuid(uid);
@@ -61,6 +61,16 @@ static std::pair<bool, std::string> fileMD5(const std::string& filePath)
     return std::make_pair(true, buf);
 }
 
+std::string getTimeStamp()
+{
+    // Add timestamp (ISO format)
+    char timeBuf[256];
+    time_t now;
+    time(&now);
+    strftime(timeBuf, sizeof(timeBuf), "%FT%TZ", gmtime(&now));
+    return timeBuf;
+}
+
 void addConversionEntry(Json::Value& header, const std::string& type, const std::string& source, const Json::Value& info)
 {
     Json::Value conversions = Json::arrayValue;
@@ -83,12 +93,7 @@ void addConversionEntry(Json::Value& header, const std::string& type, const std:
         input["md5"] = md5Result.second;
     }
     conversion["input"] = input;
-    // Add timestamp (ISO format)
-    char timeBuf[256];
-    time_t now;
-    time(&now);
-    strftime(timeBuf, sizeof(timeBuf), "%FT%TZ", gmtime(&now));
-    conversion["timestamp"] = timeBuf;
+    conversion["timestamp"] = getTimeStamp();
     conversion["author"] = getUserName();
     conversions.append(conversion);
     header["conversions"] = conversions;

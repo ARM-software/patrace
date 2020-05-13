@@ -14,6 +14,8 @@ public:
     bool FilterSupportedExtension = false;          // Respond with given list of extensions instead of what the driver says
     std::vector<std::string> SupportedExtensions;   // Our own list of extensions for the above option
     std::string SupportedExtensionsString;
+    std::string RendererName = "";
+    bool DisableBufferStorage = false;
     bool FlushTraceFileEveryFrame = false;          // Save trace file for each completed frame. Slower but safer.
     bool StateDumpAfterSnapshot = false;            // Debugging
     bool StateDumpAfterDrawCall = false;            // Debugging

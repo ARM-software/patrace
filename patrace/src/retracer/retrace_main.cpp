@@ -24,7 +24,7 @@ usage(const char *argv0) {
         "  -tid THREADID the function calls invoked by thread <THREADID> will be retraced\n"
         "  -s CALL_SET take snapshot for the calls in the specific call set. Please try to post process the captured snapshot with imagemagick to turn off alpha value if it shows black.\n"
         "  -step use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call (only supported on desktop linux)\n"
-        "  -ores W H override resolution of onscreen rendering (FBO's are not affected)\n"
+        "  -ores W H override the resolution of the final onscreen rendering (FBOs used in earlier renderpasses are not affected!)\n"
         "  -msaa SAMPLES enable multi sample anti alias\n"
         "  -preload START STOP preload the trace file frames from START to STOP. START must be greater than zero.\n"
         "  -framerange FRAME_START FRAME_END, start fps timer at frame start (inclusive), stop timer and playback before frame end (exclusive).\n"
@@ -44,6 +44,7 @@ usage(const char *argv0) {
         "  -strictcolor Same as -strict, but only checks color channels (RGBA). Useful for dumping when we want to be sure returned EGL is same as requested\n"
         "  -skip CALL_SET skip calls in the specific call set\n"
         "  -collect Collect performance counters\n"
+        "  -perfmon Collect performance counters in the built-in perfmon interface\n"
         "  -flush Before starting running the defined measurement range, make sure we flush all pending driver work\n"
         "  -multithread Run all threads in the trace\n"
 #ifndef __APPLE__
@@ -117,6 +118,7 @@ bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
         } else if (!strcmp(arg, "-ores")) {
             cmdOpts.oresW = readValidValue(argv[++i]);
             cmdOpts.oresH = readValidValue(argv[++i]);
+            DBG_LOG("WARNING: Please think twice before using -ores - it is usually a mistake!\n");
         } else if (!strcmp(arg, "-msaa")) {
             cmdOpts.eglConfig.msaa_samples = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-skipwork")) {
@@ -164,6 +166,8 @@ bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
             cmdOpts.stateLogging = true;
         } else if (!strcmp(arg, "-noscreen")) {
             cmdOpts.pbufferRendering = true;
+        } else if (!strcmp(arg, "-perfmon")) {
+            cmdOpts.perfmon = true;
         } else if (!strcmp(arg, "-collect")) {
             cmdOpts.collectors = true;
         } else if (!strcmp(arg, "-collect_streamline")) {
@@ -226,6 +230,8 @@ bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
         } else if (!strcmp(arg, "-version")) {
             std::cout << "Version: " PATRACE_VERSION << std::endl;
             exit(0);
+        } else if (!strcmp(arg, "-dmasharedmem")) {
+            cmdOpts.dmaSharedMemory = true;
         } else {
             DBG_LOG("error: unknown option %s\n", arg);
             usage(argv[0]);

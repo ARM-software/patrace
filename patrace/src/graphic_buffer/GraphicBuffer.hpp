@@ -263,6 +263,9 @@ private:
 
 #ifdef ANDROID
 
+#if __NDK_MAJOR__ >= 15
+#include "android/native_window.h"
+#else
 /**
  * Buffer description. Used for allocating new buffers and querying
  * parameters of existing ones.
@@ -287,6 +290,7 @@ typedef struct AHardwareBuffer_Desc {
      uint32_t    rfu0;       ///< Initialize to zero, reserved for future use.
      uint64_t    rfu1;       ///< Initialize to zero, reserved for future use.
 }AHardwareBuffer_Desc;
+#endif
 
 struct HardwareBufferFunctions
 {
