@@ -112,7 +112,10 @@ void SetGLESVersion(int ver)
     if (gGLESVersion == ver)
         return;
 
-    DBG_LOG("Set GLES version to be: %d\n", ver);
+    if (ver > 3)
+        DBG_LOG("Set GLES version to be: %d.%d\n", 3, ver-3);
+    else
+        DBG_LOG("Set GLES version to be: %d\n", ver);
     ResetGLFuncPtrs();
     gGLESVersion = ver;
 }

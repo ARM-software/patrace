@@ -267,6 +267,15 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         options.mPerfmon = true;
     }
 
+    if (value.isMember("shaderCache"))
+    {
+        options.mShaderCacheFile = value.get("shaderCache", "").asString();
+    }
+    if (value.isMember("strictShaderCache"))
+    {
+        options.mShaderCacheRequired = value.get("strictShaderCache", false).asBool();
+    }
+
     DBG_LOG("Thread: %d - override: %s (%d, %d)\n",
             options.mRetraceTid, options.mDoOverrideResolution ? "Yes" : "No", options.mOverrideResW, options.mOverrideResH);
 }

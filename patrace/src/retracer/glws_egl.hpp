@@ -6,6 +6,14 @@
 
 namespace retracer {
 
+const EGLint window_surface_default_attribs[] = {
+    EGL_GL_COLORSPACE,
+    EGL_RENDER_BUFFER,
+    EGL_PROTECTED_CONTENT_EXT,
+    EGL_COLOR_COMPONENT_TYPE_EXT,
+    EGL_NONE
+};
+
 typedef std::unordered_map<int, NativeWindow*> WinNameToNativeWindowMap_t;
 
 class GlwsEgl : public GLWS
@@ -16,6 +24,7 @@ public:
     virtual void Init(Profile profile = PROFILE_ES2);
     virtual void Cleanup(void);
     virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList);
+    virtual void ReleaseDrawable(NativeWindow *window);
     virtual Drawable* CreatePbufferDrawable(EGLint const* attrib_list);
     virtual Context* CreateContext(Context *shareContext, Profile profile);
     virtual bool MakeCurrent(Drawable *drawable, Context *context);

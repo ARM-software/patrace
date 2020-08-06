@@ -82,6 +82,15 @@ public class NativeAPI
         }
     }
 
+    public static void onSurfaceDestroyed(Surface holder, int textureViewSize) {
+        synchronized(msgHandler) {
+            Log.i(TAG, "onSurfaceDestroyed " + holder);
+            setSurface(null, 0);
+            surfHolder = null;
+            mHasSurface= false;
+        }
+    }
+
     public static native void init(boolean registerEntries);
     public static native boolean initFromJson(String jsonData, String traceDir, String resultFile);
     public static native void setSurface(Surface surface, int textureViewSize);

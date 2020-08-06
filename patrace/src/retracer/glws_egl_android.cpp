@@ -22,6 +22,10 @@ public:
         mNativeVisualId = nativeVisualId;
     }
 
+    ~AndroidWindow()
+    {
+    }
+
     bool resize(int w, int h)
     {
         if (NativeWindow::resize(w, h))
@@ -172,6 +176,17 @@ Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint 
     NativeWindowMutex.unlock();
 
     return handler;
+}
+
+void GlwsEglAndroid::ReleaseDrawable(NativeWindow *window)
+{
+    for (WinNameToNativeWindowMap_t::iterator it = gWinNameToNativeWindowMap.begin(); it != gWinNameToNativeWindowMap.end(); ++it)
+    {
+        if (it->second == window)
+        {
+            gWinNameToNativeWindowMap.erase(it);
+        }
+    }
 }
 
 void GlwsEglAndroid::setNativeWindow(EGLNativeWindowType window, int textureViewSize)

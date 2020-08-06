@@ -552,7 +552,7 @@ bool PowerDataCollector::available()
 {
     if (mConfig.isNull() || mConfig["power"].isNull())
     {
-        DBG_LOG("Power data collector: configuration missing, cannot init.\n");
+        if (mDebug) DBG_LOG("Power data collector: configuration missing, cannot init.\n");
         return false;
     }
     return true;

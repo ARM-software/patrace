@@ -105,14 +105,12 @@ static void test4()
 	Json::Value v;
 	Json::Value p;
 	Json::Value perf;
-	perf["required"] = true;
 	v["required"] = true;
 	v["threaded"] = true;
 	v["sample_rate"] = 5;
 	j["procfs"] = v;
 	j["streamline"] = Json::objectValue;
 	j["cpufreq"] = v;
-	j["perf_record"] = perf;
 	p["info"] = "test";
 	j["provenance"] = p;
 	Collection c(j);
@@ -148,11 +146,6 @@ static void test4()
 			continue;
 		}
 		Json::Value collector = results[s];
-		if (s == "perf_record")
-		{
-			assert(collector.isArray());
-			continue;
-		}
 		assert(collector.isObject());
 		for (const std::string& k : collector.getMemberNames())
 		{

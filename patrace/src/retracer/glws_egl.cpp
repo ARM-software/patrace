@@ -16,18 +16,40 @@ EglDrawable::EglDrawable(int w, int h, EGLDisplay eglDisplay, EGLConfig eglConfi
     if (attribList)
     {
         unsigned int i = 0;
+        int red = 0;
+        eglGetConfigAttrib(eglDisplay, eglConfig, EGL_RED_SIZE, &red);
+
         while (attribList[i] != EGL_NONE)
         {
-            mAttribList.push_back(attribList[i]);
-            mAttribList.push_back(attribList[i+1]);
+            unsigned int j = 0;
+            EGLBoolean found = EGL_FALSE;
+
+            if ( (attribList[i] == EGL_GL_COLORSPACE) && (attribList[i+1] == EGL_GL_COLORSPACE_SRGB) && (8 != red))
+            {
+                found = EGL_TRUE;
+            }
+            else
+            {
+               while ((EGL_FALSE == found) && (window_surface_default_attribs[j] != EGL_NONE))
+               {
+                    if (attribList[i] == window_surface_default_attribs[j])
+                    {
+                        mAttribList.push_back(attribList[i]);
+                        mAttribList.push_back(attribList[i+1]);
+                        found = EGL_TRUE;
+                    }
+                    j++;
+                }
+            }
+            if (EGL_FALSE == found)
+            {
+                break;
+            }
             i += 2;
         }
-        mAttribList.push_back(attribList[i]);
     }
-    else
-    {
-        mAttribList.push_back(EGL_NONE);
-    }
+
+    mAttribList.push_back(EGL_NONE);
 
     mSurface = _createWindowSurface();
     show();
@@ -36,6 +58,9 @@ EglDrawable::EglDrawable(int w, int h, EGLDisplay eglDisplay, EGLConfig eglConfi
 EglDrawable::~EglDrawable()
 {
     eglDestroySurface(mEglDisplay, mSurface);
+
+    GLWS::instance().ReleaseDrawable(mNativeWindow);
+    if (mNativeWindow) delete mNativeWindow;
     eglWaitNative(EGL_CORE_NATIVE_ENGINE);
 }
 
@@ -380,9 +405,20 @@ Drawable* GlwsEgl::CreatePbufferDrawable(EGLint const* attribList)
 Context* GlwsEgl::CreateContext(Context* shareContext, Profile profile)
 {
     EGLint attribs[] = {
-        EGL_CONTEXT_CLIENT_VERSION, profile,
+        EGL_CONTEXT_MAJOR_VERSION, profile, EGL_CONTEXT_MINOR_VERSION, 0,
         EGL_NONE
     };
+
+    if (profile == PROFILE_ES31)
+    {
+        attribs[1] = 3;
+        attribs[3] = 1;
+    }
+    else if (profile == PROFILE_ES32)
+    {
+        attribs[1] = 3;
+        attribs[3] = 2;
+    }
 
     EGLContext eglShareContext = EGL_NO_CONTEXT;
     if (shareContext)
@@ -481,6 +517,10 @@ void GlwsEgl::Cleanup()
 Drawable* GlwsEgl::CreateDrawable(int /*width*/, int /*height*/, int /*win*/, EGLint const* attribList)
 {
     return 0;
+}
+
+void GlwsEgl::ReleaseDrawable(NativeWindow *window)
+{
 }
 
 void GlwsEgl::postInit()

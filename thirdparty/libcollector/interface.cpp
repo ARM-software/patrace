@@ -11,9 +11,6 @@
 
 #ifndef __APPLE__
 #include "collectors/perf.hpp"
-#if !defined(ANDROID)
-#include "collectors/perf_record.hpp"
-#endif
 #include "collectors/cpufreq.hpp"
 #include "collectors/gpufreq.hpp"
 #include "collectors/procfs_stat.hpp"
@@ -132,14 +129,21 @@ bool SysfsCollector::collect(int64_t now)
 
     if (read(mFD, buf, sizeof(buf) - 1) == -1)
     {
-        perror("read");
+        DBG_LOG("%s: Failed to read %s: %s\n", mName.c_str(), mSysfsFile.c_str(), strerror(errno));
         return false;
     }
 
     if (lseek(mFD, 0, SEEK_SET) == -1)
     {
-        perror("lseek");
-        return false;
+        // workaround for weird hikey implementation
+        close(mFD);
+        mFD = open(mSysfsFile.c_str(), O_RDONLY);
+        if (mFD < 0)
+        {
+            DBG_LOG("%s: Failed to both seek and re-open %s: %s\n", mName.c_str(), mSysfsFile.c_str(), strerror(errno));
+            mFD = -1;
+            return false;
+        }
     }
 
     if (!parse(buf))
@@ -164,7 +168,7 @@ bool SysfsCollector::init()
                 continue;
             }
             mSysfsFile = s;
-            DBG_LOG("%s: Successfully opened %s\n", mName.c_str(), s.c_str());
+            if (mDebug) DBG_LOG("%s: Successfully opened %s\n", mName.c_str(), s.c_str());
             break;
         }
     }
@@ -189,9 +193,6 @@ Collection::Collection(const Json::Value& config) : mConfig(config)
 {
 #ifndef __APPLE__
     mCollectors.push_back(new PerfCollector(config, "perf"));
-#if !defined(ANDROID)
-    mCollectors.push_back(new PerfRecordCollector(config, "perf_record"));
-#endif
     mCollectors.push_back(new SysfsCollector(config, "battery_temperature",
         { "/sys/class/power_supply/battery/temp",
           "/sys/devices/platform/android-battery/power_supply/android-battery/temp", // Nexus 10
@@ -239,6 +240,7 @@ Collection::Collection(const Json::Value& config) : mConfig(config)
         if (mDebug)
         {
             DBG_LOG("Enabled collector %s\n", c->name().c_str());
+            c->setDebug(true);
         }
         mCollectorMap[c->name()] = c;
     }

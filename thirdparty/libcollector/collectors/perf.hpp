@@ -1,11 +1,12 @@
 #pragma once
 
 #include "interface.hpp"
+#include <map>
 
 class PerfCollector : public Collector
 {
 public:
-    using Collector::Collector;
+    PerfCollector(const Json::Value& config, const std::string& name);
 
     virtual bool init() override;
     virtual bool deinit() override;
@@ -15,5 +16,6 @@ public:
     virtual bool available() override;
 
 private:
-    int mPerfFD = -1;
+    std::map<std::string, int> mCounters;
+    int mSet = 0;
 };

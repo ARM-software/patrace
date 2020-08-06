@@ -259,10 +259,45 @@ public:
 #endif
     std::unordered_map<PixelFormat, unsigned int, std::hash<int> > mAndroidToLinuxPixelMap;
 
+    inline const std::string& getShaderSource(GLuint shader)
+    {
+        if (_shareContext) return _shareContext->getShaderSource(shader);
+        else return mShaderSources.at(shader);
+    }
+    inline void setShaderSource(GLuint shader, const std::string& source)
+    {
+        if (_shareContext) _shareContext->setShaderSource(shader, source);
+        else mShaderSources[shader] = source;
+    }
+    inline void deleteShader(GLuint shader)
+    {
+        if (_shareContext) _shareContext->deleteShader(shader);
+        else mShaderSources.erase(shader);
+    }
+
+    inline const std::vector<GLuint>& getShaderIDs(GLuint program)
+    {
+        if (_shareContext) return _shareContext->getShaderIDs(program);
+        else return mProgramShaders.at(program);
+    }
+    inline void addShaderID(GLuint program, GLuint shader)
+    {
+        if (_shareContext) _shareContext->addShaderID(program, shader);
+        else mProgramShaders[program].push_back(shader);
+    }
+    inline void deleteShaderIDs(GLuint program)
+    {
+        if (_shareContext) _shareContext->deleteShaderIDs(program);
+        else mProgramShaders.erase(program);
+    }
+
 private:
     Context* _shareContext;
     os::Mutex       mMutex;
     int             refcnt;
+
+    std::unordered_map<GLuint, std::string> mShaderSources; // shader id to string; shared
+    std::unordered_map<GLuint, std::vector<GLuint>> mProgramShaders; // program id to list of shader ids; shared
     hmap<unsigned int> _texture_map; // shared
     hmap<unsigned int> _buffer_map; // shared
     hmap<unsigned int> _program_map; // shared

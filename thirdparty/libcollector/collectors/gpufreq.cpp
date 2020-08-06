@@ -23,7 +23,7 @@ static const std::vector<std::string> options =
 GPUFreqCollector::GPUFreqCollector(const Json::Value& config, const std::string& name)
     : SysfsCollector(config, name, options)
 {
-    if (config["gpufreq"].isMember("path"))
+    if (mConfig.isMember("path"))
     {
         mOptions.insert(mOptions.begin(), config["gpufreq"]["path"].asString());
     }

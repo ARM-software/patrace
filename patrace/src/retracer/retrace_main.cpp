@@ -47,6 +47,8 @@ usage(const char *argv0) {
         "  -perfmon Collect performance counters in the built-in perfmon interface\n"
         "  -flush Before starting running the defined measurement range, make sure we flush all pending driver work\n"
         "  -multithread Run all threads in the trace\n"
+        "  -shadercache FILENAME Save and load shaders to this cache FILE. Will add .bin and .idx to the given file name.\n"
+        "  -strictshadercache Abort if a wanted shader was not found in the shader cache file.\n"
 #ifndef __APPLE__
         "  -perf START END run Linux perf on selected frame range and save it to disk\n"
         "  -perfpath PATH Set path to perf binary\n"
@@ -188,6 +190,10 @@ bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
             cmdOpts.forceSingleWindow = true;
         } else if (!strcmp(arg, "-multithread")) {
             cmdOpts.multiThread = true;
+        } else if (!strcmp(arg, "-shadercache")) {
+            cmdOpts.shaderCacheFile = argv[++i];
+        } else if(!strcmp(arg, "-strictshadercache")) {
+            cmdOpts.shaderCacheRequired = true;
         } else if (!strcmp(arg, "-insequence")) {
             // nothing, this is always the case now
         } else if (!strcmp(arg, "-singleframe")) {

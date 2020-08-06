@@ -15,6 +15,11 @@
 #include <asm/unistd.h>
 #include <sys/types.h>
 
+PerfCollector::PerfCollector(const Json::Value& config, const std::string& name) : Collector(config, name)
+{
+    mSet = mConfig.get("set", 0).asInt();
+}
+
 static long perf_event_open(struct perf_event_attr *hw_event, pid_t pid,
                             int cpu, int group_fd, unsigned long flags)
 {
@@ -31,47 +36,78 @@ bool PerfCollector::available()
     return true;
 }
 
-bool PerfCollector::init()
+static int add_event(int type, int config, int group)
 {
     struct perf_event_attr pe;
 
     memset(&pe, 0, sizeof(struct perf_event_attr));
-    pe.type = PERF_TYPE_HARDWARE;
+    pe.type = type;
     pe.size = sizeof(struct perf_event_attr);
-    pe.config = PERF_COUNT_HW_CPU_CYCLES;
+    pe.config = config;
     pe.disabled = 1;
     pe.inherit = 1;
-
-    /* NOTE: exclude_kernel enables including kernel time in the measurement, which is probably what we want.
-     * If you set this to 1, you may get "Permission denied" on the syscall on some systems (Odroid-Q).
-     */
     pe.exclude_kernel = 0;
     pe.exclude_hv = 0;
-
-    mPerfFD = perf_event_open(&pe, 0, -1, -1, 0);
-    if (mPerfFD < 0)
+    const int fd = perf_event_open(&pe, 0, -1, group, 0);
+    if (fd < 0)
     {
         DBG_LOG("Error opening perf: error %d\n", errno);
         perror("syscall");
-        mPerfFD = -1;
-        return false;
+        return -1;
     }
+    return fd;
+}
 
+bool PerfCollector::init()
+{
+    const int group = mCounters["CPUCycleCount"] = add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES, -1);
+    if (mSet == 1)
+    {
+        DBG_LOG("Using CPU counter set number 1, this will fail on non-ARM CPU's\n");
+        mCounters["CPUInstructionRetired"] = add_event(PERF_TYPE_RAW, 0x8, group);
+        mCounters["CPUL1CacheAccesses"] = add_event(PERF_TYPE_RAW, 0x4, group);
+        mCounters["CPUL2CacheAccesses"] = add_event(PERF_TYPE_RAW, 0x16, group);
+        mCounters["CPULASESpec"] = add_event(PERF_TYPE_RAW, 0x74, group); // simd instruction
+        mCounters["CPUVFPSpec"] = add_event(PERF_TYPE_RAW, 0x75, group); // float instruction
+        mCounters["CPUCryptoSpec"] = add_event(PERF_TYPE_RAW, 0x77, group);
+    }
+    else if (mSet == 2)
+    {
+        DBG_LOG("Using CPU counter set number 2, this will fail on non-ARM CPU's\n");
+        mCounters["CPUL3CacheAccesses"] = add_event(PERF_TYPE_RAW, 0x2b, group);
+        mCounters["CPUBusAccessRead"] = add_event(PERF_TYPE_RAW, 0x60, group);
+        mCounters["CPUBusAccessWrite"] = add_event(PERF_TYPE_RAW, 0x61, group);
+        mCounters["CPUMemoryAccessRead"] = add_event(PERF_TYPE_RAW, 0x66, group);
+        mCounters["CPUMemoryAccessWrite"] = add_event(PERF_TYPE_RAW, 0x67, group);
+    }
+    else if (mSet == 3)
+    {
+        DBG_LOG("Using CPU counter set number 3, this will fail on non-ARM CPU's\n");
+        mCounters["CPUCycles"] = add_event(PERF_TYPE_RAW, 0x11, group);
+        mCounters["CPUBusAccesses"] = add_event(PERF_TYPE_RAW, 0x19, group);
+        mCounters["CPUL2CacheRead"] = add_event(PERF_TYPE_RAW, 0x050, group);
+        mCounters["CPUL2CacheWrite"] = add_event(PERF_TYPE_RAW, 0x51, group);
+        mCounters["CPUMemoryAccessRead"] = add_event(PERF_TYPE_RAW, 0x66, group);
+        mCounters["CPUMemoryAccessWrite"] = add_event(PERF_TYPE_RAW, 0x67, group);
+    }
+    else // default set, same as for x86
+    {
+        DBG_LOG("Using CPU counter set number 0 (default)\n");
+        mCounters["CPUInstructionCount"] = add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS, group);
+        mCounters["CPUCacheReferences"] = add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_REFERENCES, group);
+        mCounters["CPUCacheMisses"] = add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_MISSES, group);
+        mCounters["CPUBranchMispredictions"] = add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_BRANCH_MISSES, group);
+    }
+    for (const auto pair : mCounters) if (pair.second == -1) { DBG_LOG("libcollector perf: Failed to init counter %s\n", pair.first.c_str()); return false; }
     return true;
 }
 
 bool PerfCollector::deinit()
 {
-    if (mPerfFD == -1)
-        return true;
-
-    if (close(mPerfFD) == -1)
-    {
-        perror("close");
-        return false;
-    }
-    mPerfFD = -1;
-
+    for (const auto pair : mCounters)
+        if (pair.second != -1)
+            close(pair.second);
+    mCounters.clear();
     return true;
 }
 
@@ -80,19 +116,19 @@ bool PerfCollector::start()
     if (mCollecting)
         return true;
 
-    if (mPerfFD == -1)
-        return false;
-
-    if (ioctl(mPerfFD, PERF_EVENT_IOC_RESET, 0) == -1)
+    for (const auto pair : mCounters)
     {
-        perror("ioctl PERF_EVENT_IOC_RESET");
-        return false;
-    }
+        if (ioctl(pair.second, PERF_EVENT_IOC_RESET, 0) == -1)
+        {
+            perror("ioctl PERF_EVENT_IOC_RESET");
+            return false;
+        }
 
-    if (ioctl(mPerfFD, PERF_EVENT_IOC_ENABLE, 0) == -1)
-    {
-        perror("ioctl PERF_EVENT_IOC_ENABLE");
-        return false;
+        if (ioctl(pair.second, PERF_EVENT_IOC_ENABLE, 0) == -1)
+        {
+            perror("ioctl PERF_EVENT_IOC_ENABLE");
+            return false;
+        }
     }
 
     mCollecting = true;
@@ -105,15 +141,16 @@ bool PerfCollector::stop()
     if (!mCollecting)
         return true;
 
-    if (mPerfFD != -1)
-    {
-        DBG_LOG("Stopping perf collection.\n");
-        if (ioctl(mPerfFD, PERF_EVENT_IOC_DISABLE, 0) == -1)
+    DBG_LOG("Stopping perf collection.\n");
+    for (const auto pair : mCounters)
+        if (pair.second != -1)
         {
-            perror("ioctl PERF_EVENT_IOC_DISABLE");
-            return false;
+            if (ioctl(pair.second, PERF_EVENT_IOC_DISABLE, 0) == -1)
+            {
+                perror("ioctl PERF_EVENT_IOC_DISABLE");
+                return false;
+            }
         }
-    }
 
     mCollecting = false;
 
@@ -127,22 +164,22 @@ bool PerfCollector::collect(int64_t /* now */)
     if (!mCollecting)
         return false;
 
-    if (mPerfFD == -1)
-        return false;
-
-    if (read(mPerfFD, &count, sizeof(long long)) == -1)
+    for (const auto pair : mCounters)
     {
-        perror("read");
-        return false;
-    }
+        if (pair.second == -1) continue;
+        if (read(pair.second, &count, sizeof(long long)) == -1)
+        {
+            perror("read");
+            return false;
+        }
 
-    if (ioctl(mPerfFD, PERF_EVENT_IOC_RESET, 0) == -1)
-    {
-        perror("ioctl PERF_EVENT_IOC_RESET");
-        return false;
+        if (ioctl(pair.second, PERF_EVENT_IOC_RESET, 0) == -1)
+        {
+            perror("ioctl PERF_EVENT_IOC_RESET");
+            return false;
+        }
+        add(pair.first, count);
     }
-
-    add("CPUCycleCount", count);
 
     return true;
 }

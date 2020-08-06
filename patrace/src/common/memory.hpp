@@ -43,7 +43,8 @@ public:
     {
         md5_state_t mdContext;
         md5_init(&mdContext);
-        md5_append(&mdContext, static_cast<const unsigned char*>(str), length);
+        if (str)
+            md5_append(&mdContext, static_cast<const unsigned char*>(str), length);
         md5_finish(&mdContext, _digest);
     }
 
@@ -253,7 +254,10 @@ public:
             return;
         }
 
-        memcpy(static_cast<char*>(base_address) + offset, p, s);
+        if (p)
+        {
+            memcpy(static_cast<char*>(base_address) + offset, p, s);
+        }
         _dirty_md5_digest = true;
     }
 

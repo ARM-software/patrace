@@ -41,7 +41,7 @@ elif [ "${target}" == "12.04_x11_x64" ]; then
 elif [ "${target}" == "14.04_x11_x64" ]; then
     CMAKEPATH=${TOOLSDIR}/cmake/14.04_x64
     ARCH="x11_x64"
-elif [ "${target}" == "rhe6_x32" ]; then
+elif [ "${target}" == "rhe6_x32" ] || [ "${target}" == "rhe6_x32_debug" ]; then
     CMAKEPATH=${TOOLSDIR}/cmake/10.04_x32
     ARCH="rhe6_x32"
     source /arm/tools/setup/init/bash
@@ -56,7 +56,10 @@ elif [ "${target}" == "rhe6_x32" ]; then
     module load python/python/2.7.8
     module load gnu/gcc/4.9.1_lto
     module list
-elif [ "${target}" == "rhe6_x64" ]; then
+    if [ "${target}" == "rhe6_x32_debug" ]; then
+        type="debug"
+    fi
+elif [ "${target}" == "rhe6_x64" ] || [ "${target}" == "rhe6_x64_debug" ]; then
     CMAKEPATH=${TOOLSDIR}/cmake/10.04_x32
     ARCH="rhe6_x64"
     source /arm/tools/setup/init/bash
@@ -71,6 +74,9 @@ elif [ "${target}" == "rhe6_x64" ]; then
     module load python/python/2.7.8
     module load gnu/gcc/4.9.1_lto
     module list
+    if [ "${target}" == "rhe6_x64_debug" ]; then
+        type="debug"
+    fi
 else
     ## Android environment
     export ANDROID_SDK_HOME=${TOOLSDIR}/android-sdk
@@ -85,6 +91,16 @@ else
 
     CMAKEPATH=${TOOLSDIR}/cmake/12.04_x64
     ARCH=${target}
+    if [ "${target}" == "android_debug" ]; then
+        ARCH="android"
+        type="debug"
+    elif [ "${target}" == "fbdev_arm_hardfloat_dbg" ]; then
+        ARCH="fbdev_arm_hardfloat"
+        type="debug"
+    elif [ "${target}" == "fbdev_aarch64_dbg" ]; then
+        ARCH="fbdev_aarch64"
+        type="debug"
+    fi
 fi
 
 cmake --version
@@ -114,7 +130,7 @@ if [ -z "${BUILD_PROJECT}" ]; then
     BUILD_PROJECT="patrace"
 fi
 
-if [ "${target}" == "rhe6_x32" ] || [ "${target}" == "rhe6_x64" ]; then
+if [ "${target}" == "rhe6_x32" ] || [ "${target}" == "rhe6_x32_debug" ] || [ "${target}" == "rhe6_x64" ] || [ "${target}" == "rhe6_x64_debug" ]; then
     CC=x86_64-unknown-linux-gnu-gcc NO_PYTHON_BUILD=y SVN_REVISION=${COMMITID} ${WORKSPACE}/patrace/scripts/build.py ${BUILD_PROJECT} ${ARCH} ${type}
 else
     /usr/bin/env PATH=${PATH} VERSION_TYPE=${VERSION_TYPE} SVN_REVISION=${COMMITID} /bin/bash -c "\"${WORKSPACE}/patrace/scripts/build.py\" ${BUILD_PROJECT} ${ARCH} ${type}"

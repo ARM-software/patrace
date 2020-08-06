@@ -20,7 +20,6 @@ add_library(collector
         ${SRC_ROOT}/collectors/streamline_annotate.cpp
         ${SRC_ROOT}/collectors/memory.cpp
         ${SRC_ROOT}/collectors/perf.cpp
-        ${SRC_ROOT}/collectors/perf_record.cpp
         ${SRC_ROOT}/collectors/gpufreq.cpp
         ${SRC_ROOT}/collectors/power.cpp
         ${SRC_ROOT}/collectors/procfs_stat.cpp
@@ -41,6 +40,45 @@ target_include_directories(collector
 )
 target_link_libraries(collector rt)
 set_target_properties(collector PROPERTIES LINK_FLAGS "-pthread" COMPILE_FLAGS "-pthread")
+
+
+# --- vulkan layer ---
+
+add_library(VkLayer_libcollector SHARED
+        ${SRC_ROOT}/interface.cpp
+        ${SRC_ROOT}/collectors/collector_utility.cpp
+        ${SRC_ROOT}/collectors/cputemp.cpp
+        ${SRC_ROOT}/collectors/debug.cpp
+        ${SRC_ROOT}/collectors/rusage.cpp
+        ${SRC_ROOT}/collectors/streamline.cpp
+        ${SRC_ROOT}/collectors/streamline_annotate.cpp
+        ${SRC_ROOT}/collectors/memory.cpp
+        ${SRC_ROOT}/collectors/perf.cpp
+        ${SRC_ROOT}/collectors/gpufreq.cpp
+        ${SRC_ROOT}/collectors/power.cpp
+        ${SRC_ROOT}/collectors/procfs_stat.cpp
+        ${SRC_ROOT}/collectors/cpufreq.cpp
+        ${SRC_ROOT}/collectors/hwcpipe.cpp
+        ${SRC_ROOT}/collectors/mali_counters.cpp
+        ${SRC_ROOT}/collectors/ferret.cpp
+        ${SRC_ROOT}/layer/vulkan_layer.cpp
+        ${SRC_ROOT}/thirdparty/jsoncpp/json_reader.cpp
+        ${SRC_ROOT}/thirdparty/jsoncpp/json_value.cpp
+        ${SRC_ROOT}/thirdparty/jsoncpp/json_writer.cpp
+)
+
+target_include_directories(VkLayer_libcollector
+    PUBLIC ${SRC_ROOT}
+    PRIVATE ${SRC_ROOT}/collectors
+    PUBLIC ${SRC_ROOT}/thirdparty
+    PRIVATE ${SRC_ROOT}/thirdparty/jsoncpp
+    PRIVATE ${SRC_ROOT}/thirdparty/Vulkan-Headers/include
+    PRIVATE ${SRC_ROOT}/layer
+)
+
+add_custom_command(TARGET VkLayer_libcollector POST_BUILD COMMAND mkdir -p implicit_layer.d)
+add_custom_command(TARGET VkLayer_libcollector POST_BUILD COMMAND mv libVkLayer_libcollector.so implicit_layer.d/libVkLayer_libcollector.so)
+add_custom_command(TARGET VkLayer_libcollector POST_BUILD COMMAND cp ${CMAKE_CURRENT_SOURCE_DIR}/layer/VkLayer_libcollector.json implicit_layer.d/VkLayer_libcollector.json)
 
 # --- test app ---
 

@@ -56,6 +56,10 @@ public:
         eglWaitNative(EGL_CORE_NATIVE_ENGINE);
     }
 
+    ~X11Window()
+    {
+    }
+
     virtual void show()
     {
         if (mVisible)

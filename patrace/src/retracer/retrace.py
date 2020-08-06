@@ -44,10 +44,9 @@ ignored_funcs = [
     'glDebugMessageControl',
 ]
 
-# For these functions, post callbacks are generated. These will be names
-# 'post_glFunction'.
-post_funcs = [
-    'glLinkProgram', 'glCompileShader'
+# For these shader related functions, defer these calls if shader cache is enabled'.
+shadercache_funcs = [
+    'glCompileShader', 'glAttachShader', 'glShaderSource', 'glGetShaderInfoLog', 'glGetShaderiv'
 ]
 
 # Filled out in main()
@@ -249,7 +248,7 @@ class DeserializeVisitor(stdapi.Visitor):
             print '        }'
             print '        else'
             print '        {'
-            print '            gRetracer.reportAndAbort("Unsupported opaque type: %u", _opaque_type);'
+            print '            DBG_LOG("ERROR: Unsupported opaque type\\n");'
             print '        }'
             print '    }'
         else:
@@ -834,6 +833,12 @@ class Retracer(object):
             print '    unsigned int name = old_ret;'
 
         print '    // ------------- retrace ------------------'
+        if func.name == 'glTexStorageAttribs2DARM':
+            print '    glTexStorageAttribs2DARM(target, levels, internalformat, width, height, attrib_list);'
+            return
+        if func.name == 'glTexStorageAttribs3DARM':
+            print '    glTexStorageAttribs3DARM(target, levels, internalformat, width, height, depth, attrib_list);'
+            return
         if func.name == 'glBindFramebuffer':
             print '    hardcode_glBindFramebuffer(target, framebufferNew);'
             return
@@ -865,23 +870,27 @@ class Retracer(object):
             print '    glCreateClientSideBuffer(name);'
             return
         if func.name == 'glMapBufferOES':
-            print '    // remap to glMapBufferRange to avoid calling the unimplemented glMapBufferOES on some platforms'
-            print '    GLint size;'
-            print '    unsigned int access_bit = 0;'
-            print '    glGetBufferParameteriv(target, GL_BUFFER_SIZE, &size);'
-            print '    if (access == GL_WRITE_ONLY)'
+            print '    ret = glMapBufferOES(target, access);'
+            print '    if (ret == 0 || glGetError() != GL_NO_ERROR)'
             print '    {'
-            print '        access_bit = GL_MAP_WRITE_BIT;'
+            print '        // remap to glMapBufferRange to avoid calling the unimplemented glMapBufferOES on some platforms'
+            print '        GLint size;'
+            print '        unsigned int access_bit = 0;'
+            print '        glGetBufferParameteriv(target, GL_BUFFER_SIZE, &size);'
+            print '        if (access == GL_WRITE_ONLY)'
+            print '        {'
+            print '            access_bit = GL_MAP_WRITE_BIT;'
+            print '        }'
+            print '        else if (access == GL_READ_ONLY)'
+            print '        {'
+            print '            access_bit = GL_MAP_READ_BIT;'
+            print '        }'
+            print '        else if (access == GL_READ_WRITE)'
+            print '        {'
+            print '            access_bit = GL_MAP_WRITE_BIT | GL_MAP_READ_BIT;'
+            print '        }'
+            print '        ret = glMapBufferRange(target, 0, size, access_bit);'
             print '    }'
-            print '    else if (access == GL_READ_ONLY)'
-            print '    {'
-            print '        access_bit = GL_MAP_READ_BIT;'
-            print '    }'
-            print '    else if (access == GL_READ_WRITE)'
-            print '    {'
-            print '        access_bit = GL_MAP_WRITE_BIT | GL_MAP_READ_BIT;'
-            print '    }'
-            print '    ret = glMapBufferRange(target, 0, size, access_bit);'
             return
         if func.name in ['glViewport']:
             print '    if (!gRetracer.mOptions.mDoOverrideResolution)'
@@ -903,15 +912,40 @@ class Retracer(object):
             print '        }'
             print '    }'
 
-        if func.name == 'glLinkProgram2':
-            print '    {indent}glLinkProgram(programNew);'.format(indent=indent)
-            print '    {indent}post_glLinkProgram(programNew, program, (int)status);'.format(indent=indent)
+        if func.name == 'glLinkProgram2' or func.name == 'glLinkProgram':
+            if func.name == 'glLinkProgram':
+                print '    const int status = -1;'
+            print '    if (gRetracer.mOptions.mShaderCacheFile.size() > 0)'
+            print '    {'
+            print '        load_from_shadercache(programNew, program, status);'
+            print '    }'
+            print '    else'
+            print '    {'
+            print '        _glLinkProgram(programNew);'
+            print '        post_glLinkProgram(programNew, program, (int)status);'
+            print '    }'
             return
 
         args = [arg.name + "New" if arg.has_new_value else arg.name
                 for arg in func.args]
         arg_names = ", ".join(args)
-        if func.type is not stdapi.Void:
+
+        if func.name in shadercache_funcs:
+            print '    if (gRetracer.mOptions.mShaderCacheFile.size() == 0)'
+            print '    {'
+            print '        {name}({args});'.format(name=func.name, args=arg_names)
+            print '    }'
+            if func.name == 'glAttachShader':
+                print '    else'
+                print '    {'
+                print '        gRetracer.getCurrentContext().addShaderID(programNew, shaderNew);'
+                print '    }'
+            if func.name == 'glShaderSource':
+                print '    else'
+                print '    {'
+                print '        post_glShaderSource(shaderNew, shader, count, string, length);'
+                print '    }'
+        elif func.type is not stdapi.Void:
             print '    %sret = %s(%s);' % (indent, func.name, arg_names)
         else:
             print '    %s%s(%s);' % (indent, func.name, arg_names)
@@ -919,15 +953,23 @@ class Retracer(object):
         if func.name in ['glViewport', 'glScissor']:
             print '    }'
 
-        if func.name in post_funcs:
-            if func.name == 'glLinkProgram':
-                args = "programNew, program, -1" # -1 to signify that we do not have this info
-            elif func.name == 'glCompileShader':
-                args = "shaderNew, shader"
-            else:
-                args = arg_names
 
-            print '    {indent}post_{name}({args});'.format(indent=indent, name=func.name, args=args)
+        if func.name == 'glCompileShader':
+            print '    if (gRetracer.mOptions.mShaderCacheFile.size() == 0)'
+            print '    {'
+            print '        post_glCompileShader(shaderNew, shader);'
+            print '    }'
+
+        if func.name == 'glDeleteShader':
+            print '    if (gRetracer.mOptions.mShaderCacheFile.size() > 0)'
+            print '    {'
+            print '        gRetracer.getCurrentContext().deleteShader(shaderNew);'
+            print '    }'
+        if func.name == 'glDeleteProgram':
+            print '    if (gRetracer.mOptions.mShaderCacheFile.size() > 0)'
+            print '    {'
+            print '        gRetracer.getCurrentContext().deleteShaderIDs(programNew);'
+            print '    }'
 
     def retraceFunctionBody(self, func):
         #print '    DBG_LOG("retrace %s _src = %%p\\n", _src);' % func.name

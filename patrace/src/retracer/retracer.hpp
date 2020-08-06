@@ -280,6 +280,15 @@ public:
     bool delayedPerfmonInit = false;
     void perfMonInit();
 
+    struct ProgramCache
+    {
+        GLenum format;
+        std::vector<char> buffer;
+    };
+    FILE *shaderCacheFile = NULL;
+    std::unordered_map<std::string, uint64_t> shaderCacheIndex; // md5 of shader source to offset of cache file
+    std::unordered_map<std::string, ProgramCache> shaderCache; // md5 of shader source to cache struct in mem
+
 private:
     bool loadRetraceOptionsByThreadId(int tid);
     void loadRetraceOptionsFromHeader();
@@ -487,6 +496,9 @@ extern Retracer gRetracer;
 void pre_glDraw();
 void post_glLinkProgram(GLuint shader, GLuint originalShaderName, int status);
 void post_glCompileShader(GLuint program, GLuint originalProgramName);
+void post_glShaderSource(GLuint shader, GLuint originalshaderName, GLsizei count, const GLchar **string, const GLint *length);
+void OpenShaderCacheFile();
+bool load_from_shadercache(GLuint program, GLuint originalProgramName, int status);
 void hardcode_glBindFramebuffer(int target, unsigned int framebuffer);
 void hardcode_glDeleteBuffers(int n, unsigned int* oldBuffers);
 void hardcode_glDeleteFramebuffers(int n, unsigned int* oldBuffers);

@@ -59,7 +59,10 @@ LOCAL_SRC_FILES     := \
     ../../thirdparty/libpng/pngwio.c \
     ../../thirdparty/libpng/pngwrite.c \
     ../../thirdparty/libpng/pngwtran.c \
-    ../../thirdparty/libpng/pngwutil.c
+    ../../thirdparty/libpng/pngwutil.c \
+    ../../thirdparty/libpng/arm/arm_init.c \
+    ../../thirdparty/libpng/arm/filter_neon.S \
+    ../../thirdparty/libpng/arm/filter_neon_intrinsics.c
 
 LOCAL_C_INCLUDES    :=
 LOCAL_CFLAGS        :=

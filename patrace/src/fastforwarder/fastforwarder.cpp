@@ -66,6 +66,7 @@ struct FastForwardOptions
     std::string mOutputFileName;
     std::string mComment;
     unsigned int mTargetFrame;
+    unsigned int mTargetDrawCallNo;
     unsigned int mEndFrame;
     unsigned int mFlags;
 
@@ -73,6 +74,7 @@ struct FastForwardOptions
         : mOutputFileName("fastforward.pat")
         , mComment("")
         , mTargetFrame(0)
+        , mTargetDrawCallNo(0)
         , mEndFrame(UINT32_MAX)
         , mFlags(FASTFORWARD_RESTORE_TEXTURES)
     {}
@@ -2827,6 +2829,10 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
 
     unsigned int dispatchFrameNo = 0;
     unsigned int curCallNo = 0;
+    unsigned int curDrawCallNo = 0;
+    bool shouldSaveData = false;
+    bool isFrameTarget = (0 != ffOptions.mTargetFrame);
+    bool arriveTarget = false;
 
     for ( ;; retracer.IncCurCallId())
     {
@@ -2843,8 +2849,11 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
         const char *funcName = retracer.mFile.ExIdToName(retracer.mCurCall.funcId);
         const bool isSwapBuffers = (retracer.mCurCall.funcId == retracer.mFile.NameToExId("eglSwapBuffers") ||
                                     retracer.mCurCall.funcId == retracer.mFile.NameToExId("eglSwapBuffersWithDamageKHR"));
+        const bool isDrawCall = (common::FREQUENCY_RENDER == common::GetCallFlags(funcName));
 
-        if (retracer.mCurCall.tid == retracer.mOptions.mRetraceTid && dispatchFrameNo == ffOptions.mTargetFrame-1 && isSwapBuffers)
+        shouldSaveData = isFrameTarget ? (dispatchFrameNo == ffOptions.mTargetFrame - 1) && isSwapBuffers : curDrawCallNo == ffOptions.mTargetDrawCallNo;
+
+        if (retracer.mCurCall.tid == retracer.mOptions.mRetraceTid && shouldSaveData)
         {
             DBG_LOG("Started saving GL state\n");
 
@@ -2879,19 +2888,27 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
                 || (strstr(funcName, "glClearBuffer")) // Matches glClearBuffer*
                 || (strcmp(funcName, "glBlitFramebuffer") == 0) // NOTE: strCMP == 0
                 || (strcmp(funcName, "glClear") == 0); // NOTE: strCMP == 0
-            bool targetFrameOrLater = (dispatchFrameNo >= ffOptions.mTargetFrame);
-            if (strstr(funcName, "SwapBuffers") && (dispatchFrameNo+1 == ffOptions.mTargetFrame))
+
+            if (isFrameTarget)
             {
-                // We save the call before the call is executed, and GetCurFrameId() isn't
-                // updated until the call (SwapBuffers) is made. This handles the case where this
-                // is the last swap before the target frame, so that it isn't wrongly skipped.
-                // (I.e., this swap marks the start of the target frame -- or equivalently, the end
-                // of frame 0.)
-                targetFrameOrLater = true;
+                arriveTarget = (dispatchFrameNo >= ffOptions.mTargetFrame);
+                if (strstr(funcName, "SwapBuffers") && (dispatchFrameNo+1 == ffOptions.mTargetFrame))
+                {
+                    // We save the call before the call is executed, and GetCurFrameId() isn't
+                    // updated until the call (SwapBuffers) is made. This handles the case where this
+                    // is the last swap before the target frame, so that it isn't wrongly skipped.
+                    // (I.e., this swap marks the start of the target frame -- or equivalently, the end
+                    // of frame 0.)
+                    arriveTarget = true;
+                }
+            }
+            else
+            {
+                arriveTarget = (curDrawCallNo >= ffOptions.mTargetDrawCallNo);
             }
 
             // Until the target frame, output everything but skipped calls. After that, output everything.
-            if (targetFrameOrLater || !shouldSkip)
+            if (arriveTarget || !shouldSkip)
             {
                 // Translate funcId for call to id in current sigbook.
                 unsigned short newId = common::gApiInfo.NameToId(funcName);
@@ -2950,6 +2967,11 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
             {
                 dispatchFrameNo++;
             }
+
+            if (isDrawCall)
+            {
+                curDrawCallNo++;
+            }
         }
 
         curCallNo++;
@@ -2977,6 +2999,7 @@ usage(const char *argv0)
         "  --input <input_trace> Target frame to fastforward [REQUIRED]\n"
         "  --output <output_file_name> Where to write fastforwarded trace file [REQUIRED]\n"
         "  --targetFrame <target> The frame number that should be fastforwarded to [REQUIRED]\n"
+        "  --targetDrawCallNo <target> The draw call number that should be fastforwarded to [REQUIRED]\n"
         "  --endFrame <end> The frame number that should be ended (by default fastforward to the last frame)\n"
         "  --multithread Run in multithread mode\n"
         "  --offscreen Run in offscreen mode\n"
@@ -3015,6 +3038,7 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
     bool gotOutput = false;
     bool gotInput = false;
     bool gotTargetFrame = false;
+    bool gotTargetDrawCallNo = false;
 
     // Parse all except first (executable name)
     for (int i = 1; i < argc; ++i)
@@ -3050,6 +3074,12 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
         {
             ffOptions.mTargetFrame = readValidValue(argv[++i]);
             gotTargetFrame = true;
+        }
+        else if (!strcmp(arg, "--targetDrawCallNo"))
+        {
+            ffOptions.mTargetDrawCallNo = readValidValue(argv[++i]);
+            gotTargetDrawCallNo = true;
+            ffOptions.mEndFrame = UINT32_MAX;
         }
         else if (!strcmp(arg, "--endFrame"))
         {
@@ -3093,12 +3123,17 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
         DBG_LOG("error: missing input file name\n");
     }
 
-    if (!gotTargetFrame)
+    if (!gotTargetFrame && !gotTargetDrawCallNo)
     {
-        DBG_LOG("error: missing target frame number\n");
+        DBG_LOG("error: missing target frame number / draw call number\n");
     }
 
-    bool success = gotOutput && gotInput && gotTargetFrame;
+    if (false == (gotTargetFrame ^ gotTargetDrawCallNo))
+    {
+        DBG_LOG("error: please either indicate target frame number or draw call number\n");
+    }
+
+    bool success = gotOutput && gotInput && (gotTargetFrame ^ gotTargetDrawCallNo);
     if (!success)
     {
         usage(argv[0]);
@@ -3151,6 +3186,8 @@ int main(int argc, char** argv)
     {
         // Target frame
         ffJson["originalFrame"] = ffOptions.mTargetFrame;
+        // Target draw call no
+        ffJson["targetDrawCallNo"] = ffOptions.mTargetDrawCallNo;
         // End Frame if not 0
         if (ffOptions.mEndFrame != UINT32_MAX)
             ffJson["endFrame"] = ffOptions.mEndFrame;

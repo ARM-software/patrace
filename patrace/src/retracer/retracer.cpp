@@ -858,6 +858,12 @@ void Retracer::CloseTraceFile() {
     mState.Reset();
     mCSBuffers.clear();
     mSnapshotPaths.clear();
+
+    if (shaderCacheFile)
+    {
+        fclose(shaderCacheFile);
+        shaderCacheFile = NULL;
+    }
 }
 
 bool Retracer::loadRetraceOptionsByThreadId(int tid)
@@ -1109,6 +1115,14 @@ bool Retracer::overrideWithCmdOptions( const CmdOptions &cmdOptions )
 
     if (cmdOptions.dmaSharedMemory) {
         mOptions.dmaSharedMemory = true;
+    }
+
+    if (cmdOptions.shaderCacheFile.size() > 0) {
+        mOptions.mShaderCacheFile = cmdOptions.shaderCacheFile;
+    }
+
+    if (cmdOptions.shaderCacheRequired) {
+        mOptions.mShaderCacheRequired = cmdOptions.shaderCacheRequired;
     }
 
     return true;
@@ -1827,6 +1841,9 @@ bool Retracer::Retrace()
     if (!mOptions.mCpuMask.empty()) set_cpu_mask(mOptions.mCpuMask);
     report_cpu_mask();
 
+    // open shader cache file if needed
+    OpenShaderCacheFile();
+
     // prepare for the last glFinish
     const char *glFinish_name = "glFinish";
     int glFinish_id = mFile.NameToExId(glFinish_name);
@@ -2459,6 +2476,137 @@ void post_glCompileShader(GLuint shader, GLuint originalShaderName)
     }
 }
 
+void post_glShaderSource(GLuint shader, GLuint originalShaderName, GLsizei count, const GLchar **string, const GLint *length)
+{
+    if (gRetracer.mOptions.mShaderCacheFile.size() > 0 && string && count)
+    {
+        std::string cat;
+        for (int i = 0; i < count; i++)
+        {
+            if (length) cat += std::string(string[i], length[i]);
+            else cat += string[i];
+        }
+        gRetracer.getCurrentContext().setShaderSource(shader, cat);
+    }
+}
+
+void OpenShaderCacheFile()
+{
+    if (!gRetracer.shaderCacheFile && gRetracer.mOptions.mShaderCacheFile.size() > 0)
+    {
+        const std::string bpath = gRetracer.mOptions.mShaderCacheFile + ".bin";
+        gRetracer.shaderCacheFile = fopen(bpath.c_str(), "ab+");
+        if (!gRetracer.shaderCacheFile)
+        {
+            gRetracer.reportAndAbort("Failed to open shader cache file %s: %s", bpath.c_str(), strerror(errno));
+        }
+
+        const std::string ipath = gRetracer.mOptions.mShaderCacheFile + ".idx";
+        FILE *idx = fopen(ipath.c_str(), "rb");
+        if (idx)
+        {
+            uint32_t size = 0;
+            int r = fread(&size, sizeof(size), 1, idx);
+            if (r != 1)
+            {
+                gRetracer.reportAndAbort("Failed to read shader cache index size: %s", ipath.c_str(), strerror(ferror(idx)));
+            }
+            for (unsigned i = 0; i < size; i++)
+            {
+                std::vector<char> md5;
+                uint64_t offset = 0;
+                std::string md5_str;
+                md5.resize(MD5Digest::DIGEST_LEN * 2);
+                r = fread(md5.data(), md5.size(), 1, idx);
+                r += fread(&offset, sizeof(offset), 1, idx);
+                if (r != 2)
+                {
+                    gRetracer.reportAndAbort("Failed to read shader cache index: %s", ipath.c_str(), strerror(ferror(idx)));
+                }
+                md5_str = std::string(md5.data(), md5.size());
+                gRetracer.shaderCacheIndex[md5_str] = offset;
+
+                GLenum binaryFormat = GL_NONE;
+                uint32_t size = 0;
+
+                if (fseek(gRetracer.shaderCacheFile, offset, SEEK_SET) != 0)
+                {
+                    gRetracer.reportAndAbort("Could not seek to desired cache item at %ld", offset);
+                }
+                if (fread(&binaryFormat, sizeof(binaryFormat), 1, gRetracer.shaderCacheFile) != 1 || fread(&size, sizeof(size), 1, gRetracer.shaderCacheFile) != 1)
+                {
+                    gRetracer.reportAndAbort("Failed to read data from cache at %ld as %s: %s", offset, md5_str.c_str(), strerror(ferror(gRetracer.shaderCacheFile)));
+                }
+                if (binaryFormat == GL_NONE || size == 0)
+                {
+                    gRetracer.reportAndAbort("Invalid cache metadata at %ld for %s", offset, md5_str.c_str());
+                }
+
+                gRetracer.shaderCache[md5_str].format = binaryFormat;
+                gRetracer.shaderCache[md5_str].buffer.resize(size);
+                if (fread(gRetracer.shaderCache[md5_str].buffer.data(), gRetracer.shaderCache[md5_str].buffer.size(), 1, gRetracer.shaderCacheFile) != 1)
+                {
+                    gRetracer.reportAndAbort("Failed to read %d bytes of data from cache as %s: %s", size, md5_str.c_str(), strerror(ferror(gRetracer.shaderCacheFile)));
+                }
+            }
+            fclose(idx);
+            DBG_LOG("Found shader cache index file, loaded %d cache entries\n", (int)size);
+        }
+        else
+        {
+            DBG_LOG("No existing shader cache index file found -- making new one\n");
+        }
+    }
+}
+
+bool load_from_shadercache(GLuint program, GLuint originalProgramName, int status)
+{
+    // check this particular shader
+    std::vector<std::string> shaders;
+    for (const GLuint shader_id : gRetracer.getCurrentContext().getShaderIDs(program))
+    {
+        shaders.push_back(gRetracer.getCurrentContext().getShaderSource(shader_id));
+    }
+
+    MD5Digest cached_md5(shaders);
+    const std::string md5 = cached_md5.text();
+    if (gRetracer.shaderCacheIndex.count(md5) > 0)
+    {
+        _glGetError(); // clear
+        _glProgramBinary(program, gRetracer.shaderCache[md5].format, gRetracer.shaderCache[md5].buffer.data(), gRetracer.shaderCache[md5].buffer.size());
+        GLenum err = _glGetError();
+        if (err != GL_NO_ERROR)
+        {
+            gRetracer.reportAndAbort("Failed to upload shader %s from cache!", md5.c_str());
+        }
+        if (gRetracer.mOptions.mDebug)
+        {
+            DBG_LOG("Loaded program %d from cache as %s.\n", (int)program, md5.c_str());
+        }
+        return true;
+    }
+    else if (gRetracer.mOptions.mShaderCacheRequired)
+    {
+        gRetracer.reportAndAbort("Could not find shader cache %s -- and strict shader cache option is on!\n", md5.c_str());
+    }
+
+    // If we got here, we did not find it in the cache, so carry out deferred calls.
+    for (const GLuint s : gRetracer.getCurrentContext().getShaderIDs(program))
+    {
+        const std::string& shadersrc = gRetracer.getCurrentContext().getShaderSource(s);
+        GLchar* cstr = (GLchar*)shadersrc.c_str();
+        GLint len = shadersrc.size();
+        _glShaderSource(s, 1, &cstr, &len);
+        _glCompileShader(s);
+        post_glCompileShader(s, gRetracer.getCurrentContext().getShaderRevMap().RValue(s));
+        _glAttachShader(program, s);
+    }
+    _glLinkProgram(program);
+    post_glLinkProgram(program, originalProgramName, status);
+
+    return false;
+}
+
 void post_glLinkProgram(GLuint program, GLuint originalProgramName, int status)
 {
     GLint linkStatus;
@@ -2491,6 +2639,64 @@ void post_glLinkProgram(GLuint program, GLuint originalProgramName, int status)
             gRetracer.reportAndAbort("Error in linking program %d: %s\n", originalProgramName, infoLog ? infoLog : "(n/a)");
         }
         free(infoLog);
+    }
+
+    static std::unordered_map<std::string, uint64_t> shaderCacheIndex;
+
+    if (gRetracer.mOptions.mShaderCacheFile.size() > 0 && !gRetracer.mOptions.mShaderCacheRequired)
+    {
+        std::vector<std::string> shaders;
+        for (const GLuint shader_id : gRetracer.getCurrentContext().getShaderIDs(program))
+        {
+            shaders.push_back(gRetracer.getCurrentContext().getShaderSource(shader_id));
+        }
+
+        MD5Digest cached_md5(shaders);
+        if (shaderCacheIndex.count(cached_md5.text()) == 0)
+        {
+            // save and write binary to disk
+            GLint len = 0;
+            _glGetProgramiv(program, GL_PROGRAM_BINARY_LENGTH, &len);
+
+            std::vector<char> buffer(len);
+            GLenum binaryFormat = GL_NONE;
+            _glGetProgramBinary(program, len, NULL, &binaryFormat, (void*)buffer.data());
+
+            uint32_t size = len;
+            long offset = ftell(gRetracer.shaderCacheFile);
+            if (fwrite(&binaryFormat, sizeof(GLenum), 1, gRetracer.shaderCacheFile) != 1
+                || fwrite(&size, sizeof(size), 1, gRetracer.shaderCacheFile) != 1
+                || fwrite(buffer.data(), buffer.size(), 1, gRetracer.shaderCacheFile) != 1)
+            {
+                gRetracer.reportAndAbort("Failed to write data to shader cache file: %s\n", strerror(ferror(gRetracer.shaderCacheFile)));
+            }
+
+            shaderCacheIndex[cached_md5.text()] = offset;
+            // Overwrite index on disk
+            const std::string ipath = gRetracer.mOptions.mShaderCacheFile + ".idx";
+            if (gRetracer.mOptions.mDebug)
+            {
+                DBG_LOG("Saving program%d(traceProgram%d) to shader cache as %s{.idx|.bin} with offset=%ld size=%ld\n", (int)program, (int)originalProgramName, gRetracer.mOptions.mShaderCacheFile.c_str(), offset, (long)size);
+            }
+            FILE *fp = fopen(ipath.c_str(), "wb");
+            if (!fp)
+            {
+                gRetracer.reportAndAbort("Failed to open index file %s for writing: %s\n", ipath.c_str(), strerror(errno));
+            }
+            uint32_t entries = shaderCacheIndex.size();
+            if (fwrite(&entries, sizeof(entries), 1, fp) != 1)
+            {
+                gRetracer.reportAndAbort("Failed to write first data to shader cache index: %s\n", strerror(ferror(gRetracer.shaderCacheFile)));
+            }
+            for (const auto &pair : shaderCacheIndex)
+            {
+                if (fwrite(pair.first.c_str(), pair.first.size(), 1, fp) != 1 || fwrite(&pair.second, sizeof(pair.second), 1, fp) != 1)
+                {
+                    gRetracer.reportAndAbort("Failed to write data to shader cache index: %s\n", strerror(ferror(gRetracer.shaderCacheFile)));
+                }
+            }
+            fclose(fp);
+        }
     }
 
     if (!(gRetracer.mOptions.mStoreProgramInformation || gRetracer.mOptions.mRemoveUnusedVertexAttributes))

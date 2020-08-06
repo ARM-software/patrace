@@ -359,24 +359,48 @@ void retrace_eglCreateContext(char* src)
     gEGLMutex.lock();
     Context* pshare_context = gRetracer.mState.GetContext(share_context);
     Profile profile = PROFILE_ES1;
+    int major = 1, minor = 0;
     for (unsigned int i = 0; i < attrib_list.cnt; i += 2) {
         if (attrib_list.v[i] == EGL_CONTEXT_CLIENT_VERSION) {
             switch (attrib_list.v[i+1])
             {
             case 2:
-                // Applications that are actually GLES3 may decide to say they want a GLES2 context.
-                // This is ok for most Android devices, but causes problems for our desktop GLES2/3 emulator that
-                // is strict about what functions will execute depending on the requested EGL_CONTEXT_CLIENT_VERSION.
-                // So, instead of trusting the app, lets explicitly choose the ctx version based on the trace header
-                // for the GLES2 context.
-                profile = gRetracer.mOptions.mApiVersion;
+                major = 2;
                 break;
             case 3:
-                profile = PROFILE_ES3;
+                major = 3;
                 break;
             default:
                 DBG_LOG("WARN: unknown GLES version %d, in default, set it to GLES 1\n", attrib_list.v[i+1]);
             }
+        }
+        if (attrib_list.v[i] == EGL_CONTEXT_MINOR_VERSION) {
+            minor = attrib_list.v[i+1];
+        }
+    }
+
+    // Applications that are actually GLES3 may decide to say they want a GLES2 context.
+    // This is ok for most Android devices, but causes problems for our desktop GLES2/3 emulator that
+    // is strict about what functions will execute depending on the requested EGL_CONTEXT_CLIENT_VERSION.
+    // So, instead of trusting the app, lets explicitly choose the ctx version based on the trace header
+    // for the GLES2 context.
+    if (major == 2)
+    {
+        profile = gRetracer.mOptions.mApiVersion;
+    }
+    else if (major == 3)
+    {
+        switch(minor)
+        {
+        case 0:
+            profile = PROFILE_ES3;
+            break;
+        case 1:
+            profile = PROFILE_ES31;
+            break;
+        case 2:
+            profile = PROFILE_ES32;
+            break;
         }
     }
 
@@ -501,8 +525,7 @@ void retrace_eglMakeCurrent(char* src)
     bool ok = GLWS::instance().MakeCurrent(drawable, context);
     if (!ok)
     {
-        DBG_LOG("Warning: retrace_eglMakeCurrent failed\n");
-        DBG_LOG("eglGetError: 0x%x\n", eglGetError());
+        DBG_LOG("Warning: retrace_eglMakeCurrent failed,(0x%x) \n", eglGetError());
         gEGLMutex.unlock();
         return;
     }
@@ -617,6 +640,7 @@ static void retrace_eglCreateImageKHR(char* src)
     int buffer;
     common::Array<int> attrib_list;
     int ret = 0;
+    static bool target_not_nb_warned = false;
 
     // --------- read ret & params ----------
     src = ReadFixed(src, dpy);
@@ -643,10 +667,13 @@ static void retrace_eglCreateImageKHR(char* src)
                                                  " which is not supported by your GPU. Retracing would be aborted.\n", gRetracer.GetCurCallId(), i, attrib_list[i]);
                 }
                 else {  // 0x3148, 0x3149, 0x314A and 0x314B are only compatible with target=EGL_NATIVE_BUFFER_ANDROID
-                    DBG_LOG("Call %d eglCreateImageKHR, attrib_list[%d] = 0x%X is only compatible with tgt == EGL_NATIVE_BUFFER_ANDROID,"
-                            " but in this call, target == 0x%X != EGL_NATIVE_BUFFER_ANDROID(0x%X)."
-                            " It might be caused by a conversion of the format of this EGLImageKHR when tracing."
-                            " So here we'll ignore this attrib and continue retracing. But it might bring some artifacts.\n", gRetracer.GetCurCallId(), i, attrib_list[i], tgt, EGL_NATIVE_BUFFER_ANDROID);
+                    if (!target_not_nb_warned) {
+                        DBG_LOG("Call %d eglCreateImageKHR, attrib_list[%d] = 0x%X is only compatible with tgt == EGL_NATIVE_BUFFER_ANDROID,"
+                                " but in this call, target == 0x%X != EGL_NATIVE_BUFFER_ANDROID(0x%X)."
+                                " It might be caused by a conversion of the format of this EGLImageKHR when tracing."
+                                " So here we'll ignore this attrib and continue retracing. But it might bring some artifacts.\n", gRetracer.GetCurCallId(), i, attrib_list[i], tgt, EGL_NATIVE_BUFFER_ANDROID);
+                        target_not_nb_warned = true;
+                    }
                     continue;
                 }
             }
@@ -733,7 +760,7 @@ retrace:
     }
 
     if (image == NULL) {
-        DBG_LOG("eglCreateImageKHR failed to create EGLImage = 0x%x at call %u.\n", ret, gRetracer.GetCurCallId());
+        DBG_LOG("eglCreateImageKHR failed to create EGLImage = 0x%x at call %u, (0x%x)\n", ret, gRetracer.GetCurCallId(), eglGetError());
     }
     gRetracer.mState.InsertEGLImageMap(ret, image);
     gEGLMutex.unlock();
@@ -795,6 +822,27 @@ static void retrace_glEGLImageTargetTexture2DOES(char* src)
     {
         _glEGLImageTargetTexture2DOES(tgt, imageNew);
     }
+    gEGLMutex.unlock();
+}
+
+static void retrace_glEGLImageTargetTexStorageEXT(char* src)
+{
+    // ------- ret & params definition --------
+    EGLenum tgt;
+    int image;
+    common::Array<int> attrib_list;
+
+    // --------- read ret & params ----------
+    src = ReadFixed(src, tgt);
+    src = ReadFixed<int>(src, image);
+    src = Read1DArray(src, attrib_list);
+
+    //  ------------- retrace ---------------
+    gEGLMutex.lock();
+    bool found = false;
+    EGLImageKHR imageNew = gRetracer.mState.GetEGLImage(image, found);
+    _glEGLImageTargetTexStorageEXT(tgt, imageNew, attrib_list);
+
     gEGLMutex.unlock();
 }
 
@@ -1064,7 +1112,12 @@ static void retrace_eglQuerySurface(char* _src)
         DBG_LOG("eglQuerySurface return EGL_FALSE in original app.\n");
     }
 
-    gRetracer.mState.GetDrawable(surface)->querySurface(attrib, &new_value);
+    retracer::Drawable* drawable = gRetracer.mState.GetDrawable(surface);
+    if (drawable) {
+        drawable->querySurface(attrib, &new_value);
+    } else {
+        DBG_LOG("WARNING: surface %d has been destroyed and QuerySurface(0x%x) would be ignored.\n", surface, attrib);
+    }
 }
 
 const common::EntryMap retracer::egl_callbacks = {
@@ -1084,6 +1137,7 @@ const common::EntryMap retracer::egl_callbacks = {
     {"eglSetDamageRegionKHR", (void*)retrace_eglSetDamageRegionKHR},
     {"eglCreateWindowSurface", (void*)retrace_eglCreateWindowSurface},
     {"eglCreateWindowSurface2", (void*)retrace_eglCreateWindowSurface2},
+    {"eglCreatePlatformWindowSurface", (void*)retrace_eglCreateWindowSurface},
     {"eglCreatePbufferSurface", (void*)retrace_eglCreatePbufferSurface},
     //{"eglCreatePixmapSurface", (void*)ignore},
     {"eglDestroySurface", (void*)retrace_eglDestroySurface},
@@ -1113,4 +1167,5 @@ const common::EntryMap retracer::egl_callbacks = {
     {"eglCreateImageKHR", (void*)retrace_eglCreateImageKHR},
     {"eglDestroyImageKHR", (void*)retrace_eglDestroyImageKHR},
     {"glEGLImageTargetTexture2DOES", (void*)retrace_glEGLImageTargetTexture2DOES},
+    {"glEGLImageTargetTexStorageEXT", (void*)retrace_glEGLImageTargetTexStorageEXT},
 };

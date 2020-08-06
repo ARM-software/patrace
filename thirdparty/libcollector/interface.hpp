@@ -97,7 +97,11 @@ public:
     /// Set this to true in order to stop collecting data
     std::atomic<bool> finished;
 
+    virtual void setDebug(bool debug) final { mDebug = debug; }
+
 protected:
+    /// In debug mode?
+    bool mDebug = false;
     /// Is this collector multi-threaded?
     bool mIsThreaded;
     /// Ideal sample rate in milliseconds
@@ -151,7 +155,7 @@ public:
     std::vector<std::string> unavailable();
 
     /// Set verbose debug output flag
-    void setDebug(bool value) { mDebug = value; }
+    void setDebug(bool value) { mDebug = value; for (auto* c : mCollectors) c->setDebug(true); }
 
     /// Initialize the given list of collectors. Non-functional collectors will be quietly ignored.
     /// Also, any collectors mentioned in the JSON passed to the constructor will be enabled, if

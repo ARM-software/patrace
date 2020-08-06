@@ -51,7 +51,7 @@ public class RetraceActivity extends Activity
     private GLViewContainer mViewContainer = null;
     private HorizontalScrollView scroll = null;
 
-    private boolean force_single_window = false;
+    private boolean force_single_window = true;
     private boolean enOverlay = true;
     private int transparent = 100;
     private boolean enFullScreen = false;
@@ -63,7 +63,7 @@ public class RetraceActivity extends Activity
     @Override protected void onCreate(Bundle icicle) {
         super.onCreate(icicle);
         Intent parentIntent = getIntent();
-        force_single_window = parentIntent.getBooleanExtra("force_single_window", false);
+        force_single_window = parentIntent.getBooleanExtra("force_single_window", true);
         enOverlay = force_single_window? false : parentIntent.getBooleanExtra("enOverlay", true);
         transparent = parentIntent.getIntExtra("transparent", 100);
         enFullScreen = parentIntent.getBooleanExtra("enFullScreen", false);
@@ -248,6 +248,9 @@ public class RetraceActivity extends Activity
         @Override public void surfaceDestroyed(SurfaceHolder holder) {
             Surface surface = holder.getSurface();
             Log.i(TAG, "SurfaceTextureListener: surfaceDestroyed:" + surface);
+            if (mGLThread != null) {
+                mGLThread.onWindowDestroyed(surface);
+            }
         }
 
         @Override public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
@@ -298,6 +301,9 @@ public class RetraceActivity extends Activity
 
         public boolean onSurfaceTextureDestroyed(SurfaceTexture surface) {
             Log.i(TAG, "SurfaceTextureListener: surfaceDestroyed:" + surface);
+            if (mGLThread != null) {
+                mGLThread.onWindowDestroyed(surface);
+            }
             return true;
         }
 

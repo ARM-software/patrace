@@ -89,6 +89,30 @@ public class GLThread extends Thread {
         }
     }
 
+    public void onWindowDestroyed(SurfaceTexture surface) {
+        synchronized(this) {
+            Log.i(TAG, "onWindowDestroyed " + surface);
+            Surface result;
+            if (surfaceTexToSurfaceMap.containsKey(surface)) {
+                result = surfaceTexToSurfaceMap.get(surface);
+            }
+            else {
+                result = new Surface(surface);
+                surfaceTexToSurfaceMap.put(surface, result);
+            }
+            NativeAPI.onSurfaceDestroyed(result, mTextureViewSize);
+            notifyAll();
+        }
+    }
+
+    public void onWindowDestroyed(Surface surface) {
+        synchronized(this) {
+            Log.i(TAG, "onWindowDestroyed " + surface);
+            NativeAPI.onSurfaceDestroyed(surface, 0);
+            notifyAll();
+        }
+    }
+
     ////////////////////////////////////////////////////////////
     // Thread main
     @Override

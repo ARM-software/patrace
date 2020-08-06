@@ -13,6 +13,8 @@ enum Profile
     PROFILE_ES1 = 1,
     PROFILE_ES2 = 2,
     PROFILE_ES3 = 3,
+    PROFILE_ES31 = 4,
+    PROFILE_ES32 = 5,
 };
 
 struct RetraceOptions
@@ -98,6 +100,8 @@ struct RetraceOptions
     std::string         mCpuMask;
 
     bool                dmaSharedMemory = false;
+    std::string         mShaderCacheFile;
+    bool                mShaderCacheRequired = false;
 private:
     // Noncopyable because of owned CallSet pointer members
     RetraceOptions(const RetraceOptions&);

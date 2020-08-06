@@ -609,8 +609,8 @@ class Tracer:
             print
             print '%s++gTraceThread.at(tid).mCallDepth;' % indent
             print '%s%s%s(%s);' % (indent, result, dispatch, params)
-            print '%s_glGetBufferParameteriv(target, GL_BUFFER_MAP_LENGTH, &length);' % indent
-            print '%s_glUnmapBuffer(target);' % indent
+            print '%s_glGetBufferParameteriv(target, GL_BUFFER_SIZE, &length);' % indent
+            print '%s_glUnmapBufferOES(target);' % indent
             print '%s// Overwrite the glMapBufferOES with glMapBufferRange for reading the buffer contents' %indent
             print '%s_result = _glMapBufferRange(target, 0, length, (GL_MAP_READ_BIT | GL_MAP_WRITE_BIT));' %indent
             print '%sif (!_result)' %indent

@@ -51,6 +51,8 @@ struct CmdOptions
     bool finishBeforeSwap = false;
     std::string cpuMask;
     bool dmaSharedMemory = false;
+    std::string shaderCacheFile;
+    bool shaderCacheRequired = false;
 };
 
 #endif

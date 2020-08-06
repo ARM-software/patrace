@@ -15,6 +15,7 @@ public:
     virtual void postInit() override;
     void setupJAVAEnv(JNIEnv *env);
     virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList) override;
+    virtual void ReleaseDrawable(NativeWindow *window) override;
     void setNativeWindow(EGLNativeWindowType window, int textureViewSize);
 
 private:

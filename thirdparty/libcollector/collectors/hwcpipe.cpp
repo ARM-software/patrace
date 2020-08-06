@@ -500,4 +500,3 @@ bool MaliHWCReader::wait_next_event()
 		return false;
 }
 }
-

@@ -17,6 +17,10 @@ public:
         mHandle = reinterpret_cast<EGLNativeWindowType>(&mFbdevWindowStruct);
     }
 
+    ~FbdevWindow()
+    {
+    }
+
     bool resize(int w, int h)
     {
         if (NativeWindow::resize(w, h))

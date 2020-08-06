@@ -109,7 +109,7 @@ FerretCollector::FerretCollector( const Json::Value& config,
             DBG_LOG( "%s: JSON member cpus is not an array.\n", mName.c_str() );
         }
     } else {
-        DBG_LOG( "%s: No cpu filter specified, monitoring all cores by default.\n", mName.c_str() );
+        if (mDebug) DBG_LOG( "%s: No cpu filter specified, monitoring all cores by default.\n", mName.c_str() );
         get_cpu_cores( mCpus );
     }
 
@@ -202,7 +202,7 @@ FerretCollector::FerretCollector( const Json::Value& config,
     {
         cpuWatch += " " + _to_string( cpu );
     }
-    DBG_LOG( "%s: monitoring CPUs [%s]\n", mName.c_str(), cpuWatch.c_str() + 1 );
+    if (mDebug) DBG_LOG( "%s: monitoring CPUs [%s]\n", mName.c_str(), cpuWatch.c_str() + 1 );
 }
 
 
@@ -259,7 +259,7 @@ bool FerretCollector::init( void )
         DBG_LOG( "%s: output_dir is unspecified.\n", mName.c_str() );
 #else
         mOutputDir = ".";
-        DBG_LOG( "%s: output_dir is absent, using %s\n", mName.c_str(), mOutputDir.c_str() );
+        if (mDebug) DBG_LOG( "%s: output_dir is absent, using %s\n", mName.c_str(), mOutputDir.c_str() );
 #endif
     }
 
