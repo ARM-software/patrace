@@ -141,7 +141,7 @@ void setValueTM(common::ValueTM *&pValue, const string &type_string, const Json:
             try {
                 pValue->mFloat = json_value.asFloat();
             }
-            catch (std::runtime_error) {   // exception when json_value is string "nan", "-nan", "inf" or "-inf" instead of a floating number
+            catch (const std::runtime_error&) {   // exception when json_value is string "nan", "-nan", "inf" or "-inf" instead of a floating number
                 string s = json_value.asString();
                 if (s == "nan") pValue->mFloat = NAN;
                 else if (s == "-nan") pValue->mFloat = -NAN;
