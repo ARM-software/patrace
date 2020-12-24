@@ -25,6 +25,8 @@ public:
     bool ErrorOutOnBinaryShaders = true;            // Return an error if a program attempts to upload a binary shader
     bool DisableErrorReporting = false;             // Disable GLES error reporting callbacks
 
+    std::string _tmp_extensions;
+
 public:
     TracerParams();
     ~TracerParams();

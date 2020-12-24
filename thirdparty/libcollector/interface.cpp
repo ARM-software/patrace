@@ -1,6 +1,5 @@
 #include "interface.hpp"
 
-#include <assert.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -64,7 +63,7 @@ void Collector::loop()
 // in order to do the matching, which has its own costs.
 bool Collector::postprocess(const std::vector<int64_t>& timing)
 {
-    if (mIsThreaded) // remix values based on frame times
+    if (mIsThreaded && !mIsSummarized) // remix values based on frame times
     {
         double duration = 0;
         for (const int64_t v : timing)
@@ -80,6 +79,7 @@ bool Collector::postprocess(const std::vector<int64_t>& timing)
             }
             const double samples = kv.second.size();
             int64_t cur_time = 0;
+            tmp[kv.first].type = kv.second.type;
             for (unsigned i = 0; i < timing.size(); i++)
             {
                 // find closest match
@@ -340,6 +340,7 @@ void Collection::start(const std::vector<std::string>& headers)
     mPreviousTime = mStartTime;
     mCustomHeaders = headers;
     mCustom.resize(headers.size());
+    mCustomSummarized.resize(headers.size());
     for (Collector* c : mRunning)
     {
         c->clear();
@@ -422,14 +423,16 @@ Json::Value Collection::results()
         }
         for (const auto& pair : c->results())
         {
+            if (c->isSummarized()) v["summarized"] = true;
             v[pair.first] = Json::arrayValue;
-            for (const CollectorValue& cv : pair.second)
+            for (const CollectorValue& cv : pair.second.data())
             {
-                switch (cv.type)
+                switch (pair.second.type)
                 {
-                case CollectorValue::TYPE_FP64: v[pair.first].append(cv.fp64); break;
-                case CollectorValue::TYPE_U64: v[pair.first].append(static_cast<Json::UInt64>(cv.u64)); break;
-                case CollectorValue::TYPE_I64: v[pair.first].append(static_cast<Json::Int64>(cv.i64)); break;
+                case CollectorValueList::TYPE_FP64: v[pair.first].append(cv.fp64); break;
+                case CollectorValueList::TYPE_U64: v[pair.first].append(static_cast<Json::UInt64>(cv.u64)); break;
+                case CollectorValueList::TYPE_I64: v[pair.first].append(static_cast<Json::Int64>(cv.i64)); break;
+                case CollectorValueList::TYPE_UNASSIGNED: assert(false); break;
                 }
             }
         }
@@ -438,14 +441,29 @@ Json::Value Collection::results()
     Json::Value v;
     v["time"] = Json::arrayValue;
     results["timing"] = v;
-    for (int64_t t : mTiming)
+    if (mTimingSummarized.size() > 0)
+    {
+        for (int64_t t : mTimingSummarized)
+        {
+            results["timing"]["time"].append(static_cast<Json::Value::Int64>(t));
+        }
+    }
+    else for (int64_t t : mTiming)
     {
         results["timing"]["time"].append(static_cast<Json::Value::Int64>(t));
     }
     for (unsigned i = 0; i < mCustomHeaders.size(); i++)
     {
         results["custom"][mCustomHeaders[i]] = Json::arrayValue;
-        for (int64_t t : mCustom[i])
+        if (mCustomSummarized[i].size() > 0)
+        {
+            for (int64_t t : mCustomSummarized[i])
+            {
+                results["custom"][mCustomHeaders[i]].append(static_cast<Json::Value::Int64>(t));
+            }
+            results["custom"]["summarized"] = true;
+        }
+        else for (int64_t t : mCustom[i])
         {
             results["custom"][mCustomHeaders[i]].append(static_cast<Json::Value::Int64>(t));
         }
@@ -470,13 +488,14 @@ bool Collection::writeCSV_MTV(const std::string& filename)
         for (const auto& pair : c->results())
         {
             fprintf(fp, "%s, %s", c->name().c_str(), pair.first.c_str());
-            for (const CollectorValue& value : pair.second)
+            for (const CollectorValue& value : pair.second.data())
             {
-                switch (value.type)
+                switch (pair.second.type)
                 {
-                case CollectorValue::TYPE_FP64: fprintf(fp, ", %f", value.fp64); break;
-                case CollectorValue::TYPE_I64: fprintf(fp, ", %lld", (long long)value.i64); break;
-                case CollectorValue::TYPE_U64: fprintf(fp, ", %llu", (unsigned long long)value.u64); break;
+                case CollectorValueList::TYPE_FP64: fprintf(fp, ", %f", value.fp64); break;
+                case CollectorValueList::TYPE_I64: fprintf(fp, ", %lld", (long long)value.i64); break;
+                case CollectorValueList::TYPE_U64: fprintf(fp, ", %llu", (unsigned long long)value.u64); break;
+                case CollectorValueList::TYPE_UNASSIGNED: assert(false); break;
                 }
             }
             fprintf(fp, "\n");
@@ -496,6 +515,22 @@ bool Collection::writeCSV_MTV(const std::string& filename)
         }
     }
     return (fclose(fp) == 0);
+}
+
+void Collection::summarize()
+{
+    for (auto c : mCollectors) c->summarize();
+    int64_t sum = 0;
+    for (auto c : mTiming) sum += c;
+    mTimingSummarized.push_back(sum / (int64_t)mTiming.size());
+    mTiming.clear();
+    for (unsigned i = 0; i < mCustom.size(); i++)
+    {
+        int64_t sum = 0;
+        for (auto c : mCustom[i]) sum += c;
+        mCustomSummarized[i].push_back(sum / (int64_t)mCustom[i].size());
+        mCustom[i].clear();
+    }
 }
 
 bool Collection::writeCSV(const std::string& filename)
@@ -535,12 +570,13 @@ bool Collection::writeCSV(const std::string& filename)
         {
             for (const auto& pair : c->results())
             {
-                const CollectorValue& value = pair.second[i];
-                switch (value.type)
+                const CollectorValue& value = pair.second.at(i);
+                switch (pair.second.type)
                 {
-                case CollectorValue::TYPE_FP64: fprintf(fp, ", %f", value.fp64); break;
-                case CollectorValue::TYPE_I64: fprintf(fp, ", %lld", (long long)value.i64); break;
-                case CollectorValue::TYPE_U64: fprintf(fp, ", %llu", (unsigned long long)value.u64); break;
+                case CollectorValueList::TYPE_FP64: fprintf(fp, ", %f", value.fp64); break;
+                case CollectorValueList::TYPE_I64: fprintf(fp, ", %lld", (long long)value.i64); break;
+                case CollectorValueList::TYPE_U64: fprintf(fp, ", %llu", (unsigned long long)value.u64); break;
+                case CollectorValueList::TYPE_UNASSIGNED: assert(false); break;
                 }
             }
         }

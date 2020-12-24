@@ -15,6 +15,9 @@ struct GLSLShader
     bool contains_debug_on_pragma = false;
     bool contains_invariant_all_pragma = false;
     int shaderType = 0;
+
+    /// Convert shader to 310-compatible version
+    void upgrade_to_glsl310();
 };
 
 /// Contains a semantic understanding of the contents of the shader
@@ -31,7 +34,7 @@ struct GLSLRepresentation
         std::vector<Keyword> qualifiers;
         std::string layout;
         std::vector<Variable> members;
-        unsigned binding = 0; // TBD
+        int binding = -1; // TBD
     };
 
     bool contains_invariants = false;

@@ -22,6 +22,8 @@ static void printHelp()
         "  --inline      Inline data from any (non-standard) #include directives\n"
         "  --selftest    Run internal self-tests\n"
         "  --test        Test parser on a shader, printing only file name and shader type\n"
+        "  --upgrade     Upgrade shader to at least 310 ES version\n"
+        "  --tf          Upgrade shader and convert vertex shader to use transform feedback\n"
         "  -h            Print help\n"
         "  -v            Print version\n"
         ;
@@ -64,6 +66,8 @@ int main(int argc, char **argv)
     Mode mode = NONE;
     bool debug = false;
     bool inline_includes = false;
+    bool upgrade = false;
+    bool tf = false;
 
     for (; argIndex < argc; ++argIndex)
     {
@@ -81,6 +85,14 @@ int main(int argc, char **argv)
         else if (arg == "--debug")
         {
             debug = true;
+        }
+        else if (arg == "--upgrade")
+        {
+            upgrade = true;
+        }
+        else if (arg == "--tf")
+        {
+            tf = true;
         }
         else if (arg == "--inline")
         {
@@ -120,7 +132,7 @@ int main(int argc, char **argv)
         else if (arg == "-v")
         {
             printVersion();
-            return 1;
+            return 0;
         }
         else
         {
@@ -174,7 +186,13 @@ int main(int argc, char **argv)
 
     GLSLShader s = parser.preprocessor(pass1, shaderType);
 
-    if (mode == COMPRESS || mode == PREPROCESS)
+    if (upgrade || tf)
+    {
+        s.upgrade_to_glsl310();
+        if (tf) s.code = convert_to_tf(s.code);
+    }
+
+    if (mode == COMPRESS || mode == PREPROCESS || upgrade || tf)
     {
         printf("#version %d%s\n", s.version, s.version > 100 ? " es" : "");
         for (const std::string& ext : s.extensions) printf("#extension %s : enable\n", ext.c_str());
@@ -185,7 +203,7 @@ int main(int argc, char **argv)
        std::string c = parser.compressed(s);
        printf("%s\n", c.c_str());
     }
-    else if (mode == PREPROCESS)
+    else if (upgrade || tf || mode == PREPROCESS)
     {
         printf("%s\n", s.code.c_str());
     }

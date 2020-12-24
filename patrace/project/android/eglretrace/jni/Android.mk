@@ -157,7 +157,6 @@ LOCAL_SRC_FILES     := \
     common/memory.cpp \
     common/trace_callset.cpp \
     common/os_posix.cpp \
-    common/os_thread_linux.cpp \
     common/api_info_auto.cpp \
     common/api_info.cpp \
     common/in_file_mt.cpp \

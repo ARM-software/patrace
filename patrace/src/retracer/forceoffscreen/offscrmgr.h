@@ -33,7 +33,7 @@ public:
     ~OffscreenManager();
 
     void Init();
-    bool BindOffscreenFBO();
+    bool BindOffscreenFBO(GLenum target);
     bool BindOffscreenReadFBO();
     void OffscreenToMosaic();
     bool MosaicToScreenIfNeeded(bool forceFlush = false);

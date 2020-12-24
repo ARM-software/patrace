@@ -50,6 +50,7 @@ public:
     virtual bool setAttribute(Drawable* drawable, int attribute, int value) = 0;
 
     virtual void processStepEvent() {}
+    virtual bool steppable() { return false; }
 
     void setSelectedEglConfig(const EglConfigInfo& config) { mEglConfigInfo = config; }
     EglConfigInfo getSelectedEglConfig() { return mEglConfigInfo; }

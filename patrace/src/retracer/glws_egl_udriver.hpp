@@ -9,8 +9,10 @@ class GlwsEglUdriver : public GlwsEgl
 public:
     GlwsEglUdriver();
     ~GlwsEglUdriver();
-    virtual void processStepEvent();
+
     virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList);
+    virtual bool steppable() override { return true; }
+    virtual void processStepEvent() override;
 };
 
 }

@@ -5,32 +5,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#ifndef _WIN32
 #include <unistd.h>
-#endif
+#include <string>
 
-#ifdef _WIN32
-#define CALLCONV __stdcall
-#else
-#define CALLCONV
-#endif
-
-#ifndef GLAPIENTRY
-#define GLAPIENTRY CALLCONV
-#endif
-
-#ifndef PAFRAMEWORK_OPENGL
+#define EGL_NO_X11
 #define GL_GLEXT_PROTOTYPES
 #include <EGL/egl.h>
-#include <GLES3/gl31.h>
+#include <GLES3/gl32.h>
 #include <GLES2/gl2ext.h>
-#include "pa_gl31.h"
-#else
-#define GLEW_STATIC 1
-#include <GL/glew.h>
-#endif
 
-#include "paframework.h"
+#ifndef GLAPIENTRY
+#define GLAPIENTRY
+#endif
 
 // Cross-platform compatibility macros. The shader macros are convenient
 // for writing inline shaders, and also allow us to redefine them if we
@@ -51,11 +37,7 @@
 #define GLSL_EVALUATE(src) { "#version 420 core\n" #src }
 #endif
 
-#ifndef _WIN32
 #define PACKED(definition) definition __attribute__((__packed__))
-#else
-#define PACKED(definition) __pragma(pack(push, 1)) definition __pragma(pack(pop))
-#endif
 
 // our fake GL calls
 typedef void (GLAPIENTRY *PA_PFNGLASSERTBUFFERARMPROC)(GLenum target, GLsizei offset, GLsizei size, const char *md5);
@@ -63,12 +45,38 @@ typedef void (GLAPIENTRY *PA_PFNGLSTATEDUMPARMPROC)(void);
 extern PA_PFNGLASSERTBUFFERARMPROC glAssertBuffer_ARM;
 extern PA_PFNGLSTATEDUMPARMPROC glStateDump_ARM;
 
-void setup();
-int init(const char *name, PAFW_HANDLE pafw_handle, PAFW_CALLBACK_DRAW drawcall, PAFW_CALLBACK_INIT_AFTER_WINDOW_SETUP setupcall, PAFW_CALLBACK_CLEANUP_BEFORE_WINDOW_CLOSE cleanupcall, int frames = 1);
+struct PADEMO;
+typedef int (GLAPIENTRY *PADEMO_CALLBACK_INIT)(PADEMO *handle, int w, int h, void *user_data);
+typedef void (GLAPIENTRY *PADEMO_CALLBACK_SWAP)(PADEMO *handle, void *user_data);
+typedef void (GLAPIENTRY *PADEMO_CALLBACK_FREE)(PADEMO *handle, void *user_data);
+
+struct PADEMO
+{
+	std::string name;
+	PADEMO_CALLBACK_SWAP swap;
+	PADEMO_CALLBACK_INIT init;
+	PADEMO_CALLBACK_FREE done;
+	int frames;
+	EGLint width;
+	EGLint height;
+	void *user_data;
+	EGLDisplay display;
+	EGLContext context;
+	EGLSurface surface;
+	int current_frame;
+};
+
+int init(const char *name, PADEMO_CALLBACK_SWAP swap, PADEMO_CALLBACK_INIT setup, PADEMO_CALLBACK_FREE cleanup, void *user_data = nullptr, EGLint *attribs = nullptr);
 void assert_fb(int width, int height);
 void checkError(const char *msg);
 void compile(const char *name, GLint shader);
 void link_shader(const char *name, GLint program);
 GLenum fb_internalformat();
+bool is_null_run();
+
+#define SHORT_FILE (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+#define PALOGE(format, ...) do { printf("%s,%d: " format, SHORT_FILE, __LINE__, ##__VA_ARGS__); } while(0)
+#define PALOGI(format, ...) do { printf("%s,%d: " format, SHORT_FILE, __LINE__, ##__VA_ARGS__); } while(0)
+#define PALOGW(format, ...) do { printf("%s,%d: " format, SHORT_FILE, __LINE__, ##__VA_ARGS__); } while(0)
 
 #endif

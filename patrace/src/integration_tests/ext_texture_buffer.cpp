@@ -1,15 +1,4 @@
 #include "pa_demo.h"
-#include "paframework_gl.h"
-
-#ifdef PAFRAMEWORK_OPENGL
-// Rename GLES extension functions to OpenGL functions
-//#define glTexBufferEXT glTexBuffer
-#define glTexBufferRangeEXT glTexBufferRange
-//#define GL_TEXTURE_BUFFER_EXT GL_TEXTURE_BUFFER
-#define GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT_EXT GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT
-#define GL_TEXTURE_BUFFER_SIZE_EXT GL_TEXTURE_BUFFER_SIZE
-#define GL_TEXTURE_BUFFER_OFFSET_EXT GL_TEXTURE_BUFFER_OFFSET
-#endif
 
 static GLuint gvPositionHandle;
 
@@ -22,7 +11,7 @@ PACKED(struct params
 });
 
 const char *vertex_shader_source[] = {
-    "#version 310 es\n"
+    "#version 320 es\n"
     "in vec4 vPosition; \n"
     "flat out int texcoord;\n"
     " "
@@ -34,8 +23,7 @@ const char *vertex_shader_source[] = {
 };
 
 const char *fragment_shader_source[] = {
-    "#version 310 es\n"
-    "#extension GL_EXT_texture_buffer: require\n"
+    "#version 320 es\n"
     "precision mediump float; \n"
     "flat in int texcoord; \n"
     "out vec4 fragmentColor; \n"
@@ -61,48 +49,10 @@ static GLubyte pixels[4 * 4] =
 };
 
 
-bool check_feature_availability()
+static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 {
-    GLint major_version;
-    GLint minor_version;
-    int version;
-
-    glGetIntegerv(GL_MAJOR_VERSION, &major_version);
-    glGetIntegerv(GL_MINOR_VERSION, &minor_version);
-    version = 100 * major_version + 10 * minor_version;
-
-#ifndef PAFRAMEWORK_OPENGL
-    if (version >= 300 && PAFW_GL_Is_GLES_Extension_Supported("GL_EXT_texture_buffer"))
-    {
-        return true;
-    }
-    else
-    {
-        PALOGE("The GLES version (currently %d) must be 300 or higher and the extention EXT_texture_buffer must be supported\n", version);
-        return true;
-    }    
-#else
-    if (version >= 430)
-    {
-        return true;
-    }
-    PALOGE("The OpenGLversion (currently %d) must be 430 or higher\n", version);
-    return false;
-#endif
-}
-
-static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
-{
-    setup();
-
     width = w;
     height = h;
-
-    if (!check_feature_availability())
-    {
-        PALOGE("The extension EXT_texture_buffer is not available\n");
-        return 1;
-    }
 
     // setup space
     glViewport(0, 0, width, height);
@@ -123,16 +73,16 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
     glGenBuffers(1, &g_bufferId);
     glBindBuffer(GL_TEXTURE_BUFFER_EXT, g_bufferId);
     glBufferData(GL_TEXTURE_BUFFER_EXT, sizeof(pixels), pixels, GL_STATIC_READ);
-    glTexBufferEXT(GL_TEXTURE_BUFFER_EXT, GL_RGBA8, g_bufferId);
-    
-    glActiveTexture(GL_TEXTURE0);    
+    glTexBuffer(GL_TEXTURE_BUFFER_EXT, GL_RGBA8, g_bufferId);
+
+    glActiveTexture(GL_TEXTURE0);
     glUniform1i(glGetUniformLocation(draw_program, "s_texture"), 0);
 
     GLint value;
-    glGetIntegerv(GL_TEXTURE_BUFFER_EXT, &value);
-    glGetIntegerv(GL_MAX_TEXTURE_BUFFER_SIZE_EXT, &value);
-    glGetIntegerv(GL_TEXTURE_BINDING_BUFFER_EXT, &value);
-    glGetIntegerv(GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT_EXT, &value);
+    glGetIntegerv(GL_TEXTURE_BUFFER, &value);
+    glGetIntegerv(GL_MAX_TEXTURE_BUFFER_SIZE, &value);
+    glGetIntegerv(GL_TEXTURE_BINDING_BUFFER, &value);
+    glGetIntegerv(GL_TEXTURE_BUFFER_OFFSET_ALIGNMENT, &value);
 
     GLsizei length;
     GLint size;
@@ -140,9 +90,9 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
     GLchar name[255];
     glGetActiveUniform(draw_program, 0, 1, &length, &size, &type, name);
 
-    glGetTexLevelParameteriv(GL_TEXTURE_BUFFER_EXT, 0, GL_TEXTURE_BUFFER_DATA_STORE_BINDING_EXT, &value);
-    glGetTexLevelParameteriv(GL_TEXTURE_BUFFER_EXT, 0, GL_TEXTURE_BUFFER_OFFSET_EXT, &value);
-    glGetTexLevelParameteriv(GL_TEXTURE_BUFFER_EXT, 0, GL_TEXTURE_BUFFER_SIZE_EXT, &value);
+    glGetTexLevelParameteriv(GL_TEXTURE_BUFFER, 0, GL_TEXTURE_BUFFER_DATA_STORE_BINDING, &value);
+    glGetTexLevelParameteriv(GL_TEXTURE_BUFFER, 0, GL_TEXTURE_BUFFER_OFFSET, &value);
+    glGetTexLevelParameteriv(GL_TEXTURE_BUFFER, 0, GL_TEXTURE_BUFFER_SIZE, &value);
     return 0;
 }
 
@@ -156,36 +106,33 @@ static const GLfloat gTriangleVertices[triangle_num][9] =
 };
 
 
-static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
+static void callback_draw(PADEMO *handle, void *user_data)
 {
-    PAGL(glClearColor(0.0f, 0.5f, 0.5f, 1.0f));
-    PAGL(glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT));
-    
+    glClearColor(0.0f, 0.5f, 0.5f, 1.0f);
+    glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+
     for (int i = 0; i < triangle_num; i++)
     {
-        PAGL(glUseProgram(draw_program));
+        glUseProgram(draw_program);
 
-        PAGL(glVertexAttribPointer(gvPositionHandle, 3, GL_FLOAT, GL_FALSE, 0, gTriangleVertices[i]));
-        PAGL(glEnableVertexAttribArray(gvPositionHandle));
-
-        PAGL(glDrawArrays(GL_TRIANGLES, 0, 3));
+        glVertexAttribPointer(gvPositionHandle, 3, GL_FLOAT, GL_FALSE, 0, gTriangleVertices[i]);
+        glEnableVertexAttribArray(gvPositionHandle);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
     }
 
     glStateDump_ARM();
     assert_fb(width, height);
 }
 
-static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
+static void test_cleanup(PADEMO *handle, void *user_data)
 {
     glDeleteShader(vs);
     glDeleteShader(fs);
     glDeleteProgram(draw_program);
 }
 
-#include "paframework_android_glue.h"
-
-int PAFW_Entry_Point(PAFW_HANDLE pafw_handle)
+int main()
 {
-    return init("ext_texture_buffer", pafw_handle, callback_draw, setupGraphics, test_cleanup);
+    return init("ext_texture_buffer", callback_draw, setupGraphics, test_cleanup);
 }
 

@@ -33,7 +33,7 @@ if __name__ == '__main__':
     )
 
     parser.add_argument('type', default='debug',
-                        help='the build type. Possible values: debug, release')
+                        help='the build type. Possible values: debug, release, sanitizer')
     args = parser.parse_args()
 
     if not args.build_dir:

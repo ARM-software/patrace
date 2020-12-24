@@ -65,7 +65,7 @@ int main(int argc, char **argv)
         else if (!strcmp(arg, "-v"))
         {
             printVersion();
-            return 1;
+            return 0;
         }
         else if (!strcmp(arg, "-d"))
         {

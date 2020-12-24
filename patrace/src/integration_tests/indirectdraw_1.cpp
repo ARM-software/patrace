@@ -42,21 +42,14 @@ const float triangleColors[] =
 	0.0, 1.0, 0.0, 1.0,
 };
 
-static int width = 1024;
-static int height = 600;
 static GLuint indirect_buffer_obj, vpos_obj, vcol_obj, vs, fs, draw_program, vao;
 
-static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
+static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 {
 	struct params obj;
 
-	setup();
-
-	width = w;
-	height = h;
-
 	// setup space
-	glViewport(0, 0, width, height);
+	glViewport(0, 0, handle->width, handle->height);
 	glDepthFunc(GL_LEQUAL);
 	glEnable(GL_DEPTH_TEST);
 	glClearColor(0.0f, 0.0f, 0.5f, 1.0f);
@@ -105,17 +98,17 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
 }
 
 // first frame render something, second frame verify it
-static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
+static void callback_draw(PADEMO *handle, void *user_data)
 {
 	glUseProgram(draw_program);
 	glDrawArraysIndirect(GL_TRIANGLES, NULL);
 	glStateDump_ARM();
 
 	// verify in retracer
-	assert_fb(width, height);
+	assert_fb(handle->width, handle->height);
 }
 
-static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
+static void test_cleanup(PADEMO *handle, void *user_data)
 {
 	glDeleteVertexArrays(1, &vao);
 	glDeleteShader(vs);
@@ -126,9 +119,7 @@ static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
 	glDeleteBuffers(1, &vpos_obj);
 }
 
-#include "paframework_android_glue.h"
-
-int PAFW_Entry_Point(PAFW_HANDLE pafw_handle)
+int main()
 {
-	return init("indirectdraw_1", pafw_handle, callback_draw, setupGraphics, test_cleanup);
+	return init("indirectdraw_1", callback_draw, setupGraphics, test_cleanup);
 }

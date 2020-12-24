@@ -130,11 +130,15 @@ namespace {
 
 void ResetGLFuncPtrs();
 
-extern "C"
 void SetGLESVersion(int ver)
 {
     ResetGLFuncPtrs();
     gGLESVersion = ver;
+}
+
+int GetGLESVersion()
+{
+    return gGLESVersion;
 }
 
 enum DLLType {

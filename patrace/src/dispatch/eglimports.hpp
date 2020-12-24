@@ -95,7 +95,7 @@ typedef khronos_int32_t  GLclampx;
 #undef _glext_h_
 #include "GLES/glext.h"
 
-extern "C"
-void SetGLESVersion(int ver);
+extern "C" void SetGLESVersion(int ver);
+extern "C" int GetGLESVersion();
 
 #endif /* _EGLIMPORTS_HPP_ */

@@ -34,7 +34,7 @@ void glCopyClientSideBuffer(GLenum target, unsigned int name)
         const char* bufname = bufferName(target);
         gRetracer.reportAndAbort("Trying to copy client side buffer %u, but no %s buffer bound\n", name, bufname);
     }
-    void* data = gRetracer.getCurrentContext()._bufferToData_map[buffer];
+    void* data = gRetracer.getCurrentContext()._bufferToData_map.at(buffer);
     ClientSideBufferObject* csb = gRetracer.mCSBuffers.get_object(gRetracer.getCurTid(), name);
     if (unlikely(data == NULL))
     {
@@ -58,7 +58,7 @@ void glPatchClientSideBuffer(GLenum target, int _size, const char* _data)
         const char* name = bufferName(target);
         gRetracer.reportAndAbort("Trying to copy client side buffer, but no %s buffer bound!\n", name);
     }
-    void* data = gRetracer.getCurrentContext()._bufferToData_map[buffer];
+    void* data = gRetracer.getCurrentContext()._bufferToData_map.at(buffer);
     if (unlikely(data == NULL))
     {
         const char* name = bufferName(target);
@@ -186,7 +186,7 @@ void glGraphicBufferData_ARM(unsigned int _name, int _size, const char * _data) 
     }
 #else
     egl_image_fixture *fix = context.mGraphicBuffers[id];
-    refresh_dma_data(fix, _size, (const unsigned char *)_data);
+    refresh_dma_data(fix, _size, (const unsigned char *)_data, gRetracer.mOptions.dmaSharedMemory);
 #endif
 }
 

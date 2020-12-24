@@ -253,10 +253,10 @@ OffscreenManager::~OffscreenManager()
     DeleteFBOs();
 }
 
-bool OffscreenManager::BindOffscreenFBO()
+bool OffscreenManager::BindOffscreenFBO(GLenum target)
 {
     //DBG_LOG("BindOffscreenFBO %d", (mMosaicIdx%2)==0 ? mOffscreenFBO[0] : mOffscreenFBO[1]);
-    glBindFramebuffer12(GL_FRAMEBUFFER,
+    glBindFramebuffer12(target,
         (mMosaicIdx%2)==0 ? mOffscreenFBO[0] : mOffscreenFBO[1]);
     return true;
 }
@@ -422,7 +422,7 @@ void OffscreenManager::CreateFBOs()
     int status = glCheckFramebufferStatus12(GL_FRAMEBUFFER);
     if (status != GL_FRAMEBUFFER_COMPLETE)
     {
-        gRetracer.reportAndAbort("Framebuffer incomplete (%d = %d x %d) color_mode = %d depth_mode = %d, status=%04X\n",
+        gRetracer.reportAndAbort("OnScrMosaic Framebuffer incomplete: FBO%d, %d x %d, color_mode=%x, depth_mode=%d, status=%04X\n",
                                  mMosaicFBO, mOnscrMosaicWidth, mOnscrMosaicHeight, GL_UNSIGNED_SHORT_5_6_5, 0, status);
     }
     glBindFramebuffer12(GL_FRAMEBUFFER, ON_SCREEN_FBO);
@@ -437,6 +437,14 @@ void OffscreenManager::framebufferTexture(int w, int h)
     mOffscrFboH = h;
     mFramebufferTexture = true;
 
+    //save render state
+    GLint oBindTex = 0;
+    _glGetIntegerv(GL_TEXTURE_BINDING_2D, &oBindTex);
+    GLint readFboId = 0, drawFboId = 0;
+    _glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFboId);
+    _glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFboId);
+
+    // framebufferTexture
     for (int i = 0; i < 2; ++i)
     {
         glBindFramebuffer12(GL_FRAMEBUFFER, mOffscreenFBO[i]);
@@ -482,10 +490,15 @@ void OffscreenManager::framebufferTexture(int w, int h)
         int status = glCheckFramebufferStatus12(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE)
         {
-            gRetracer.reportAndAbort("Framebuffer incomplete (FBOid=%d, resolution=%d x %d, tex_format=%X, tex_internal_format=%X, tex_type=%X, depth_rbo_format=%X, stencil_rbo_format=%X, status=%04X",
+            gRetracer.reportAndAbort("Offscreen Framebuffer incomplete: FBO%d, %d x %d, tex_format=%X, tex_internal_format=%X, tex_type=%X, depth_rbo_format=%X, stencil_rbo_format=%X, status=%04X",
                                      mOffscreenFBO[i], mOffscrFboW, mOffscrFboH, mTexImage2D_format, mTexImage2D_internal_format, mTexImage2D_type, mRenderbufferStorage_depth_format, mRenderbufferStorage_stencil_format, status);
         }
     }
+
+    // restore render state
+    glBindFramebuffer12(GL_READ_FRAMEBUFFER, readFboId);
+    glBindFramebuffer12(GL_DRAW_FRAMEBUFFER, drawFboId);
+    _glBindTexture(GL_TEXTURE_2D, oBindTex);
 }
 
 void OffscreenManager::ReleaseOwnershipOfGLObjects()

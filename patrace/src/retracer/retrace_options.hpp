@@ -22,6 +22,7 @@ struct RetraceOptions
     RetraceOptions() :
           mOnscreenConfig(0, 0, 0, 0, 0, 0, -1, 0)
         , mOffscreenConfig(0, 0, 0, 0, 0, 0, -1, 0)
+        , mOverrideConfig(-1, -1, -1, -1, -1, -1, -1, -1)
     {}
 
     ~RetraceOptions()
@@ -36,8 +37,11 @@ struct RetraceOptions
     bool                mDoOverrideWinSize = false;
     bool                mDoOverrideResolution = false;
     bool                mPreload = false;
+    bool                mStepMode = false;
     unsigned int        mBeginMeasureFrame = 1;
-    unsigned int        mEndMeasureFrame = 9999999;
+    unsigned int        mEndMeasureFrame = INT32_MAX;
+    int                 mLoopTimes = 0;
+    int                 mLoopSeconds = 0;
 
     int                 mWindowWidth = 0;
     int                 mWindowHeight = 0;
@@ -56,6 +60,7 @@ struct RetraceOptions
 
     EglConfigInfo mOnscreenConfig;
     EglConfigInfo mOffscreenConfig;
+    EglConfigInfo mOverrideConfig;
 
     bool                mMeasurePerFrame = false;
     bool                mMeasureSwapTime = false;
@@ -70,14 +75,15 @@ struct RetraceOptions
     unsigned int        mOnscrSampleH = 27;
     unsigned int        mOnscrSampleNumX = 10;
     unsigned int        mOnscrSampleNumY = 10;
+    int                 mForceAnisotropicLevel = -1;
 
     bool                mForceSingleWindow = false;
     bool                mMultiThread = false;
     int                 mSkipWork = -1;
-    bool                mDumpStatic = false;
     bool                mCallStats = false;
 
     bool                mPbufferRendering = false;
+    int                 mSingleSurface = -1;
 
     bool                mFlushWork = false;
 

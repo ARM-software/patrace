@@ -85,14 +85,14 @@ int main(int argc, char **argv)
                 try {
                     begin_call = stoi(argv[argIndex + 1]);
                 }
-                catch(invalid_argument) {
+                catch(const std::invalid_argument &arg) {
                     cout << "Error: the 1st parameter of call range is invalid, -call option needs two integer parameters." << endl;
                     return 1;
                 }
                 try {
                     end_call = stoi(argv[argIndex + 2]);
                 }
-                catch(invalid_argument) {
+                catch(const std::invalid_argument &arg) {
                     cout << "Error: the 2nd parameter of call range is invalid, -call option needs two integer parameters." << endl;
                     return 1;
                 }

@@ -6,7 +6,6 @@
 #include <string>
 
 #include <common/trace_limits.hpp>
-#include <common/os_thread.hpp>
 #include <common/gl_utility.hpp>
 #include <retracer/value_map.hpp>
 #include <retracer/retrace_options.hpp> // enum Profile
@@ -83,16 +82,12 @@ public:
 
     void retain()
     {
-        mMutex.lock();
         refcnt++;
-        mMutex.unlock();
     }
     void release()
     {
         int left = 0;
-        mMutex.lock();
         left = --refcnt;
-        mMutex.unlock();
         if (left <= 0)
             delete this;
     }
@@ -113,12 +108,8 @@ public:
     virtual void setDamage(int* array, int length) {}
     virtual void querySurface(int attribute, int* value) {}
 
-    // default behavior is just to replay without stop
-    virtual void processStepEvent();
-
 private:
-    os::Mutex mMutex;
-    int       refcnt;
+    int refcnt;
 };
 
 class PbufferDrawable : public Drawable
@@ -184,17 +175,11 @@ public:
 
     void retain()
     {
-        mMutex.lock();
         refcnt++;
-        mMutex.unlock();
     }
     void release()
     {
-        int left = 0;
-        mMutex.lock();
-        left = --refcnt;
-        mMutex.unlock();
-        if (left <= 0)
+        if (--refcnt <= 0)
             delete this;
     }
 
@@ -293,11 +278,9 @@ public:
 
 private:
     Context* _shareContext;
-    os::Mutex       mMutex;
-    int             refcnt;
-
     std::unordered_map<GLuint, std::string> mShaderSources; // shader id to string; shared
     std::unordered_map<GLuint, std::vector<GLuint>> mProgramShaders; // program id to list of shader ids; shared
+    int refcnt;
     hmap<unsigned int> _texture_map; // shared
     hmap<unsigned int> _buffer_map; // shared
     hmap<unsigned int> _program_map; // shared
@@ -604,10 +587,7 @@ class StateMgr
 {
 public:
     StateMgr();
-    ~StateMgr()
-    {
-        mMutex.unlock();
-    }
+    ~StateMgr() {}
     void        Reset();
 
     void        InsertContextMap(int oldVal, Context* ctx);
@@ -639,17 +619,6 @@ private:
     std::unordered_map<int, Context*>     mContextMap;
     std::unordered_map<int, EGLImageKHR>  mEGLImageKHRMap;
     std::unordered_map<int, int>          mDrawableToWinMap;
-    os::Mutex mMutex;
-
-    void _access()
-    {
-        mMutex.lock();
-    }
-
-    void _exit()
-    {
-        mMutex.unlock();
-    }
 };
 
 }

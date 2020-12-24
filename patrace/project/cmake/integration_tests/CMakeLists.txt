@@ -1,4 +1,4 @@
-include_directories(${SRC_ROOT}/integration_tests ${SRC_ROOT}/specs ${THIRDPARTY_INCLUDE_DIRS}/paframework/common ${SRC_ROOT} ${SRC_ROOT}/dispatch ${SRC_ROOT}/common)
+include_directories(${SRC_ROOT}/integration_tests ${SRC_ROOT}/specs ${SRC_ROOT} ${SRC_ROOT}/dispatch ${SRC_ROOT}/common)
 
 add_custom_command(
     OUTPUT ${SRC_ROOT}/specs/pa_gl31.cpp ${SRC_ROOT}/specs/pa_gl31.h
@@ -10,13 +10,13 @@ add_custom_command(
 )
 add_custom_target(glxml_to_funcs DEPENDS ${SRC_ROOT}/specs/pa_gl31.cpp)
 
-set(IT_LIBS -Wl,--add-needed paframework -L${TEST_LIBRARY} ${TEST_LIBRARY}/libEGL.so ${TEST_LIBRARY}/libGLESv2.so)
+set(IT_LIBS -L${TEST_LIBRARY} ${TEST_LIBRARY}/libEGL.so ${TEST_LIBRARY}/libGLESv2.so)
 if (WINDOWSYSTEM MATCHES "x11")
 	set(IT_LIBS ${IT_LIBS} X11)
 endif ()
-set(IT_CFLAGS "-std=gnu++0x -Wall")
-set(IT_LFLAGS "${FBDEV_EXTRA_OPTS} -L${CMAKE_CURRENT_BINARY_DIR}/../paframework/lib -L${CMAKE_CURRENT_BINARY_DIR}/integration_tests/tests -L${TEST_LIBRARY}")
-set(IT_DEPS glxml_to_funcs paframework)
+set(IT_CFLAGS "-std=c++11 -Wall")
+set(IT_LFLAGS "${FBDEV_EXTRA_OPTS} -L${CMAKE_CURRENT_BINARY_DIR}/integration_tests/tests -L${TEST_LIBRARY}")
+set(IT_DEPS glxml_to_funcs)
 set(IT_FILES ${SRC_ROOT}/integration_tests/pa_demo.cpp ${SRC_ROOT}/specs/pa_gl31.cpp)
 
 add_executable(dummy_1 ${SRC_ROOT}/integration_tests/dummy_1.cpp ${IT_FILES})
@@ -81,6 +81,20 @@ set_target_properties(indirectdraw_2 PROPERTIES COMPILE_FLAGS ${IT_CFLAGS})
 set_target_properties(indirectdraw_2 PROPERTIES LINK_FLAGS ${IT_LFLAGS})
 add_dependencies(indirectdraw_2 ${IT_DEPS})
 install(TARGETS indirectdraw_2 DESTINATION tests)
+
+add_executable(drawrange_1 ${SRC_ROOT}/integration_tests/drawrange_1.cpp ${IT_FILES})
+target_link_libraries(drawrange_1 ${IT_LIBS})
+set_target_properties(drawrange_1 PROPERTIES COMPILE_FLAGS ${IT_CFLAGS})
+set_target_properties(drawrange_1 PROPERTIES LINK_FLAGS ${IT_LFLAGS})
+add_dependencies(drawrange_1 ${IT_DEPS})
+install(TARGETS drawrange_1 DESTINATION tests)
+
+add_executable(drawrange_2 ${SRC_ROOT}/integration_tests/drawrange_2.cpp ${IT_FILES})
+target_link_libraries(drawrange_2 ${IT_LIBS})
+set_target_properties(drawrange_2 PROPERTIES COMPILE_FLAGS ${IT_CFLAGS})
+set_target_properties(drawrange_2 PROPERTIES LINK_FLAGS ${IT_LFLAGS})
+add_dependencies(drawrange_2 ${IT_DEPS})
+install(TARGETS drawrange_2 DESTINATION tests)
 
 add_executable(directdraw_1 ${SRC_ROOT}/integration_tests/directdraw_1.cpp ${IT_FILES})
 target_link_libraries(directdraw_1 ${IT_LIBS})
@@ -195,7 +209,6 @@ install(TARGETS ext_texture_cube_map_array DESTINATION tests)
 add_dependencies(ext_texture_cube_map_array ${IT_DEPS})
 
 install(PROGRAMS
-	${SRC_ROOT}/integration_tests/android_test.sh
 	${SRC_ROOT}/integration_tests/fbdev_test.sh
 	${SRC_ROOT}/integration_tests/x11_test.sh
 	DESTINATION tests)

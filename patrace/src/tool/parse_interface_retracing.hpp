@@ -33,13 +33,16 @@ public:
     virtual bool open(const std::string& input, const std::string& output = std::string()) override;
     virtual void close() override;
     virtual common::CallTM* next_call() override;
+    virtual void loop(Callback c, void *data) override;
 
-    int64_t getCpuCycles() { return mCpuCycles; }
+    virtual int64_t getCpuCycles() { return mCpuCycles; }
 
-    virtual void completed_drawcall(int frame, const DrawParams& params, const StateTracker::RenderPass &rp, int fb_index);
-    virtual void completed_renderpass(int index, const StateTracker::RenderPass &rp);
+    virtual void completed_drawcall(int frame, const DrawParams& params, const StateTracker::RenderPass &rp);
+    virtual void completed_renderpass(const StateTracker::RenderPass &rp);
 
 private:
+    void thread(const int threadidx, const int our_tid, Callback c, void *data);
+
     RenderpassJson mRenderpass;
     int64_t mCpuCycles = 0;
     common::CallTM* mCall;

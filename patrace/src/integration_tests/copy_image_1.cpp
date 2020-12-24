@@ -1,10 +1,4 @@
 #include "pa_demo.h"
-#include "paframework_gl.h"
-
-#ifdef PAFRAMEWORK_OPENGL
-// Rename GLES extension functions to OpenGL functions
-#define glCopyImageSubDataEXT glCopyImageSubData
-#endif
 
 PACKED(struct params
 {
@@ -62,33 +56,6 @@ static int height = 600;
 static GLuint indirect_buffer_obj, vpos_obj, vcol_obj, vs, fs, draw_program, vao;
 static GLuint g_textureId, g_textureId2, vtex_coord_obj;
 
-bool check_feature_availability()
-{
-    GLint major_version;
-    GLint minor_version;
-    int version;
-
-    glGetIntegerv(GL_MAJOR_VERSION, &major_version);
-    glGetIntegerv(GL_MINOR_VERSION, &minor_version);
-    version = 100 * major_version + 10 * minor_version;
-
-#ifndef PAFRAMEWORK_OPENGL
-    if (version >= 300 && PAFW_GL_Is_GLES_Extension_Supported("GL_EXT_copy_image"))
-    {
-        return true;
-    }
-    PALOGE("The GLES version (currently %d) must be 300 or higher and the extention EXT_copy_image must be supported\n", version);
-    return false;
-#else
-    if (version >= 430)
-    {
-        return true;
-    }
-    PALOGE("The OpenGLversion (currently %d) must be 430 or higher\n", version);
-    return false;
-#endif
-}
-
 static GLubyte pixels[4 * 3] =
 {
     255,   0,   0,
@@ -105,20 +72,12 @@ static GLubyte pixels2[4 * 3] =
     255,   255,   255
 };
 
-static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
+static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 {
     struct params obj;
 
-    setup();
-
     width = w;
     height = h;
-
-    if (!check_feature_availability())
-    {
-        PALOGE("The extension EXT_copy_image is not available\n");
-        return 1;
-    }
 
     // setup space
     glViewport(0, 0, width, height);
@@ -189,7 +148,7 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    glCopyImageSubDataEXT(g_textureId2, GL_TEXTURE_2D, 0, 0, 0, 0, g_textureId, GL_TEXTURE_2D, 0, 0, 0, 0, 2, 2, 1);
+    glCopyImageSubData(g_textureId2, GL_TEXTURE_2D, 0, 0, 0, 0, g_textureId, GL_TEXTURE_2D, 0, 0, 0, 0, 2, 2, 1);
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, g_textureId);
@@ -198,7 +157,7 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
     return 0;
 }
 
-static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
+static void callback_draw(PADEMO *handle, void *user_data)
 {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glUseProgram(draw_program);
@@ -207,7 +166,7 @@ static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
     assert_fb(width, height);
 }
 
-static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
+static void test_cleanup(PADEMO *handle, void *user_data)
 {
     glDeleteVertexArrays(1, &vao);
     glDeleteShader(vs);
@@ -218,9 +177,7 @@ static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
     glDeleteBuffers(1, &vpos_obj);
 }
 
-#include "paframework_android_glue.h"
-
-int PAFW_Entry_Point(PAFW_HANDLE pafw_handle)
+int main()
 {
-    return init("copy_image_1", pafw_handle, callback_draw, setupGraphics, test_cleanup);
+    return init("copy_image_1", callback_draw, setupGraphics, test_cleanup);
 }

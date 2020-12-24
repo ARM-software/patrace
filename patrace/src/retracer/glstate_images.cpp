@@ -375,7 +375,6 @@ image::Image* getDrawBufferImage(int attachment, int _width, int _height, GLenum
     }
 
     int width_multiplier = bytes_per_pixel / channel;   // if bytes_per_pixel > 4, we need more than one 4-channel pixels to store it.
-    DBG_LOG("bytes_per_pixel = %d, channel = %d, width_multiplier = %d\n", bytes_per_pixel, channel, width_multiplier);
     image::Image *image = new image::Image(width * width_multiplier, height, channel, true);
     if (!image)
     {

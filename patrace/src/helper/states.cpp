@@ -1274,7 +1274,6 @@ void StateLogger::logFunction(unsigned char tid, const std::string& functionName
         frameNo = 0;
     }
 
-    std::lock_guard<std::mutex> guard(mStateMutex);
     checkIfOpen();
     mLog << "@F: [" << static_cast<int>(tid) << "] " << functionName << " " << callCount++ << " call=" << callNo << " draw=" << drawNo << " frame=" << frameNo << std::endl;
 }
@@ -1602,7 +1601,6 @@ void StateLogger::_logState(std::stringstream& ss, unsigned char tid, GLsizei in
     }
 #endif
     // Write to log file
-    std::lock_guard<std::mutex> guard(mStateMutex);
     checkIfOpen();
     mLog << ss.str() << std::flush;
 }
@@ -1741,7 +1739,6 @@ void StateLogger::logCompute(unsigned char tid, GLuint x, GLuint y, GLuint z)
     dumpGenericBufferInfo(tid, GL_ATOMIC_COUNTER_BUFFER, program, acb_active, ss, "AT");
 
     // Write to log file
-    std::lock_guard<std::mutex> guard(mStateMutex);
     checkIfOpen();
     mLog << ss.str() << std::flush;
 }

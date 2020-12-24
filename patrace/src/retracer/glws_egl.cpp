@@ -60,7 +60,6 @@ EglDrawable::~EglDrawable()
     eglDestroySurface(mEglDisplay, mSurface);
 
     GLWS::instance().ReleaseDrawable(mNativeWindow);
-    if (mNativeWindow) delete mNativeWindow;
     eglWaitNative(EGL_CORE_NATIVE_ENGINE);
 }
 
@@ -396,9 +395,7 @@ void GlwsEgl::Init(Profile /*profile*/)
 Drawable* GlwsEgl::CreatePbufferDrawable(EGLint const* attribList)
 {
     Drawable* handler;
-    NativeWindowMutex.lock();
     handler = new EglPbufferDrawable(mEglDisplay, mEglConfig, attribList);
-    NativeWindowMutex.unlock();
     return handler;
 }
 
@@ -439,7 +436,6 @@ Context* GlwsEgl::CreateContext(Context* shareContext, Profile profile)
 bool GlwsEgl::MakeCurrent(Drawable* drawable, Context* context)
 {
     EGLSurface eglSurface = EGL_NO_SURFACE;
-    NativeWindowMutex.lock();
     if (dynamic_cast<EglDrawable*>(drawable))
     {
         eglSurface = static_cast<EglDrawable*>(drawable)->getSurface();
@@ -457,7 +453,6 @@ bool GlwsEgl::MakeCurrent(Drawable* drawable, Context* context)
     }
 
     EGLBoolean ok = eglMakeCurrent(mEglDisplay, eglSurface, eglSurface, eglContext);
-    NativeWindowMutex.unlock();
 
     return ok == EGL_TRUE;
 }
@@ -489,7 +484,6 @@ bool GlwsEgl::setAttribute(Drawable* drawable, int attibute, int value)
 {
     EGLSurface eglSurface = EGL_NO_SURFACE;
 
-    NativeWindowMutex.lock();
     if (dynamic_cast<EglDrawable*>(drawable))
     {
         eglSurface = static_cast<EglDrawable*>(drawable)->getSurface();
@@ -500,7 +494,6 @@ bool GlwsEgl::setAttribute(Drawable* drawable, int attibute, int value)
     }
 
     EGLBoolean ok = _eglSurfaceAttrib(mEglDisplay, eglSurface, attibute, value);
-    NativeWindowMutex.unlock();
     return ok == EGL_TRUE;
 }
 
@@ -524,10 +517,6 @@ void GlwsEgl::ReleaseDrawable(NativeWindow *window)
 }
 
 void GlwsEgl::postInit()
-{
-}
-
-void GlwsEgl::processStepEvent()
 {
 }
 

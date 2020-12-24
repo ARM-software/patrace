@@ -61,9 +61,6 @@ iOSRetracer_TraceState iOSRetracer_retrace()
         // Stopped for some reason. Return why.
         boundFBO = -1;
 
-        if(gRetracer.mOutOfMemory)
-            return iOSRetracer_TRACE_FAILED_OUT_OF_MEMORY;
-
         if(gRetracer.mFailedToLinkShaderProgram)
             return iOSRetracer_TRACE_FAILED_FAILED_TO_LINK_SHADER_PROGRAM;
 

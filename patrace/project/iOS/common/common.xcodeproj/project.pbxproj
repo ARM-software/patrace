@@ -63,7 +63,6 @@
 		9974A63819474296007E020D /* in_file_ra.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = in_file_ra.hpp; path = ../../../../src/common/in_file_ra.hpp; sourceTree = "<group>"; };
 		9974A63B19474296007E020D /* in_file.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = in_file.cpp; path = ../../../../src/common/in_file.cpp; sourceTree = "<group>"; };
 		9974A63C19474296007E020D /* in_file.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = in_file.hpp; path = ../../../../src/common/in_file.hpp; sourceTree = "<group>"; };
-		9974A63D19474296007E020D /* jni_helper.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = jni_helper.h; path = ../../../../src/common/jni_helper.h; sourceTree = "<group>"; };
 		9974A63F19474296007E020D /* library.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = library.cpp; path = ../../../../src/common/library.cpp; sourceTree = "<group>"; };
 		9974A64019474296007E020D /* library.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = library.hpp; path = ../../../../src/common/library.hpp; sourceTree = "<group>"; };
 		9974A64119474296007E020D /* memory.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = memory.cpp; path = ../../../../src/common/memory.cpp; sourceTree = "<group>"; };
@@ -72,9 +71,7 @@
 		9974A64419474296007E020D /* memoryinfo.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = memoryinfo.hpp; path = ../../../../src/common/memoryinfo.hpp; sourceTree = "<group>"; };
 		9974A64519474296007E020D /* my_egl_attribs.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = my_egl_attribs.hpp; path = ../../../../src/common/my_egl_attribs.hpp; sourceTree = "<group>"; };
 		9974A64619474296007E020D /* os_posix.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = os_posix.cpp; path = ../../../../src/common/os_posix.cpp; sourceTree = "<group>"; };
-		9974A64719474296007E020D /* os_process.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = os_process.hpp; path = ../../../../src/common/os_process.hpp; sourceTree = "<group>"; };
 		9974A64819474296007E020D /* os_string.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = os_string.hpp; path = ../../../../src/common/os_string.hpp; sourceTree = "<group>"; };
-		9974A64919474296007E020D /* os_thread.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = os_thread.hpp; path = ../../../../src/common/os_thread.hpp; sourceTree = "<group>"; };
 		9974A64A19474296007E020D /* os_time.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = os_time.hpp; path = ../../../../src/common/os_time.hpp; sourceTree = "<group>"; };
 		9974A64C19474296007E020D /* os.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; name = os.hpp; path = ../../../../src/common/os.hpp; sourceTree = "<group>"; };
 		9974A64D19474296007E020D /* out_file.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = out_file.cpp; path = ../../../../src/common/out_file.cpp; sourceTree = "<group>"; };
@@ -146,7 +143,6 @@
 				9974A63819474296007E020D /* in_file_ra.hpp */,
 				9974A63B19474296007E020D /* in_file.cpp */,
 				9974A63C19474296007E020D /* in_file.hpp */,
-				9974A63D19474296007E020D /* jni_helper.h */,
 				9974A63F19474296007E020D /* library.cpp */,
 				9974A64019474296007E020D /* library.hpp */,
 				9974A64119474296007E020D /* memory.cpp */,
@@ -155,9 +151,7 @@
 				9974A64419474296007E020D /* memoryinfo.hpp */,
 				9974A64519474296007E020D /* my_egl_attribs.hpp */,
 				9974A64619474296007E020D /* os_posix.cpp */,
-				9974A64719474296007E020D /* os_process.hpp */,
 				9974A64819474296007E020D /* os_string.hpp */,
-				9974A64919474296007E020D /* os_thread.hpp */,
 				9974A64A19474296007E020D /* os_time.hpp */,
 				9974A64C19474296007E020D /* os.hpp */,
 				9974A64D19474296007E020D /* out_file.cpp */,

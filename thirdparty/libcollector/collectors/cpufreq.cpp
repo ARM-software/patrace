@@ -110,7 +110,7 @@ bool CPUFreqCollector::collect(int64_t /* now */)
             }
             else
             {
-                sum = mResults[c.corename].back().i64; // reuse
+                sum = mResults[c.corename].data().back().i64; // reuse
             }
             values = 1;
         }

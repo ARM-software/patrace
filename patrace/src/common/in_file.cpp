@@ -2,66 +2,7 @@
 
 namespace common {
 
-bool InFileBase::Open()
-{
-    std::ios_base::openmode fmode = std::fstream::binary | std::fstream::in;
-
-    mStream.close(); // Make sure it's closed (sets failbit if not open)
-    mStream.clear(); // Clear state-bits
-
-    mStream.open(mFileName.c_str(), fmode);
-
-    if (!mStream.is_open() || !mStream.good()) {
-        DBG_LOG("Failed to open file %s\n", mFileName.c_str());
-        mStream.close();
-        return false;
-    }
-
-    mIsOpen = true;
-
-    // Read Base Header that is common for all header versions
-    common::BHeader bHeader;
-    mStream.read((char*)&bHeader, sizeof(bHeader));
-    if (bHeader.magicNo != 0x20122012) {
-        DBG_LOG("Warning: %s seems to be an invalid trace file!\n", mFileName.c_str());
-        return false;
-    }
-
-    mStream.seekg(0, std::ios_base::beg); // rewind to beginning of file
-    mHeaderVer = static_cast<HeaderVersion>(bHeader.version);
-
-    DBG_LOG("### .pat file format Version %d ###\n", bHeader.version - HEADER_VERSION_1 + 1);
-
-    if (bHeader.version == HEADER_VERSION_1) {
-        BHeaderV1 hdr;
-        mStream.read((char*)&hdr, sizeof(hdr));
-        mHeaderParseComplete = parseHeader(hdr, mJsonHeader);
-    } else if (bHeader.version == HEADER_VERSION_2) {
-        BHeaderV2 hdr;
-        mStream.read((char*)&hdr, sizeof(hdr));
-        mHeaderParseComplete = parseHeader(hdr, mJsonHeader);
-    } else if (bHeader.version >= HEADER_VERSION_3 && bHeader.version <= HEADER_VERSION_4) {
-        BHeaderV3 hdr;
-        mStream.read((char*)&hdr, sizeof(hdr));
-        mHeaderParseComplete = parseHeader(hdr, mJsonHeader);
-        mStream.seekg(hdr.jsonFileEnd, std::ios_base::beg);
-    } else {
-        DBG_LOG("Unsupported file format version: %d\n", bHeader.version - HEADER_VERSION_1 + 1);
-        return false;
-    }
-
-    if ( !mHeaderParseComplete ) {
-        return false;
-    }
-
-    return true;
-}
-
-void InFileBase::Close()
-{
-}
-
-bool InFileBase::parseHeader(BHeaderV1 hdrV1, Json::Value &jsonRoot )
+bool InFileBase::parseHeader(BHeaderV1 hdrV1, Json::Value &jsonRoot)
 {
     jsonRoot["defaultTid"] = 0; // v1 does not store any default
     jsonRoot["glesVersion"] = hdrV1.api;
@@ -96,8 +37,7 @@ bool InFileBase::parseHeader(BHeaderV1 hdrV1, Json::Value &jsonRoot )
     return true;
 }
 
-
-bool InFileBase::parseHeader(BHeaderV2 hdrV2, Json::Value &jsonRoot )
+bool InFileBase::parseHeader(BHeaderV2 hdrV2, Json::Value &jsonRoot)
 {
     jsonRoot["defaultTid"] = hdrV2.defaultThreadid;
     jsonRoot["glesVersion"] = hdrV2.api;
@@ -130,17 +70,16 @@ bool InFileBase::parseHeader(BHeaderV2 hdrV2, Json::Value &jsonRoot )
     return true;
 }
 
-
-bool checkMember(Json::Value &value, const char* memberToTest)
+static bool checkMember(Json::Value &value, const char* memberToTest)
 {
     bool isMember = value.isMember(memberToTest);
     if ( !isMember ) {
-        DBG_LOG("Required json member threads[\"%s\"] missing\n", memberToTest );
+        DBG_LOG("Required json member threads[\"%s\"] missing\n", memberToTest);
     }
     return isMember;
 }
 
-bool checkJsonMembers(Json::Value &root)
+bool InFileBase::checkJsonMembers(Json::Value &root)
 {
     bool rootMembersOk = true;
     rootMembersOk |= checkMember(root, "defaultTid");
@@ -149,7 +88,6 @@ bool checkJsonMembers(Json::Value &root)
     rootMembersOk |= checkMember(root, "frameCnt");
     rootMembersOk |= checkMember(root, "threads");
     if (!rootMembersOk) return false;
-
 
     Json::Value threadArray = root["threads"];
     for (Json::ArrayIndex i=0; i<threadArray.size(); i++)
@@ -165,8 +103,7 @@ bool checkJsonMembers(Json::Value &root)
     return true;
 }
 
-
-bool InFileBase::parseHeader(BHeaderV3 hdrV3, Json::Value &jsonRoot )
+bool InFileBase::parseHeader(BHeaderV3 hdrV3, Json::Value &jsonRoot)
 {
     bool parsingSuccessful = false;
     if ( hdrV3.jsonLength > 0 ) {
@@ -194,7 +131,6 @@ bool InFileBase::parseHeader(BHeaderV3 hdrV3, Json::Value &jsonRoot )
     return false; // unreachable
 }
 
-
 const std::string InFileBase::getJSONHeaderAsString(bool prettyPrint)
 {
     if (prettyPrint) {
@@ -207,33 +143,17 @@ const std::string InFileBase::getJSONHeaderAsString(bool prettyPrint)
     return ""; // unreachable
 }
 
-const Json::Value InFileBase::getJSONThreadDefault()
-{
-    const int tid = mJsonHeader.get("defaultTid", 0).asInt();
-    return getJSONThreadById( tid );
-}
-
 int InFileBase::getDefaultThreadID() const
 {
     return mJsonHeader.get("defaultTid", 0).asInt();
 }
 
-const Json::Value InFileBase::getJSONThreadById(int id)
+const Json::Value InFileBase::getJSONThreadById(int id) const
 {
-    Json::Value defaultTidValue;
-    Json::Value threadArray = mJsonHeader["threads"];
-    for (Json::ArrayIndex i=0; i<threadArray.size(); i++) {
-        if (threadArray[i]["id"] == id) {
-            defaultTidValue = threadArray[i];
-            break;
-        }
-    }
-
-    if ( defaultTidValue.isNull() ) {
-        DBG_LOG("Could not find thread id %d in json value\n", id);
-    }
-
-    return defaultTidValue;
+    const Json::Value threadArray = mJsonHeader["threads"];
+    for (const auto& i : threadArray) if (i["id"].asInt() == id) return i;
+    DBG_LOG("Could not find thread id %d in json value\n", id);
+    return Json::Value();
 }
 
 HeaderVersion InFileBase::getHeaderVersion() const
@@ -243,7 +163,8 @@ HeaderVersion InFileBase::getHeaderVersion() const
 
 void InFileBase::printHeaderInfo()
 {
-    Json::Value defaultThread = getJSONThreadDefault();
+    const int tid = mJsonHeader.get("defaultTid", 0).asInt();
+    Json::Value defaultThread = getJSONThreadById(tid);
     Json::Value defaultEGL = defaultThread["EGLConfig"];
     printf("default tid  %d\n", defaultThread["id"].asInt() );
     printf("red bits     %d\n", defaultEGL["red"].asInt() );
@@ -259,6 +180,17 @@ void InFileBase::printHeaderInfo()
     printf("frame count  %d\n", mJsonHeader["frameCnt"].asInt() );
     printf("GLES version %d\n", mJsonHeader["glesVersion"].asInt() );
     printf("tracer       %s\n", mJsonHeader["tracer"].asString().c_str());
+}
+
+void InFileBase::setFrameRange(unsigned startFrame, unsigned endFrame, int tid, bool preload, bool keep_all)
+{
+    mKeepAll = keep_all;
+    mPreload = preload;
+    mBeginFrame = startFrame;
+    mEndFrame = endFrame;
+    mTraceTid = tid;
+    eglSwapBuffers_id = NameToExId("eglSwapBuffers");
+    eglSwapBuffersWithDamage_id = NameToExId("eglSwapBuffersWithDamageKHR");
 }
 
 } // namespace common

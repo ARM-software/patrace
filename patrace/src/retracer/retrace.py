@@ -737,52 +737,6 @@ class Retracer(object):
             return
         if func.name in stdapi.all_rendering_names:
             print '    gRetracer.IncCurDrawId();'
-        if func.name in ['glDrawElementsIndirect', 'glDrawArraysIndirect', 'glDispatchComputeIndirect']:
-            print '    if (unlikely(gRetracer.mOptions.mDumpStatic))'
-            print '    {'
-            print '        static int idcount = 0;'
-            print '        GLint bufferId = 0;'
-            print '        const GLuint *ptr;'
-            if func.name == 'glDrawElementsIndirect':
-                print '        const GLsizeiptr size = sizeof(IndirectDrawElements);'
-                print '        const GLenum target = GL_DRAW_INDIRECT_BUFFER;'
-            elif func.name == 'glDrawArraysIndirect':
-                print '        const GLsizeiptr size = sizeof(IndirectDrawArrays);'
-                print '        const GLenum target = GL_DRAW_INDIRECT_BUFFER;'
-            elif func.name == 'glDispatchComputeIndirect':
-                print '        const GLsizeiptr size = sizeof(IndirectCompute);'
-                print '        const GLenum target = GL_DISPATCH_INDIRECT_BUFFER;'
-            print '        _glGetIntegerv(GL_DRAW_INDIRECT_BUFFER_BINDING, &bufferId);'
-            print '        if (bufferId == 0)'
-            print '        {'
-            print '            ptr = reinterpret_cast<GLuint*>(indirect);'
-            print '        }'
-            print '        else'
-            print '        {'
-            print '            _glMemoryBarrier(GL_COMMAND_BARRIER_BIT | GL_BUFFER_UPDATE_BARRIER_BIT);'
-            print '            const GLintptr offset = (GLintptr)indirect; // no c++ cast will accept this...'
-            print '            ptr = (const GLuint *)_glMapBufferRange(target, offset, size, GL_MAP_READ_BIT);'
-            print '        }'
-            print '        Json::Value entry;'
-            print '        entry["index"] = idcount;'
-            print '        entry["function"] = "%s";' % func.name
-            if func.name == 'glDrawElementsIndirect':
-                print '        entry["count"] = ptr[0];'
-                print '        entry["instanceCount"] = ptr[1];'
-                print '        entry["firstIndex"] = ptr[2];'
-                print '        entry["baseVertex"] = static_cast<GLint>(ptr[3]);'
-            elif func.name == 'glDrawArraysIndirect':
-                print '        entry["count"] = ptr[0];'
-                print '        entry["primCount"] = ptr[1];'
-                print '        entry["first"] = ptr[2];'
-            elif func.name == 'glDispatchComputeIndirect':
-                print '        entry["num_groups_x"] = ptr[0];'
-                print '        entry["num_groups_y"] = ptr[1];'
-                print '        entry["num_groups_z"] = ptr[2];'
-            print '        gRetracer.staticDump["indirect"].append(entry);'
-            print '        glUnmapBuffer(target);'
-            print '        idcount++;'
-            print '    }'
         if is_draw_array or is_draw_elements or func.name in stdapi.dispatch_compute_names:
             print '    if (unlikely(stateLoggingEnabled)) {'
             print '        gRetracer.getStateLogger().logFunction(gRetracer.getCurTid(), "' + func.name + '", gRetracer.GetCurCallId(), gRetracer.GetCurDrawId());'
@@ -870,10 +824,17 @@ class Retracer(object):
             print '    glCreateClientSideBuffer(name);'
             return
         if func.name == 'glMapBufferOES':
-            print '    ret = glMapBufferOES(target, access);'
-            print '    if (ret == 0 || glGetError() != GL_NO_ERROR)'
+            print '    static bool support_checked = false;'
+            print '    static bool supported = false;'
+            print '    if (!support_checked) { support_checked = true; supported = isGlesExtensionSupported("GL_OES_mapbuffer"); }'
+            print '    if (supported) {'
+            print '        ret = glMapBufferOES(target, access);'
+            print '        GLenum err = glGetError();'
+            print '        if (err != 0) DBG_LOG("glMapBufferOES(0x%04x, 0x%04x) failed: 0x%04x\\n", (unsigned)target, (unsigned)access, (unsigned)err);'
+            print '    }'
+            print '    else'
             print '    {'
-            print '        // remap to glMapBufferRange to avoid calling the unimplemented glMapBufferOES on some platforms'
+            print '        // remap to glMapBufferRange'
             print '        GLint size;'
             print '        unsigned int access_bit = 0;'
             print '        glGetBufferParameteriv(target, GL_BUFFER_SIZE, &size);'
@@ -890,6 +851,8 @@ class Retracer(object):
             print '            access_bit = GL_MAP_WRITE_BIT | GL_MAP_READ_BIT;'
             print '        }'
             print '        ret = glMapBufferRange(target, 0, size, access_bit);'
+            print '        GLenum err = glGetError();'
+            print '        if (err != 0) DBG_LOG("glMapBufferOES -> glMapBufferRange(0x%04x, 0, %d, 0x%04x) failed: 0x%04x\\n", (unsigned)target, size, access_bit, (unsigned)err);'
             print '    }'
             return
         if func.name in ['glViewport']:
@@ -925,6 +888,11 @@ class Retracer(object):
             print '        post_glLinkProgram(programNew, program, (int)status);'
             print '    }'
             return
+
+        if func.name in ['glTexParameterf', 'glTexParameteri', 'glSamplerParameterf', 'glSamplerParameteri']:
+            print '    if (param > 1 && pname == GL_TEXTURE_MAX_ANISOTROPY_EXT && gRetracer.mOptions.mForceAnisotropicLevel != -1) param = gRetracer.mOptions.mForceAnisotropicLevel;'
+        elif func.name in ['glTexParameterfv', 'glTexParameteriv', 'glSamplerParameterfv', 'glSamplerParameteriv']:
+            print '    if (*params > 1 && pname == GL_TEXTURE_MAX_ANISOTROPY_EXT && gRetracer.mOptions.mForceAnisotropicLevel != -1) *params = gRetracer.mOptions.mForceAnisotropicLevel;'
 
         args = [arg.name + "New" if arg.has_new_value else arg.name
                 for arg in func.args]

@@ -4,6 +4,7 @@
 #include "common/memory.hpp"
 #include "helper/eglsize.hpp"
 #include "tool/utils.hpp"
+#include "helper/eglstring.hpp"
 
 #include <sys/stat.h>
 #include <assert.h>
@@ -20,6 +21,8 @@
 #include <asm/unistd.h>
 #include <sys/types.h>
 
+#pragma GCC diagnostic ignored "-Wunused-variable"
+
 using namespace retracer;
 
 const int cache_size = 512;
@@ -28,7 +31,7 @@ static bool perf_initialized = false;
 
 static std::string write_or_reuse(const std::string& dirname, const std::string& filename, const std::string& blob, cache_type& cache)
 {
-    const std::string md5 = common::MD5Digest(blob).data();
+    const std::string md5 = common::MD5Digest(blob).text();
     if (cache.count(md5) > 0)
     {
         return cache.at(md5);
@@ -218,6 +221,7 @@ DrawParams ParseInterfaceRetracing::getDrawCallCount(common::CallTM *call)
             ret.first_index = params.firstIndex;
             ret.base_vertex = params.baseVertex;
         }
+        if (ret.instances < 0 || ret.first_index < 0 || ret.count < 0) gRetracer.reportAndAbort("Bad indirect buffer");
         ret.value_type = call->mArgs[1]->GetAsUInt();
     }
     else if (call->mCallName == "glDrawArraysIndirect")
@@ -230,6 +234,7 @@ DrawParams ParseInterfaceRetracing::getDrawCallCount(common::CallTM *call)
             ret.instances = params.primCount;
             ret.first_index = params.first;
         }
+        if (ret.instances < 0 || ret.first_index < 0 || ret.count < 0) gRetracer.reportAndAbort("Bad indirect buffer");
     }
     assert(ret.instances >= 0);
 
@@ -330,6 +335,9 @@ bool ParseInterfaceRetracing::open(const std::string& input, const std::string& 
     header = gRetracer.mFile.getJSONHeader();
     threadArray = header["threads"];
     defaultTid = header["defaultTid"].asUInt();
+    gRetracer.mOptions.mDebug = mDebug;
+    gRetracer.mOptions.mMultiThread = header.get("multiThread", false).asBool();
+    DBG_LOG("Multi-threading is %s, selected thread is %d\n", gRetracer.mOptions.mMultiThread ? "ON" : "OFF", (int)defaultTid);
     highest_gles_version = header["glesVersion"].asInt() * 10;
     DBG_LOG("Initial GLES version set to %d based on JSON header\n", highest_gles_version);
     numThreads = threadArray.size();
@@ -348,6 +356,7 @@ bool ParseInterfaceRetracing::open(const std::string& input, const std::string& 
     jsonConfig.samples = eglconfig.get("msaaSamples", -1).asInt();
     if (jsonConfig.red <= 0) DBG_LOG("Zero red bits! This trace likely has a bad header!\n");
     if (!perf_init()) DBG_LOG("Could not initialize perf subsystem\n");
+    only_default = header.get("multiThread", false).asBool();
     return true;
 }
 
@@ -358,19 +367,6 @@ void ParseInterfaceRetracing::close()
 
 common::CallTM* ParseInterfaceRetracing::next_call()
 {
-    void *fptr = NULL;
-    char *src = NULL;
-    // Find first call on active thread
-    do
-    {
-        if (!gRetracer.mFile.GetNextCall(fptr, gRetracer.mCurCall, src) || gRetracer.mFinish)
-        {
-            GLWS::instance().Cleanup();
-            gRetracer.CloseTraceFile();
-            return NULL;
-        }
-        gRetracer.IncCurCallId();
-    } while (gRetracer.getCurTid() != gRetracer.mOptions.mRetraceTid);
     // Get function
     delete mCall;
     mCall = new common::CallTM(gRetracer.mFile, gRetracer.GetCurCallId(), gRetracer.mCurCall);
@@ -382,20 +378,10 @@ common::CallTM* ParseInterfaceRetracing::next_call()
         {
             const bool value = _glIsEnabled(target);
             // Need to hack a check for GL_TEXTURE_* because some content set these for GLES2+ contexts even though it is invalid.
+            // 0x0C53 is GL_POLYGON_SMOOTH_HINT which is to get TiatianFeiche working, and yes, it is not a valid parameter here.
             assert(contexts[context_index].enabled.count(target) == 0 || value == contexts[context_index].enabled.at(target)
-                   || target == GL_TEXTURE_2D || target == GL_TEXTURE_3D);
+                   || target == GL_TEXTURE_2D || target == GL_TEXTURE_3D || target == 0x0C53);
         }
-    }
-    else if (mCall->mCallName == "glBindVertexArray")
-    {
-        GLint vao = 0;
-        _glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
-        if (vao != 0)
-        {
-            const int index = contexts[context_index].vaos.remap(vao);
-            assert(contexts[context_index].vao_index == index);
-        }
-        else assert(contexts[context_index].vao_index == 0);
     }
     else if (mDumpFramebuffers && (mCall->mCallName == "glBindFramebuffer" || mCall->mCallName == "glBindFramebufferOES"
                                    || mCall->mCallName.compare(0, 14, "eglSwapBuffers") == 0))
@@ -416,22 +402,25 @@ common::CallTM* ParseInterfaceRetracing::next_call()
     interpret_call(mCall);
     // Call function
     mCpuCycles = 0;
-    if (fptr)
+    if (gRetracer.fptr)
     {
         perf_start();
-        (*(RetraceFunc)fptr)(src); // increments src to point to end of parameter block
+        (*(RetraceFunc)gRetracer.fptr)(gRetracer.src); // increments src to point to end of parameter block
         mCpuCycles = perf_stop();
     }
     // Additional special handling
     if (mCall->mCallName == "glCompileShader")
     {
         GLuint shader = mCall->mArgs[0]->GetAsUInt();
-        int target_shader_index = contexts[context_index].shaders.remap(shader);
-        if (contexts[context_index].shaders.all().size() > (unsigned)target_shader_index) // this is for Egypt...
+        if (contexts[context_index].shaders.contains(shader))
         {
-            GLint compiled = 0;
-            glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
-            contexts[context_index].shaders[target_shader_index].compile_status = compiled;
+            int target_shader_index = contexts[context_index].shaders.remap(shader);
+            if (contexts[context_index].shaders.all().size() > (unsigned)target_shader_index) // this is for Egypt...
+            {
+                GLint compiled = 0;
+                glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+                contexts[context_index].shaders[target_shader_index].compile_status = compiled;
+            }
         }
     }
     else if (mCall->mCallName == "glVertexAttribPointer" || mCall->mCallName == "glVertexAttribIPointer")
@@ -478,13 +467,14 @@ common::CallTM* ParseInterfaceRetracing::next_call()
             memset(tmp, 0, sizeof(tmp));
             _glGetActiveUniform(id, i, sizeof(tmp) - 1, &length, &size, &type, tmp);
             GLint location = _glGetUniformLocation(id, tmp);
+            if (location >= 0) p.uniformNames[location] = tmp;
             for (int j = 0; location >= 0 && j < size; ++j)
             {
                 if (isUniformSamplerType(type))
                 {
                     GLint param = 0;
                     _glGetUniformiv(id, location + j, &param); // arrays are guaranteed to be in sequential location
-                    p.texture_bindings.push_back({ tmp, type, param });
+                    p.texture_bindings[tmp] = { type, param };
                 }
             }
         }
@@ -493,7 +483,7 @@ common::CallTM* ParseInterfaceRetracing::next_call()
     return mCall;
 }
 
-void ParseInterfaceRetracing::completed_renderpass(int index, const StateTracker::RenderPass &rp)
+void ParseInterfaceRetracing::completed_renderpass(const StateTracker::RenderPass &rp)
 {
     if (!mRenderpassJSON) return;
 
@@ -554,6 +544,20 @@ static GLint my_glGetInt(GLenum target)
     return value;
 }
 
+static GLfloat my_glGetFloat(GLenum target)
+{
+    GLfloat value;
+    _glGetFloatv(target, &value);
+    return value;
+}
+
+static std::string my_glGetString(GLenum target)
+{
+    GLint value;
+    _glGetIntegerv(target, &value);
+    return texEnum(value).replace(0, 3, std::string());;
+}
+
 static Json::Value fillFaceJson(const StateTracker::Context& context, GLenum face)
 {
     Json::Value v;
@@ -587,7 +591,17 @@ static Json::Value get_rasterization_state(const StateTracker::Context& context)
     default: assert(false); break;
     }
     if (my_glGetInt(GL_CULL_FACE) == GL_FALSE) raster["cull_mode"] = "NONE";
-    // TBD the rest...
+    raster["winding_order"] = my_glGetString(GL_FRONT_FACE);
+    raster["line_width"] = my_glGetInt(GL_LINE_WIDTH);
+    raster["dither"] = my_glGetBool(GL_DITHER);
+    raster["polygon_offset_factor"] = my_glGetFloat(GL_POLYGON_OFFSET_FACTOR);
+    raster["polygon_offset_units"] = my_glGetFloat(GL_POLYGON_OFFSET_UNITS);
+    raster["polygon_offset_fill"] = my_glGetBool(GL_POLYGON_OFFSET_FILL);
+    raster["discard"] = my_glGetBool(GL_RASTERIZER_DISCARD);
+    raster["sample_coverage"] = my_glGetBool(GL_SAMPLE_COVERAGE);
+    raster["sample_coverage_value"] = my_glGetFloat(GL_SAMPLE_COVERAGE_VALUE);
+    raster["sample_coverage_invert"] = my_glGetBool(GL_SAMPLE_COVERAGE_INVERT);
+    raster["sample_alpha_to_coverage"] = my_glGetBool(GL_SAMPLE_ALPHA_TO_COVERAGE);
     return raster;
 }
 
@@ -764,6 +778,7 @@ static Json::Value get_vertex_attributes(GLuint program, const std::string& dirn
     GLint stride = 0;
     GLvoid *pointer = nullptr;
     GLint divisor = 0;
+    Json::Value v;
 
     _glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &binding);
     _glGetVertexAttribiv(index, GL_VERTEX_ATTRIB_ARRAY_SIZE, &components);
@@ -786,18 +801,23 @@ static Json::Value get_vertex_attributes(GLuint program, const std::string& dirn
         GLint bufSize = 0;
         _glBindBuffer(GL_COPY_READ_BUFFER, binding);
         _glGetBufferParameteriv(GL_COPY_READ_BUFFER, GL_BUFFER_SIZE, &bufSize);
-        assert(bufSize >= size + reinterpret_cast<intptr_t>(pointer));
-        ptr = (char *)_glMapBufferRange(GL_COPY_READ_BUFFER, reinterpret_cast<intptr_t>(pointer), size, GL_MAP_READ_BIT);
-        if (!ptr) DBG_LOG("Failed to map buffer %d glMapBufferRange(GL_COPY_READ_BUFFER, %lu, %lu, GL_MAP_READ_BIT), err=0x%04x\n", (int)binding,
-                          (unsigned long)pointer, (unsigned long)size, (unsigned)_glGetError());
+        if (bufSize >= size + reinterpret_cast<intptr_t>(pointer))
+        {
+            ptr = (char *)_glMapBufferRange(GL_COPY_READ_BUFFER, reinterpret_cast<intptr_t>(pointer), size, GL_MAP_READ_BIT);
+            if (!ptr) DBG_LOG("Failed to map buffer %d glMapBufferRange(GL_COPY_READ_BUFFER, %lu, %lu, GL_MAP_READ_BIT), err=0x%04x\n", (int)binding,
+                              (unsigned long)pointer, (unsigned long)size, (unsigned)_glGetError());
+        }
     }
     else // client side buffer
     {
         ptr = (char*)pointer;
     }
 
-    Json::Value v;
-    v["filename"] = write_or_reuse(dirname, filename, std::string(ptr, size), vertex_cache);
+    if (ptr && size)
+    {
+        v["filename"] = write_or_reuse(dirname, filename, std::string(ptr, size), vertex_cache);
+    }
+    else v["broken"] = true;
 
     if (binding != 0) // buffer
     {
@@ -830,7 +850,7 @@ static void add_shader(Json::Value& v, GLenum type, const std::string& key, cons
     }
 }
 
-void ParseInterfaceRetracing::completed_drawcall(int frame, const DrawParams& params, const StateTracker::RenderPass &rp, int rp_index)
+void ParseInterfaceRetracing::completed_drawcall(int frame, const DrawParams& params, const StateTracker::RenderPass &rp)
 {
     if (!mRenderpassJSON) return;
 
@@ -871,7 +891,7 @@ void ParseInterfaceRetracing::completed_drawcall(int frame, const DrawParams& pa
         resources["geometry"] = Json::arrayValue;
         resources["programs"] = Json::arrayValue;
         mRenderpass.data["resources"] = resources;
-        mRenderpass.dirname = mOutputName + "_f" + std::to_string(frame) + "_rp" + std::to_string(rp_index);
+        mRenderpass.dirname = mOutputName + "_f" + std::to_string(frame) + "_rp" + std::to_string(rp.index);
         mRenderpass.filename = mRenderpass.dirname + "/renderpass.json";
         mRenderpass.started = true;
         int result = mkdir(mRenderpass.dirname.c_str(), 0777);
@@ -944,6 +964,11 @@ void ParseInterfaceRetracing::completed_drawcall(int frame, const DrawParams& pa
     if (params.value_type != GL_NONE)
     {
         std::string filename = "index_buffer_g" + std::to_string(geomidx) + ".bin";
+        command["draw_params"]["unique_indices"] = params.unique_vertices;
+        command["draw_params"]["largest_index_hole"] = params.max_sparseness - 1;
+        command["draw_params"]["average_index_hole"] = params.avg_sparseness - 1;
+        command["draw_params"]["max_index_value"] = params.max_value;
+        command["draw_params"]["min_index_value"] = params.min_value;
         geometry["index_buffer"] = write_index_buffer(mRenderpass.dirname, filename, geomidx, params, mCall, mRenderpass.index_cache);
     }
     // For each enabled vertex attribute binding
@@ -984,4 +1009,82 @@ void ParseInterfaceRetracing::completed_drawcall(int frame, const DrawParams& pa
     default: assert(false); break;
     }
     mRenderpass.data["renderpass"]["commands"].append(command);
+}
+
+void ParseInterfaceRetracing::thread(const int threadidx, const int our_tid, Callback c, void *data)
+{
+    std::unique_lock<std::mutex> lk(gRetracer.mConditionMutex);
+    thread_result r;
+    r.our_tid = our_tid;
+    while (!gRetracer.mFinish)
+    {
+        mCall = next_call();
+        if (!mCall || !c(*this, mCall, data))
+        {
+            gRetracer.mFinish = true;
+            for (auto &cv : gRetracer.conditions) cv.notify_one(); // Wake up all other threads
+            break;
+        }
+
+        // ---------------------------------------------------------------------------
+        // Get next packet
+skip_call:
+        gRetracer.curCallNo++;
+        if (!gRetracer.mFile.GetNextCall(gRetracer.fptr, gRetracer.mCurCall, gRetracer.src))
+        {
+            gRetracer.mFinish = true;
+            for (auto &cv : gRetracer.conditions) cv.notify_one(); // Wake up all other threads
+            break;
+        }
+        // Skip call because it is on an ignored thread?
+        if (!gRetracer.mOptions.mMultiThread && gRetracer.mCurCall.tid != gRetracer.mOptions.mRetraceTid)
+        {
+            goto skip_call;
+        }
+        // Need to switch active thread?
+        if (our_tid != gRetracer.mCurCall.tid)
+        {
+            gRetracer.latest_call_tid = gRetracer.mCurCall.tid; // need to use an atomic member copy of this here
+            // Do we need to make this thread?
+            if (gRetracer.thread_remapping.count(gRetracer.mCurCall.tid) == 0)
+            {
+                gRetracer.thread_remapping[gRetracer.mCurCall.tid] = gRetracer.threads.size();
+                int newthreadidx = gRetracer.threads.size();
+                gRetracer.conditions.emplace_back();
+                gRetracer.threads.emplace_back(&ParseInterfaceRetracing::thread, this, (int)newthreadidx, (int)gRetracer.mCurCall.tid, c, data);
+            }
+            else // Wake up existing thread
+            {
+                const int otheridx = gRetracer.thread_remapping.at(gRetracer.mCurCall.tid);
+                gRetracer.conditions.at(otheridx).notify_one();
+            }
+            // Now we go to sleep. However, there is a race condition, since the thread we woke up above might already have told us
+            // to wake up again, so keep waking up to check if that is indeed the case.
+            bool success = false;
+            do {
+                success = gRetracer.conditions.at(threadidx).wait_for(lk, std::chrono::milliseconds(50), [&]{ return our_tid == gRetracer.latest_call_tid || gRetracer.mFinish; });
+            } while (!success);
+            // Set internal tracking variables correctly
+            if (current_surface.count(our_tid) > 0) surface_index = current_surface.at(our_tid);
+            if (current_context.count(our_tid) > 0) context_index = current_context.at(our_tid);
+        }
+    }
+}
+
+void ParseInterfaceRetracing::loop(Callback c, void *data)
+{
+    if (!gRetracer.mFile.GetNextCall(gRetracer.fptr, gRetracer.mCurCall, gRetracer.src))
+    {
+        gRetracer.reportAndAbort("Empty trace file!");
+    }
+    mCall = next_call();
+    gRetracer.threads.resize(1);
+    gRetracer.conditions.resize(1);
+    thread(0, gRetracer.mCurCall.tid, c, data);
+    for (std::thread &t : gRetracer.threads)
+    {
+        if (t.joinable()) t.join();
+    }
+    GLWS::instance().Cleanup();
+    gRetracer.CloseTraceFile();
 }

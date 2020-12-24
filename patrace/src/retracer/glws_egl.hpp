@@ -2,7 +2,6 @@
 #define GLWS_EGL_HPP
 
 #include "retracer/glws.hpp"
-#include "common/os_thread.hpp"
 
 namespace retracer {
 
@@ -31,7 +30,6 @@ public:
     virtual EGLImageKHR createImageKHR(Context* context, EGLenum target, uintptr_t buffer, const EGLint* attrib_list);
     virtual EGLBoolean destroyImageKHR(EGLImageKHR image);
     virtual bool setAttribute(Drawable* drawable, int attribute, int value);
-    virtual void processStepEvent();
     virtual void releaseNativeDisplay(EGLNativeDisplayType display);
 
     virtual void postInit();
@@ -45,7 +43,6 @@ protected:
     EGLDisplay mEglDisplay;
     EGLint mNativeVisualId;
     WinNameToNativeWindowMap_t gWinNameToNativeWindowMap;
-    os::Mutex NativeWindowMutex;
 };
 
 class EglContext : public Context

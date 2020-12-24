@@ -28,6 +28,7 @@ private:
 
     void requestNativeWindow(int width, int height, int format);
     void resizeNativeWindow(int width, int height, int format, int textureViewId);
+    void syncNativeWindow();
 };
 
 }

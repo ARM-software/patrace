@@ -56,10 +56,12 @@ public:
     GlwsEglWayland();
     ~GlwsEglWayland();
     virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList);
-    virtual void processStepEvent();
 
     EGLNativeDisplayType getNativeDisplay();
     void releaseNativeDisplay(EGLNativeDisplayType display);
+
+    virtual bool steppable() override { return true; }
+    virtual void processStepEvent() override;
 
 protected:
     struct wl_compositor*     mCompositor;

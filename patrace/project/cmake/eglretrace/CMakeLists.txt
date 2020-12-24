@@ -10,7 +10,7 @@ include_directories(
 if (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
     add_definitions(-DRETRACE -DGLES_CALLCONVENTION=_stdcall)
 elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    add_definitions(-DRETRACE -DGLES_CALLCONVENTION= -std=gnu++0x)
+    add_definitions(-DRETRACE -DGLES_CALLCONVENTION=)
 endif ()
 
 add_executable(paretrace

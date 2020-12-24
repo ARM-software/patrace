@@ -1,6 +1,5 @@
 #include "gl_extension_supported.hpp"
 
-#include <dispatch/eglproc_auto.hpp>
 #include <string>
 
 // taken from

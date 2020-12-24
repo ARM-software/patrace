@@ -22,7 +22,6 @@
 #include "tool/utils.hpp"
 
 #include <retracer/glstate.hpp>
-#include <retracer/cmd_options.hpp>
 #include <retracer/config.hpp>
 #include <retracer/glws.hpp>
 #include <retracer/retrace_api.hpp>
@@ -117,13 +116,6 @@ static inline const std::string TexEnumString(unsigned int enumToFind)
 static std::string shader_filename(int id, GLenum type)
 {
     return outputdir + "/shader_" + std::to_string(id) + shader_extension(type);
-}
-
-static std::string dsVersionString()
-{
-    std::stringstream ss;
-    ss << "r" << DS_VERSION_MAJOR << "p" << DS_VERSION_MINOR  << " " << DS_VERSION_COMMIT_HASH << " " << DS_VERSION_TYPE;
-    return ss.str();
 }
 
 bool checkError(const char* msg)
@@ -329,7 +321,7 @@ static TextureInfo getTextureInfo(GLenum target)
     return info;
 }
 
-static Json::Value saveTexture(retracer::Context& mRetracerContext, common::InFile& mInFile, int mThreadId, GLuint textureUnit, GLenum bindingType, GLenum target)
+static Json::Value saveTexture(retracer::Context& mRetracerContext, int mThreadId, GLuint textureUnit, GLenum bindingType, GLenum target)
 {
     checkError("saveTexture begin");
     glActiveTexture(GL_TEXTURE0 + textureUnit);
@@ -924,7 +916,7 @@ static bool retrace()
 
     retracer::Retracer& retracer = gRetracer;
 
-    for ( ;; retracer.IncCurCallId())
+    for ( ;; retracer.curCallNo++)
     {
         void *fptr = NULL;
         char *src = NULL;
@@ -976,6 +968,7 @@ static bool retrace()
             }
             outputdir = shortname + "_f" + std::to_string(retracer.GetCurFrameId()) + "_c" + std::to_string(drawCall);
             mkdir(outputdir.c_str(), 0775);
+            DBG_LOG("Making output directory %s\n", outputdir.c_str());
 
             // Find bound shader
             GLint program = 0;
@@ -992,7 +985,7 @@ static bool retrace()
             for (GLuint unit : colorAttachments)
             {
                 _glBindTexture(GL_TEXTURE_2D, unit);
-                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.mFile, retracer.getCurTid(), unit, GL_TEXTURE_BINDING_2D, GL_TEXTURE_2D));
+                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.getCurTid(), unit, GL_TEXTURE_BINDING_2D, GL_TEXTURE_2D));
             }
             _glBindTexture(GL_TEXTURE_2D, oldBind);
 
@@ -1000,11 +993,11 @@ static bool retrace()
             result["textures"] = Json::arrayValue;
             for (GLuint unit : textures2d)
             {
-                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.mFile, retracer.getCurTid(), unit, GL_TEXTURE_BINDING_2D, GL_TEXTURE_2D));
+                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.getCurTid(), unit, GL_TEXTURE_BINDING_2D, GL_TEXTURE_2D));
             }
             for (GLuint unit : textures_cubemap)
             {
-                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.mFile, retracer.getCurTid(), unit,  GL_TEXTURE_BINDING_CUBE_MAP, GL_TEXTURE_CUBE_MAP));
+                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.getCurTid(), unit,  GL_TEXTURE_BINDING_CUBE_MAP, GL_TEXTURE_CUBE_MAP));
             }
 
             int count = drawCallCount(&mCall);
@@ -1114,7 +1107,7 @@ static bool retraceRange()
 
     retracer::Retracer& retracer = gRetracer;
 
-    for ( ;; retracer.IncCurCallId())
+    for ( ;; retracer.curCallNo++)
     {
         void *fptr = NULL;
         char *src = NULL;
@@ -1169,18 +1162,18 @@ static bool retraceRange()
             for (GLuint unit : colorAttachments)
             {
                 _glBindTexture(GL_TEXTURE_2D, unit);
-                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.mFile, retracer.getCurTid(), unit, GL_TEXTURE_BINDING_2D, GL_TEXTURE_2D));
+                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.getCurTid(), unit, GL_TEXTURE_BINDING_2D, GL_TEXTURE_2D));
             }
 
             // Save used textures
             result["textures"] = Json::arrayValue;
             for (GLuint unit : textures2d)
             {
-                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.mFile, retracer.getCurTid(), unit, GL_TEXTURE_BINDING_2D, GL_TEXTURE_2D));
+                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.getCurTid(), unit, GL_TEXTURE_BINDING_2D, GL_TEXTURE_2D));
             }
             for (GLuint unit : textures_cubemap)
             {
-                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.mFile, retracer.getCurTid(), unit,  GL_TEXTURE_BINDING_CUBE_MAP, GL_TEXTURE_CUBE_MAP));
+                result["textures"].append(saveTexture(retracer.getCurrentContext(), retracer.getCurTid(), unit,  GL_TEXTURE_BINDING_CUBE_MAP, GL_TEXTURE_CUBE_MAP));
             }
 
             int count = drawCallCount(&mCall);
@@ -1295,11 +1288,15 @@ static void usage(const char *argv0)
             "Dump draw state information into directory f<call> in current working directory. Options:\n"
             "\n"
             "  --version Output the version of this program\n"
+            "  --offscreen Run offscreen\n"
+            "  --noscreen Write to pbuffers\n"
+            "  --range START STOP Run specified frame range\n"
+            "  --overrideEGL RED GREEN BLUE ALPHA DEPTH STENCIL Set speficified EGL configuration\n"
             "\n"
             , argv0);
 }
 
-static bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
+static bool ParseCommandLine(int argc, char** argv, retracer::RetraceOptions& mOptions)
 {
     // Parse all except first (executable name)
     int argIndex = 1;
@@ -1313,19 +1310,30 @@ static bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
         }
         else if (arg == "--offscreen")
         {
-            cmdOpts.forceOffscreen = true;
+            mOptions.mForceOffscreen = true;
+        }
+        else if (arg == "--overrideEGL")
+        {
+            mOptions.mOverrideConfig.red = atoi(argv[++argIndex]);
+            mOptions.mOverrideConfig.green = atoi(argv[++argIndex]);
+            mOptions.mOverrideConfig.blue = atoi(argv[++argIndex]);
+            mOptions.mOverrideConfig.alpha = atoi(argv[++argIndex]);
+            mOptions.mOverrideConfig.depth = atoi(argv[++argIndex]);
+            mOptions.mOverrideConfig.stencil = atoi(argv[++argIndex]);
+        }
+        else if (arg == "--noscreen")
+        {
+            mOptions.mPbufferRendering = true;
         }
         else if (arg == "--version")
         {
-            std::cout << "Version:" << std::endl;
-            std::cout << "- Retracer: " PATRACE_VERSION << std::endl;
-            std::cout << "- Maker: " << dsVersionString() << std::endl;
+            std::cout << "Version:" << PATRACE_VERSION << std::endl;
             exit(0);
         }
         else if (arg == "--range")
         {
-            startCall = atoi(argv[argIndex + 1]);
-            endCall = atoi(argv[argIndex + 2]);
+            mOptions.mBeginMeasureFrame = atoi(argv[++argIndex]);
+            mOptions.mEndMeasureFrame = atoi(argv[++argIndex]);
         }
         else
         {
@@ -1344,16 +1352,15 @@ static bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
     if (startCall != 0 && endCall != 0)
     {
         argIndex += 2;
-        cmdOpts.fileName = argv[argIndex++];
+        mOptions.mFileName = argv[argIndex++];
     }
     else
     {
-        cmdOpts.fileName = argv[argIndex++];
+        mOptions.mFileName = argv[argIndex++];
         drawCall = atoi(argv[argIndex++]);
     }
-    result["trace_file"] = cmdOpts.fileName;
+    result["trace_file"] = mOptions.mFileName;
     result["call_number"] = drawCall;
-    result["drawstate_version"] = dsVersionString();
     result["retracer_version"] = PATRACE_VERSION;
 
     return true;
@@ -1364,8 +1371,7 @@ int main(int argc, char** argv)
 {
     using namespace retracer;
 
-    CmdOptions cmdOptions;
-    if (!ParseCommandLine(argc, argv, /*out*/ cmdOptions))
+    if (!ParseCommandLine(argc, argv, gRetracer.mOptions))
     {
         return 1;
     }
@@ -1375,19 +1381,13 @@ int main(int argc, char** argv)
     common::gApiInfo.RegisterEntries(egl_callbacks);
 
     // 1. Load defaults from file
-    if (!gRetracer.OpenTraceFile(cmdOptions.fileName.c_str()))
+    if (!gRetracer.OpenTraceFile(gRetracer.mOptions.mFileName.c_str()))
     {
-        DBG_LOG("Failed to open %s\n", cmdOptions.fileName.c_str());
+        DBG_LOG("Failed to open %s\n", gRetracer.mOptions.mFileName.c_str());
         return 1;
     }
 
-    // 2. Now that tracefile is opened and defaults loaded, override
-    cmdOptions.debug = true;
-    if (!gRetracer.overrideWithCmdOptions(cmdOptions))
-    {
-        DBG_LOG("Failed to override Cmd Options\n");
-        return 1;
-    }
+    gRetracer.mOptions.mDebug = 1;
 
     // 3. init egl and gles, using final combination of settings (header + override)
     GLWS::instance().Init(gRetracer.mOptions.mApiVersion);

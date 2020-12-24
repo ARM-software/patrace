@@ -71,7 +71,7 @@ static void writeout(common::OutFile &outputFile, common::CallTM *call)
     outputFile.Write(buffer, dest-buffer);
 }
 
-static void dedup(common::OutFile& outputFile)
+static void dedup(common::OutFile& outputFile, int &stat)
 {
     if (replace)
     {
@@ -80,12 +80,14 @@ static void dedup(common::OutFile& outputFile)
         writeout(outputFile, &enable);
     }
     dedups++;
+    stat++;
 }
 
 void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endframe, int tid, int flags)
 {
     common::CallTM *call = nullptr;
     std::unordered_map<GLenum, GLuint> buffers;
+    std::unordered_map<GLuint, GLfloat> uniform1f;
     std::unordered_map<GLuint, std::tuple<GLfloat, GLfloat>> uniform2f;
     std::unordered_map<GLuint, std::tuple<GLfloat, GLfloat, GLfloat>> uniform3f;
     std::unordered_map<GLenum, GLuint> textures;
@@ -95,7 +97,21 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
     GLenum depthfunc = GL_NONE;
     std::unordered_map<GLenum, bool> enabled;
     std::tuple<GLfloat, GLfloat, GLfloat, GLfloat> blendcolor = std::make_tuple(0.0f, 0.0f, 0.0f, 0.0f);
-    std::tuple<GLuint, GLint, GLenum, GLboolean, GLsizei, uint64_t> vertexattrib;
+    std::unordered_map<GLuint, std::tuple<GLuint, GLint, GLenum, GLboolean, GLsizei, uint64_t>> vertexattrib;
+    std::unordered_map<GLuint, bool> enablevertex;
+    std::unordered_map<GLuint, GLuint> vertexdivisor;
+    int vertexattrs = 0;
+    int bindbuffers = 0;
+    int enables = 0; // includes disables
+    int scissordupes = 0;
+    int blendcols = 0;
+    int bindtexs = 0;
+    int bindsamps = 0;
+    int uniforms = 0;
+    int depthfuncs = 0;
+    int blendfuncs = 0;
+    int useprograms = 0;
+    GLuint current_program_id = 0;
 
     // Go through entire trace file
     while ((call = input.next_call()))
@@ -104,8 +120,21 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
 
         if (call->mCallName == "glUseProgram")
         {
-            uniform2f.clear();
-            uniform3f.clear();
+            const GLenum id = call->mArgs[0]->GetAsUInt();
+            if (id != current_program_id || id == 0)
+            {
+                uniform2f.clear();
+                uniform3f.clear();
+                vertexattrib.clear();
+                enablevertex.clear();
+                current_program_id = id;
+            }
+            else
+            {
+                dedup(outputFile, useprograms);
+                current_program_id = id;
+                continue; // skip
+            }
         }
         else if (call->mCallName == "eglMakeCurrent")
         {
@@ -114,11 +143,14 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
             buffers.clear();
             textures.clear();
             samplers.clear();
+            vertexattrib.clear();
             scissors = std::make_tuple(-1, -1, -1, -1);
             blendfunc = std::make_tuple(GL_NONE, GL_NONE);
             depthfunc = GL_NONE;
             enabled.clear();
             blendcolor = std::make_tuple(0.0f, 0.0f, 0.0f, 0.0f);
+            enablevertex.clear();
+            current_program_id = 0;
         }
 
         if (call->mCallName == "glBindBuffer" && (flags & DEDUP_BUFFERS))
@@ -130,7 +162,29 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 writeout(outputFile, call);
                 buffers[target] = id;
             }
-            else dedup(outputFile);
+            else dedup(outputFile, bindbuffers);
+        }
+        else if (call->mCallName == "glVertexAttribDivisor" && (flags & DEDUP_VERTEXATTRIB))
+        {
+            const GLuint target = call->mArgs[0]->GetAsUInt();
+            const GLuint divisor = call->mArgs[1]->GetAsUInt();
+            if (vertexdivisor.count(target) > 0 && vertexdivisor[target] == divisor) dedup(outputFile, enables);
+            else writeout(outputFile, call);
+            vertexdivisor[target] = divisor;
+        }
+        else if (call->mCallName == "glEnableVertexAttribArray" && (flags & DEDUP_VERTEXATTRIB))
+        {
+            const GLenum target = call->mArgs[0]->GetAsUInt();
+            if (enablevertex.count(target) > 0 && enablevertex[target]) dedup(outputFile, enables);
+            else writeout(outputFile, call);
+            enablevertex[target] = true;
+        }
+        else if (call->mCallName == "glDisableVertexAttribArray" && (flags & DEDUP_VERTEXATTRIB))
+        {
+            const GLenum target = call->mArgs[0]->GetAsUInt();
+            if (enablevertex.count(target) > 0 && !enablevertex[target]) dedup(outputFile, enables);
+            else writeout(outputFile, call);
+            enablevertex[target] = false;
         }
         else if (call->mCallName == "glEnable" && (flags & DEDUP_ENABLE))
         {
@@ -140,7 +194,7 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 writeout(outputFile, call);
                 enabled[key] = true;
             }
-            else dedup(outputFile);
+            else dedup(outputFile, enables);
         }
         else if (call->mCallName == "glDisable" && (flags & DEDUP_ENABLE))
         {
@@ -150,7 +204,7 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 writeout(outputFile, call);
                 enabled[key] = false;
             }
-            else dedup(outputFile);
+            else dedup(outputFile, enables);
         }
         else if (call->mCallName == "glScissor" && (flags & DEDUP_SCISSORS))
         {
@@ -164,7 +218,7 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 writeout(outputFile, call);
                 scissors = val;
             }
-            else dedup(outputFile);
+            else dedup(outputFile, scissordupes);
         }
         else if (call->mCallName == "glDepthFunc" && (flags & DEDUP_DEPTHFUNC))
         {
@@ -174,7 +228,7 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 writeout(outputFile, call);
                 depthfunc = func;
             }
-            else dedup(outputFile);
+            else dedup(outputFile, depthfuncs);
         }
         else if (call->mCallName == "glBlendFunc" && (flags & DEDUP_BLENDFUNC))
         {
@@ -186,7 +240,7 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 writeout(outputFile, call);
                 blendfunc = val;
             }
-            else dedup(outputFile);
+            else dedup(outputFile, blendfuncs);
         }
         else if (call->mCallName == "glVertexAttribPointer" && (flags & DEDUP_VERTEXATTRIB))
         {
@@ -197,12 +251,12 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
             const GLsizei stride = call->mArgs[4]->GetAsInt();
             const uint64_t pointer = call->mArgs[5]->GetAsUInt64();
             auto val = std::make_tuple(index, size, type, normalized, stride, pointer);
-            if (vertexattrib != val)
+            if (vertexattrib.count(index) == 0 || vertexattrib[index] != val)
             {
                 writeout(outputFile, call);
-                vertexattrib = val;
+                vertexattrib[index] = val;
             }
-            else dedup(outputFile);
+            else dedup(outputFile, vertexattrs);
         }
         else if (call->mCallName == "glBlendColor" && (flags & DEDUP_BLENDFUNC))
         {
@@ -216,7 +270,7 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 writeout(outputFile, call);
                 blendcolor = val;
             }
-            else dedup(outputFile);
+            else dedup(outputFile, blendcols);
         }
         else if (call->mCallName == "glBindTexture" && (flags & DEDUP_TEXTURES))
         {
@@ -228,7 +282,7 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 textures[target] = id;
                 samplers.clear();
             }
-            else dedup(outputFile);
+            else dedup(outputFile, bindtexs);
         }
         else if (call->mCallName == "glBindSampler" && (flags & DEDUP_TEXTURES))
         {
@@ -239,7 +293,19 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 writeout(outputFile, call);
                 samplers[target] = id;
             }
-            else dedup(outputFile);
+            else dedup(outputFile, bindsamps);
+        }
+        else if ((call->mCallName == "glUniform1f" || call->mCallName == "glUniform1fv") && (flags & DEDUP_UNIFORMS))
+        {
+            const GLuint location = call->mArgs[0]->GetAsUInt();
+            const GLsizei count = (call->mCallName == "glUniform1f") ? 1 : call->mArgs[1]->GetAsUInt();
+            const GLfloat v1 = (call->mCallName == "glUniform1f") ? call->mArgs[1]->GetAsFloat() : call->mArgs[2]->mArray[0].GetAsFloat();
+            if (count != 1 || uniform1f.count(location) == 0 || uniform1f.at(location) != v1)
+            {
+                writeout(outputFile, call);
+                uniform1f[location] = v1;
+            }
+            else dedup(outputFile, uniforms);
         }
         else if (call->mCallName == "glUniform2f" && (flags & DEDUP_UNIFORMS))
         {
@@ -251,7 +317,20 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 writeout(outputFile, call);
                 uniform2f[location] = std::make_tuple(v1, v2);
             }
-            else dedup(outputFile);
+            else dedup(outputFile, uniforms);
+        }
+        else if (call->mCallName == "glUniform2fv" && (flags & DEDUP_UNIFORMS))
+        {
+            const GLuint location = call->mArgs[0]->GetAsUInt();
+            const GLsizei count = call->mArgs[1]->GetAsUInt();
+            const GLfloat v1 = call->mArgs[2]->mArray[0].GetAsFloat();
+            const GLfloat v2 = call->mArgs[2]->mArray[1].GetAsFloat();
+            if (count != 1 || uniform2f.count(location) == 0 || std::get<0>(uniform2f.at(location)) != v1 || std::get<1>(uniform2f.at(location)) != v2)
+            {
+                writeout(outputFile, call);
+                uniform2f[location] = std::make_tuple(v1, v2);
+            }
+            else dedup(outputFile, uniforms);
         }
         else if (call->mCallName == "glUniform3f" && (flags & DEDUP_UNIFORMS))
         {
@@ -264,7 +343,21 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 writeout(outputFile, call);
                 uniform3f[location] = std::make_tuple(v1, v2, v3);
             }
-            else dedup(outputFile);
+            else dedup(outputFile, uniforms);
+        }
+        else if (call->mCallName == "glUniform3fv" && (flags & DEDUP_UNIFORMS))
+        {
+            const GLuint location = call->mArgs[0]->GetAsUInt();
+            const GLsizei count = call->mArgs[1]->GetAsUInt();
+            const GLfloat v1 = call->mArgs[2]->mArray[0].GetAsFloat();
+            const GLfloat v2 = call->mArgs[2]->mArray[1].GetAsFloat();
+            const GLfloat v3 = call->mArgs[2]->mArray[2].GetAsFloat();
+            if (count != 1 || uniform3f.count(location) == 0 || std::get<0>(uniform3f.at(location)) != v1 || std::get<1>(uniform3f.at(location)) != v2 || std::get<2>(uniform3f.at(location)) != v3)
+            {
+                writeout(outputFile, call);
+                uniform3f[location] = std::make_tuple(v1, v2, v3);
+            }
+            else dedup(outputFile, uniforms);
         }
         else if (call->mCallName == "eglSwapBuffers" && input.frames != endframe) // log (slow) progress
         {
@@ -283,6 +376,17 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
         }
     }
     DBG_LOG("Removed %ld calls\n", dedups);
+    if (useprograms) DBG_LOG("Removed %d glUseProgram calls\n", useprograms);
+    if (vertexattrs) DBG_LOG("Removed %d vertex attr calls\n", vertexattrs);
+    if (bindbuffers) DBG_LOG("Removed %d bindbuffer calls\n", bindbuffers);
+    if (enables) DBG_LOG("Removed %d enable/disable calls\n", enables);
+    if (scissordupes) DBG_LOG("Removed %d scissor calls\n", scissordupes);
+    if (blendcols) DBG_LOG("Removed %d blendcol calls\n", blendcols);
+    if (bindtexs) DBG_LOG("Removed %d bindtexture calls\n", bindtexs);
+    if (bindsamps) DBG_LOG("Removed %d bindsampler calls\n", bindsamps);
+    if (uniforms) DBG_LOG("Removed %d uniform calls\n", uniforms);
+    if (depthfuncs) DBG_LOG("Removed %d depth func calls\n", depthfuncs);
+    if (blendfuncs) DBG_LOG("Removed %d blend func calls\n", blendfuncs);
 }
 
 int main(int argc, char **argv)
@@ -351,7 +455,7 @@ int main(int argc, char **argv)
         else if (arg == "-v")
         {
             printVersion();
-            return 1;
+            return 0;
         }
         else
         {

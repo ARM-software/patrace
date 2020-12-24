@@ -127,18 +127,18 @@ void GlwsEglX11::processStepEvent()
             if (ks >= XK_F1 && ks <= XK_F4)
             {
                 const unsigned int forwardNum = static_cast<unsigned int>(std::pow(10, ks - XK_F1));
-                if (!gRetracer.RetraceForward(forwardNum, 0))
-                    return;
+                gRetracer.frameBudget += forwardNum;
+                return;
             }
             else if (ks >= XK_F5 && ks <= XK_F8)
             {
                 const unsigned int drawNum = static_cast<unsigned int>(std::pow(10, ks - XK_F5));
-                if (!gRetracer.RetraceForward(0, drawNum))
-                    return;
+                gRetracer.drawBudget += drawNum;
+                return;
             }
             else if (ks == XK_F10)
             {
-                gRetracer.CloseTraceFile();
+                gRetracer.mFinish = true;
                 return;
             }
         }
@@ -170,7 +170,6 @@ void GlwsEglX11::releaseNativeDisplay(EGLNativeDisplayType display)
 Drawable* GlwsEglX11::CreateDrawable(int width, int height, int win, EGLint const* attribList)
 {
     Drawable* handle = NULL;
-    NativeWindowMutex.lock();
 
     WinNameToNativeWindowMap_t::iterator it = gWinNameToNativeWindowMap.find(win);
 
@@ -194,7 +193,6 @@ Drawable* GlwsEglX11::CreateDrawable(int width, int height, int win, EGLint cons
     }
 
     handle = new EglDrawable(width, height, mEglDisplay, mEglConfig, window, attribList);
-    NativeWindowMutex.unlock();
 
     return handle;
 }

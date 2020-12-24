@@ -33,10 +33,8 @@ static int width = 1024;
 static int height = 600;
 static GLuint vao, draw_program, vs, fs, interleaved_buffer;
 
-static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
+static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 {
-	setup();
-
 	width = w;
 	height = h;
 
@@ -87,7 +85,7 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
 }
 
 // first frame render something, second frame verify it
-static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
+static void callback_draw(PADEMO *handle, void *user_data)
 {
 	glUseProgram(draw_program);
 
@@ -99,7 +97,7 @@ static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
 	assert_fb(width, height);
 }
 
-static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
+static void test_cleanup(PADEMO *handle, void *user_data)
 {
 	glDeleteVertexArrays(1, &vao);
 	glDeleteShader(vs);
@@ -108,7 +106,7 @@ static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
 	glDeleteBuffers(1, &interleaved_buffer);
 }
 
-int PAFW_Entry_Point(PAFW_HANDLE pafw_handle)
+int main()
 {
-	return init("vertexbuffer_1", pafw_handle, callback_draw, setupGraphics, test_cleanup);
+	return init("vertexbuffer_1", callback_draw, setupGraphics, test_cleanup);
 }

@@ -35,6 +35,5 @@ elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     set (SRC_COMMON_SYSTEM
         ${SRC_ROOT}/common/os_posix.cpp
         ${SRC_ROOT}/common/memoryinfo.cpp
-        ${SRC_ROOT}/common/os_thread_linux.cpp
     )
 endif ()

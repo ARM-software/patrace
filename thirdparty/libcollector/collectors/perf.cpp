@@ -36,7 +36,15 @@ bool PerfCollector::available()
     return true;
 }
 
-static int add_event(int type, int config, int group)
+enum perf_event_exclude
+{
+	PERF_EVENT_EXCLUDE_NONE = 0,
+	PERF_EVENT_EXCLUDE_KERNEL = 1,
+	PERF_EVENT_EXCLUDE_USER = 2
+};
+
+static int add_event(int type, int config, int group, int inherit = 1,
+                     perf_event_exclude exclude = PERF_EVENT_EXCLUDE_NONE)
 {
     struct perf_event_attr pe;
 
@@ -45,8 +53,9 @@ static int add_event(int type, int config, int group)
     pe.size = sizeof(struct perf_event_attr);
     pe.config = config;
     pe.disabled = 1;
-    pe.inherit = 1;
-    pe.exclude_kernel = 0;
+    pe.inherit = inherit;
+    pe.exclude_user = (exclude == PERF_EVENT_EXCLUDE_USER ? 1 : 0) ;
+    pe.exclude_kernel = (exclude == PERF_EVENT_EXCLUDE_KERNEL ? 1 : 0);
     pe.exclude_hv = 0;
     const int fd = perf_event_open(&pe, 0, -1, group, 0);
     if (fd < 0)
@@ -89,6 +98,21 @@ bool PerfCollector::init()
         mCounters["CPUL2CacheWrite"] = add_event(PERF_TYPE_RAW, 0x51, group);
         mCounters["CPUMemoryAccessRead"] = add_event(PERF_TYPE_RAW, 0x66, group);
         mCounters["CPUMemoryAccessWrite"] = add_event(PERF_TYPE_RAW, 0x67, group);
+    }
+    else if (mSet == 4)
+    {
+        DBG_LOG("Using CPU counter set number 4, this will fail on non-ARM CPU's\n");
+        /* All Threads */
+        mCounters["CPUCyclesUser"] = add_event(PERF_TYPE_RAW, 0x11, group, 1, PERF_EVENT_EXCLUDE_KERNEL);
+        mCounters["CPUCyclesKernel"] = add_event(PERF_TYPE_RAW, 0x11, group, 1, PERF_EVENT_EXCLUDE_USER);
+
+        /* Main Thread */
+        const int group_main_thread = mCounters["CPUCycleCountMainThread"] =
+            add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES, -1, 0);
+        mCounters["CPUCyclesUserMainThread"] =
+            add_event(PERF_TYPE_RAW, 0x11, group_main_thread, 0, PERF_EVENT_EXCLUDE_KERNEL);
+        mCounters["CPUCyclesKernelMainThread"] =
+            add_event(PERF_TYPE_RAW, 0x11, group_main_thread, 0, PERF_EVENT_EXCLUDE_USER);
     }
     else // default set, same as for x86
     {

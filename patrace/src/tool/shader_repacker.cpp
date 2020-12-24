@@ -141,7 +141,7 @@ int main(int argc, char **argv)
         else if (arg == "-v")
         {
             printVersion();
-            return 1;
+            return 0;
         }
         else
         {

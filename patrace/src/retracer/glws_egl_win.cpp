@@ -184,43 +184,43 @@ public:
         {
             if (GetAsyncKeyState(VK_F1))
             {
-                if (!gRetracer.RetraceForward(1, 0))
-                    return;
+                gRetracer.frameBudget += 1;
+                return;
             }
             else if (GetAsyncKeyState(VK_F2))
             {
-                if (!gRetracer.RetraceForward(10, 0))
-                    return;
+                gRetracer.frameBudget += 10;
+                return;
             }
             else if (GetAsyncKeyState(VK_F3))
             {
-                if (!gRetracer.RetraceForward(100, 0))
-                    return;
+                gRetracer.frameBudget += 100;
+                return;
             }
             else if (GetAsyncKeyState(VK_F4))
             {
-                if (!gRetracer.RetraceForward(1000, 0))
-                    return;
+                gRetracer.frameBudget += 1000;
+                return;
             }
             else if (GetAsyncKeyState(VK_F5))
             {
-                if (!gRetracer.RetraceForward(0, 1))
-                    return;
+                gRetracer.drawBudget += 1;
+                return;
             }
             else if (GetAsyncKeyState(VK_F6))
             {
-                if (!gRetracer.RetraceForward(0, 10))
-                    return;
+                gRetracer.drawBudget += 10;
+                return;
             }
             else if (GetAsyncKeyState(VK_F7))
             {
-                if (!gRetracer.RetraceForward(0, 100))
-                    return;
+                gRetracer.drawBudget += 100;
+                return;
             }
             else if (GetAsyncKeyState(VK_F8))
             {
-                if (!gRetracer.RetraceForward(0, 1000))
-                    return;
+                gRetracer.drawBudget += 1000;
+                return;
             }
         }
     }

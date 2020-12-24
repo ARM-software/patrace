@@ -343,7 +343,7 @@ int fill_image_attributes(egl_image_fixture *const fix,
 
 int refresh_dma_data(egl_image_fixture *const fix,
                      size_t size,
-                     const unsigned char *data);
+                     const unsigned char *data, bool dmaSharedMemory);
 
 void unmap_fixture_memory_bufs(egl_image_fixture *const fix);
 void close_fixture_memory_bufs(egl_image_fixture *const fix);

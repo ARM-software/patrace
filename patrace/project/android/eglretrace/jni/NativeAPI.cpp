@@ -1,4 +1,3 @@
-
 #include "com_arm_pa_paretrace_NativeAPI.h"
 
 #include "retracer/retracer.hpp"
@@ -27,7 +26,8 @@ jint    gJavaVersion; // used in retracer.cpp
 
 bool RenderFrame()
 {
-    return gRetracer.Retrace();
+    gRetracer.Retrace();
+    return true;
 }
 
 JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_initFromJson(JNIEnv *env, jclass, jstring jstrJsonData, jstring jstrTraceDir, jstring jstrResultFile)
@@ -45,6 +45,9 @@ JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_initFromJson(JNIE
     const char* traceDir = env->GetStringUTFChars(jstrTraceDir, 0);
 
     TraceExecutor::initFromJson(jsonData, traceDir, resultFile);
+    common::gApiInfo.RegisterEntries(gles_callbacks);
+    common::gApiInfo.RegisterEntries(egl_callbacks);
+    gRetracer.OpenTraceFile(gRetracer.mOptions.mFileName.c_str());
 
     env->ReleaseStringUTFChars(jstrJsonData, jsonData);
     env->ReleaseStringUTFChars(jstrTraceDir, traceDir);
@@ -56,10 +59,6 @@ JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_init
     (JNIEnv * env, jclass, jboolean registerEntries)
 {
     prctl(PR_SET_DUMPABLE, 1); // enable debugging
-    if(registerEntries) {
-        common::gApiInfo.RegisterEntries(gles_callbacks);
-        common::gApiInfo.RegisterEntries(egl_callbacks);
-    }
 
     gJavaVersion = env->GetVersion();
     if (env->GetJavaVM(&gJavaVM) != 0)
@@ -98,7 +97,6 @@ JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_opt_1getIsPortrai
 {
     return gRetracer.mOptions.mWindowHeight > gRetracer.mOptions.mWindowWidth;
 }
-
 
 JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_setSurface(JNIEnv* env, jclass obj, jobject surface, jint textureViewSize)
 {

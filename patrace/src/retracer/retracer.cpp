@@ -8,7 +8,6 @@
 #include "retracer/trace_executor.hpp"
 #include "retracer/forceoffscreen/offscrmgr.h"
 #include "retracer/glws.hpp"
-#include "retracer/cmd_options.hpp"
 #include "retracer/config.hpp"
 
 #include "libcollector/interface.hpp"
@@ -28,6 +27,7 @@
 #include "jsoncpp/include/json/writer.h"
 #include "jsoncpp/include/json/reader.h"
 
+#include <chrono>
 #include <errno.h>
 #include <algorithm> // for std::min/max
 #include <string>
@@ -449,361 +449,31 @@ static void perfmon_end(Json::Value& v)
     amd_perf_end(v);
 }
 
-/// ---
-
-WorkThread::WorkThread(InFile *f) :
-    file(f),
-    workQueue(MAX_WORK_QUEUE_SIZE),
-    curWork(NULL)
-{
-    setStatus(UNKNOWN);
-}
-
-WorkThread::~WorkThread()
-{
-}
-
-void WorkThread::workQueueWakeup()
-{
-    workQueue.wakeup();
-}
-
-void WorkThread::workQueuePush(Work *work)
-{
-    if (work)
-    {
-        setStatus(RUNNING);
-        work->setStatus(Work::SUBMITED);
-        work->retain();
-        if (work->getChunkHandler())
-            work->getChunkHandler()->retain();
-        while(!workQueue.push(work));
-    }
-}
-
-WorkThread::WorkThreadStatus WorkThread::getStatus()
-{
-    WorkThreadStatus s = UNKNOWN;
-    _access();
-    s = status;
-    _exit();
-    return s;
-}
-
-void WorkThread::setStatus(WorkThread::WorkThreadStatus s)
-{
-    _access();
-    status = s;
-    _exit();
-}
-
-void WorkThread::run()
-{
-    setStatus(IDLE);
-    workThreadCond.inc();
-    workThreadCond.broadcast();
-    while (getStatus() != TERMINATED)
-    {
-        workQueue.waitNewItem();
-        workThreadCond.dec();
-        while (!workQueue.isEmpty())
-        {
-            curWork = workQueuePop();
-            if (curWork == NULL) break;
-            curWork->run();
-            getFileHandler()->releaseChunk(curWork->getChunkHandler());
-            curWork->release();
-
-            // Error Check
-            if (gRetracer.mOptions.mDebug && gRetracer.hasCurrentContext())
-            {
-                gRetracer.CheckGlError();
-            }
-        }
-        curWork = NULL;
-        setStatus(IDLE);
-        workThreadCond.inc();
-        workThreadCond.broadcast();
-    }
-    workThreadCond.dec();
-    setStatus(END);
-}
-
-void WorkThread::waitIdle()
-{
-    while (getStatus() == RUNNING)
-    {
-        workThreadCond.wait();
-    }
-}
-
-void WorkThread::terminate()
-{
-    setStatus(TERMINATED);
-}
-
-Work::Work(int tid, unsigned frameId, unsigned callId, void* fptr, char* src, const char* name, UnCompressedChunk *chunk)
-{
-    _tid     = tid;
-    _frameId = frameId;
-    _callId  = callId;
-    _fptr    = fptr;
-    _src     = src;
-    _callName= name;
-    _chunk   = chunk;
-    ref      = 0;
-    start_time = 0;
-    end_time   = 0;
-    isMeasureTime = false;
-    setStatus(CREATED);
-}
-
-Work::~Work()
-{
-}
-
-int Work::getThreadID()
-{
-    return _tid;
-}
-
-unsigned Work::getFrameID()
-{
-    return _frameId;
-}
-
-unsigned Work::getCallID()
-{
-    return _callId;
-}
-
-void Work::run()
-{
-    setStatus(EXECUTED);
-    (*(RetraceFunc)_fptr)(_src);
-    onFinished();
-}
-
-void Work::onFinished()
-{
-    setStatus(COMPLETED);
-    if (isMeasureTime)
-    {
-        gRetracer.UpdateCallStats(_callName, GetExecutionTime());
-    }
-}
-
-void Work::setStatus(Work::WorkStatus s)
-{
-    // This function can be used to calculate the execute time of each work stage in the future.
-    workMutex.lock();
-    status = s;
-    if (isMeasureTime)
-    {
-        switch (s)
-        {
-            case EXECUTED:
-                start_time = gettime();
-                break;
-            case COMPLETED:
-                end_time = gettime();
-                break;
-            default:
-                break;
-        }
-    }
-    workMutex.unlock();
-}
-
-Work::WorkStatus Work::getStatus()
-{
-    WorkStatus s = UNKNOWN;
-    workMutex.lock();
-    s = status;
-    workMutex.unlock();
-    return s;
-}
-
-void Work::release()
-{
-    unsigned left = 0;
-    workMutex.lock();
-    left = --ref;
-    workMutex.unlock();
-
-    if (left == 0)
-    {
-        delete this;
-    }
-}
-
-void Work::retain()
-{
-    workMutex.lock();
-    ref++;
-    workMutex.unlock();
-}
-
-int  Work::getRefCount()
-{
-    unsigned left = 0;
-    workMutex.lock();
-    left = ref;
-    workMutex.unlock();
-
-    return left;
-}
-
-void Work::dump()
-{
-    DBG_LOG("Call(%s): tid %d, frameId %d, callId %d\n", _callName, _tid, _frameId, _callId);
-}
-
-void SnapshotWork::run()
-{
-    gRetracer.TakeSnapshot(getCallID(), getFrameID());
-}
-
-void FlushWork::run()
-{
-    gRetracer.Flush();
-}
-
-void DiscardFramebuffersWork::run()
-{
-    gRetracer.DiscardFramebuffers();
-}
-
-void PerfWork::run()
-{
-    if (strcmp(GetCallName(), "PerfStart") == 0)
-    {
-        gRetracer.PerfStart();
-    }
-    else if (strcmp(GetCallName(), "PerfEnd") == 0)
-    {
-        gRetracer.PerfEnd();
-    }
-}
-
-void StepWork::run()
-{
-    gRetracer.StepShot(getCallID(), getFrameID());
-}
-
-Retracer::Retracer()
- : mFile()
- , mOptions()
- , mState()
- , mCurCall()
- , mOutOfMemory(false)
- , mFailedToLinkShaderProgram(false)
- , mFinish(false)
- , mpOffscrMgr(NULL)
- , mCSBuffers()
- , mpQuad(NULL)
- , mVBODataSize(0)
- , mTextureDataSize(0)
- , mCompressedTextureDataSize(0)
- , mClientSideMemoryDataSize(0)
- , mCallCounter()
- , mCollectors(NULL)
- , mExIdEglSwapBuffers(0)
- , mExIdEglSwapBuffersWithDamage(0)
- , mStateLogger()
- , mFileFormatVersion(INVALID_VERSION)
- , mSnapshotPaths()
-{
-#ifndef NDEBUG
-    mVBODataSize = 0;
-    mTextureDataSize = 0;
-    mCompressedTextureDataSize = 0;
-    mClientSideMemoryDataSize = 0;
-#endif
-
-    staticDump["indirect"] = Json::arrayValue;
-    staticDump["uniforms"] = Json::arrayValue;
-
-    createWorkThreadPool();
-}
-
 Retracer::~Retracer()
 {
-    wakeupAllWorkThreads();
-    waitWorkThreadPoolIdle();
-
-    if (mOptions.mDumpStatic)
-    {
-        Json::StyledWriter writer;
-        std::string data = writer.write(staticDump);
-
-        FILE *fp = fopen("static.json", "w");
-        if (fp)
-        {
-            size_t written;
-            do
-            {
-                written = fwrite(data.c_str(), data.size(), 1, fp);
-            } while (!ferror(fp) && !written);
-            if (ferror(fp))
-            {
-                DBG_LOG("Failed to write output JSON: %s\n", strerror(errno));
-            }
-            fsync(fileno(fp));
-            fclose(fp);
-        }
-        else
-        {
-            DBG_LOG("Failed to open output JSON: %s\n", strerror(errno));
-        }
-    }
-
     delete mCollectors;
 
 #ifndef NDEBUG
-    if(mVBODataSize)
-        DBG_LOG("VBO data size : %d\n", mVBODataSize);
-    if(mTextureDataSize)
-        DBG_LOG("Uncompressed texture data size : %d\n", mTextureDataSize);
-    if(mCompressedTextureDataSize)
-        DBG_LOG("Compressed texture data size : %d\n", mCompressedTextureDataSize);
-    if(mClientSideMemoryDataSize)
-        DBG_LOG("Client-side memory data size : %d\n", mClientSideMemoryDataSize);
+    if (mVBODataSize) DBG_LOG("VBO data size : %d\n", mVBODataSize);
+    if (mTextureDataSize) DBG_LOG("Uncompressed texture data size : %d\n", mTextureDataSize);
+    if (mCompressedTextureDataSize) DBG_LOG("Compressed texture data size : %d\n", mCompressedTextureDataSize);
+    if (mClientSideMemoryDataSize) DBG_LOG("Client-side memory data size : %d\n", mClientSideMemoryDataSize);
 #endif
 }
 
 bool Retracer::OpenTraceFile(const char* filename)
 {
-    mCurCallNo = 0;
-    mCurDrawNo = 0;
-    mCurFrameNo = 0;
-    mDispatchFrameNo = 0;
-    mOutOfMemory = false;
-    mFailedToLinkShaderProgram = false;
-    mFinish = false;
-    mExIdEglSwapBuffers = 0;
-    mExIdEglSwapBuffersWithDamage = 0;
-
-    mTimerBeginTime = 0;
-    mEndFrameTime = 0;
-
-    createWorkThreadPool();
-    mFile.prepareChunks();
     if (!mFile.Open(filename))
         return false;
 
     mFileFormatVersion = mFile.getHeaderVersion();
-
     mStateLogger.open(std::string(filename) + ".retracelog");
-
     loadRetraceOptionsFromHeader();
-
     mExIdEglSwapBuffers = mFile.NameToExId("eglSwapBuffers");
     mExIdEglSwapBuffersWithDamage = mFile.NameToExId("eglSwapBuffersWithDamageKHR");
+    mFinish.store(false);
 
     initializeCallCounter();
-
-    staticDump["source"] = filename;
 
     return true;
 }
@@ -869,16 +539,15 @@ void Retracer::CloseTraceFile() {
 bool Retracer::loadRetraceOptionsByThreadId(int tid)
 {
     const Json::Value jsThread = mFile.getJSONThreadById(tid);
-    if ( jsThread.isNull() ) {
+    if (jsThread.isNull())
+    {
         DBG_LOG("No stored EGL config for this tid: %d\n", tid);
         return false;
     }
-    mOptions.mWindowWidth = jsThread["winW"].asInt();
-    mOptions.mWindowHeight = jsThread["winH"].asInt();
-
+    if (mOptions.mWindowWidth == 0) mOptions.mWindowWidth = jsThread["winW"].asInt();
+    if (mOptions.mWindowHeight == 0) mOptions.mWindowHeight = jsThread["winH"].asInt();
     mOptions.mOnscreenConfig = jsThread["EGLConfig"];
     mOptions.mOffscreenConfig = jsThread["EGLConfig"];
-
     return true;
 }
 
@@ -886,17 +555,14 @@ void Retracer::loadRetraceOptionsFromHeader()
 {
     // Load values from headers first, then any valid commandline parameters override the header defaults.
     const Json::Value jsHeader = mFile.getJSONHeader();
-    mOptions.mRetraceTid = jsHeader.get("defaultTid", -1).asInt();
-    mOptions.mForceSingleWindow = jsHeader.get("forceSingleWindow", false).asBool();
-    if (mOptions.mForceSingleWindow)
-    {
-        DBG_LOG("Enabling force single window option\n");
-    }
-    mOptions.mMultiThread = jsHeader.get("multiThread", false).asBool();
-    if (mOptions.mMultiThread)
-    {
-        DBG_LOG("Enabling multiple thread option\n");
-    }
+    if (mOptions.mRetraceTid == -1) mOptions.mRetraceTid = jsHeader.get("defaultTid", -1).asInt();
+    if (mOptions.mRetraceTid == -1) reportAndAbort("No thread ID set!\n");
+    if (jsHeader.isMember("forceSingleWindow")) mOptions.mForceSingleWindow = jsHeader.get("forceSingleWindow", false).asBool();
+    if (jsHeader.isMember("singleSurface")) mOptions.mSingleSurface = jsHeader.get("singleSurface", false).asInt();
+    if (mOptions.mForceSingleWindow && mOptions.mSingleSurface != -1) reportAndAbort("forceSingleWindow and singleSurface cannot be used together");
+    if (mOptions.mForceSingleWindow) DBG_LOG("Enabling force single window option\n");
+    if (jsHeader.isMember("multiThread")) mOptions.mMultiThread = jsHeader.get("multiThread", false).asBool();
+    if (mOptions.mMultiThread) DBG_LOG("Enabling multiple thread option\n");
     switch (jsHeader["glesVersion"].asInt())
     {
     case 1: mOptions.mApiVersion = PROFILE_ES1; break;
@@ -904,341 +570,22 @@ void Retracer::loadRetraceOptionsFromHeader()
     case 3: mOptions.mApiVersion = PROFILE_ES3; break;
     default: DBG_LOG("Error: Invalid glesVersion parameter\n"); break;
     }
-    loadRetraceOptionsByThreadId( mOptions.mRetraceTid );
+    loadRetraceOptionsByThreadId(mOptions.mRetraceTid);
     const Json::Value& linkErrorWhiteListCallNum = jsHeader["linkErrorWhiteListCallNum"];
     for(unsigned int i=0; i<linkErrorWhiteListCallNum.size(); i++)
     {
         mOptions.mLinkErrorWhiteListCallNum.push_back(linkErrorWhiteListCallNum[i].asUInt());
     }
-}
-
-// FIXME - Lots of code duplication here with TraceExecutor::overrideDefaultsWithJson()
-bool Retracer::overrideWithCmdOptions( const CmdOptions &cmdOptions )
-{
-    mOptions.mDebug = cmdOptions.debug;
-    mOptions.mStateLogging = cmdOptions.stateLogging;
-    if (cmdOptions.skipWork >= 0)
+    if (mOptions.mForceOffscreen)
     {
-        mOptions.mSkipWork = cmdOptions.skipWork;
-    }
-    mOptions.mDumpStatic = cmdOptions.dumpStatic;
-    mOptions.mCallStats = cmdOptions.callStats;
-
-    if (cmdOptions.finishBeforeSwap)
-    {
-        mOptions.mFinishBeforeSwap = true;
-    }
-
-    if (!cmdOptions.cpuMask.empty()) mOptions.mCpuMask = cmdOptions.cpuMask;
-
-    if (cmdOptions.perfStart != -1)
-    {
-        mOptions.mPerfStart = cmdOptions.perfStart;
-        mOptions.mPerfStop = cmdOptions.perfStop;
-    }
-    if (cmdOptions.perfFreq != -1)
-    {
-        mOptions.mPerfFreq = cmdOptions.perfFreq;
-    }
-    if (!cmdOptions.perfPath.empty())
-    {
-        mOptions.mPerfPath = cmdOptions.perfPath;
-    }
-    if (!cmdOptions.perfOut.empty())
-    {
-        mOptions.mPerfOut = cmdOptions.perfOut;
-    }
-
-    mOptions.mSnapshotFrameNames = cmdOptions.snapshotFrameNames;
-    mOptions.mPbufferRendering = cmdOptions.pbufferRendering;
-
-    if (cmdOptions.tid != -1 && cmdOptions.tid != mOptions.mRetraceTid)
-    {
-        if (cmdOptions.tid >= PATRACE_THREAD_LIMIT)
-        {
-            DBG_LOG("Error: thread IDs only up to %d supported (configured thread ID %d).\n",
-                    PATRACE_THREAD_LIMIT, cmdOptions.tid);
-            return false;
-        }
-
-        mOptions.mRetraceTid = cmdOptions.tid;
-        DBG_LOG("Overriding default tid with: %d\n", cmdOptions.tid);
-
-        // Since tid is different from header default, load options that depend on tid
-        if (!loadRetraceOptionsByThreadId(cmdOptions.tid))
-        {
-            DBG_LOG("Failed load header settings for thread id %d\n", cmdOptions.tid);
-        }
-
-    }
-
-    if (mOptions.mRetraceTid == -1)
-    {
-        gRetracer.reportAndAbort("No thread ID specified in header - so you must specify it manually.");
-    }
-
-    if (cmdOptions.flushWork)
-    {
-        mOptions.mFlushWork = true;
-    }
-
-    if (cmdOptions.perfmon)
-    {
-        mOptions.mPerfmon = true;
-    }
-
-    if (cmdOptions.collectors || cmdOptions.collectors_streamline)
-    {
-        gRetracer.mCollectors = new Collection(Json::Value());
-        std::vector<std::string> collectors = gRetracer.mCollectors->available();
-        std::vector<std::string> filtered;
-        gRetracer.mCollectors->setDebug(gRetracer.mOptions.mDebug);
-        for (const std::string& s : collectors)
-        {
-            if ((s == "rusage" || s == "gpufreq" || s == "procfs" || s == "cpufreq" || s == "perf") && cmdOptions.collectors)
-            {
-                filtered.push_back(s);
-            }
-            else if (s == "streamline" && cmdOptions.collectors_streamline)
-            {
-                filtered.push_back(s);
-                DBG_LOG("Streamline integration support enabled\n");
-            }
-        }
-        if (!gRetracer.mCollectors->initialize(filtered))
-        {
-            fprintf(stderr, "Failed to initialize collectors\n");
-        }
-        DBG_LOG("libcollector instrumentation enabled through cmd line.\n");
-    }
-
-    if (cmdOptions.forceOffscreen)
-    {
-        mOptions.mForceOffscreen = true;
         // When running offscreen, force onscreen EGL to most compatible mode known: 5650 00
         mOptions.mOnscreenConfig = EglConfigInfo(5, 6, 5, 0, 0, 0, 0, 0);
-        if (cmdOptions.singleFrameOffscreen)
-        {
-            // Draw offscreen using 1 big tile
-            mOptions.mOnscrSampleH *= 10;
-            mOptions.mOnscrSampleW *= 10;
-            mOptions.mOnscrSampleNumX = 1;
-            mOptions.mOnscrSampleNumY = 1;
-        }
-        mOptions.mOffscreenConfig.override(cmdOptions.eglConfig);
+        mOptions.mOffscreenConfig.override(mOptions.mOverrideConfig);
     }
     else
     {
-        // RGBADS, are overriden either by forceOffscreen or overrideEGL
-        mOptions.mOnscreenConfig.override(cmdOptions.eglConfig);
-        if (cmdOptions.singleFrameOffscreen)
-        {
-            gRetracer.reportAndAbort("This option can only be used with offscreen rendering!");
-        }
+        mOptions.mOnscreenConfig.override(mOptions.mOverrideConfig);
     }
-
-    if (cmdOptions.forceSingleWindow)
-    {
-        mOptions.mForceSingleWindow = true;
-    }
-
-    if (cmdOptions.multiThread)
-    {
-        mOptions.mMultiThread = true;
-    }
-
-    if (mFile.getHeaderVersion() >= common::HEADER_VERSION_2
-        && (cmdOptions.winW != mOptions.mWindowWidth || cmdOptions.winH != mOptions.mWindowHeight)
-        && (cmdOptions.winW > 0 || cmdOptions.winH > 0))
-    {
-        DBG_LOG("Wrong window size specified, must be same as in trace header. This option is only useful for very old trace files!");
-    }
-    else if (cmdOptions.winW > 0 && cmdOptions.winH > 0)
-    {
-        DBG_LOG("Overriding default winsize %dx%d -> %dx%d\n",
-                 mOptions.mWindowWidth, mOptions.mWindowHeight,
-                 cmdOptions.winW, cmdOptions.winH);
-        mOptions.mWindowWidth = cmdOptions.winW;
-        mOptions.mWindowHeight = cmdOptions.winH;
-    }
-    if (mOptions.mWindowWidth <= 0 || mOptions.mWindowHeight <= 0)
-    {
-        // Either invalid header or cmd option
-        DBG_LOG("Error: invalid window size (%dx%d) defined!\n", mOptions.mWindowWidth, mOptions.mWindowHeight);
-        return false;
-    }
-
-    if (cmdOptions.oresW > 0 && cmdOptions.oresH > 0)
-    {
-        mOptions.mDoOverrideResolution = true;
-        mOptions.mOverrideResW = cmdOptions.oresW;
-        mOptions.mOverrideResH = cmdOptions.oresH;
-        mOptions.mOverrideResRatioW = mOptions.mOverrideResW / (float) mOptions.mWindowWidth;
-        mOptions.mOverrideResRatioH = mOptions.mOverrideResH / (float) mOptions.mWindowHeight;
-        DBG_LOG("Override resolution enabled: %dx%d\n",
-                 mOptions.mOverrideResW, mOptions.mOverrideResH);
-        DBG_LOG("Override resolution ratio: %.2f x %.2f\n",
-                 mOptions.mOverrideResRatioW, mOptions.mOverrideResRatioH);
-    }
-
-    if (cmdOptions.preload) {
-        mOptions.mPreload = true;
-    }
-
-    if (cmdOptions.beginMeasureFrame >= cmdOptions.endMeasureFrame && cmdOptions.beginMeasureFrame >= 0)
-    {
-        gRetracer.reportAndAbort("Start frame must be lower than end frame. (End frame is never played.)");
-    }
-    else if (cmdOptions.beginMeasureFrame >= 0 && cmdOptions.endMeasureFrame >= 0)
-    {
-        mOptions.mBeginMeasureFrame = cmdOptions.beginMeasureFrame;
-        mOptions.mEndMeasureFrame = cmdOptions.endMeasureFrame;
-    }
-
-    if (cmdOptions.snapshotCallSet != 0x0) {
-        delete mOptions.mSnapshotCallSet;
-        mOptions.mSnapshotCallSet = cmdOptions.snapshotCallSet;
-    }
-
-    if(cmdOptions.strictEGLMode) {
-        mOptions.mStrictEGLMode = cmdOptions.strictEGLMode;
-    }
-
-    if(cmdOptions.strictColorMode) {
-        mOptions.mStrictColorMode = cmdOptions.strictColorMode;
-    }
-
-    if (cmdOptions.skipCallSet != 0x0) {
-        delete mOptions.mSkipCallSet;
-        mOptions.mSkipCallSet = cmdOptions.skipCallSet;
-    }
-
-    if (cmdOptions.dmaSharedMemory) {
-        mOptions.dmaSharedMemory = true;
-    }
-
-    if (cmdOptions.shaderCacheFile.size() > 0) {
-        mOptions.mShaderCacheFile = cmdOptions.shaderCacheFile;
-    }
-
-    if (cmdOptions.shaderCacheRequired) {
-        mOptions.mShaderCacheRequired = cmdOptions.shaderCacheRequired;
-    }
-
-    return true;
-}
-
-
-static void CheckError(const char *callName, unsigned int callNo)
-{
-    if (callName)
-    {
-        if (strncmp(callName, "gl", 2) == 0)
-        {
-            GLenum error = glGetError();
-            if (error != GL_NO_ERROR)
-            {
-                const char * errorStr = NULL;
-                if (error == GL_INVALID_ENUM)
-                    errorStr = "GL_INVALID_ENUM";
-                else if (error == GL_INVALID_VALUE)
-                    errorStr = "GL_INVALID_VALUE";
-                else if (error == GL_INVALID_OPERATION)
-                    errorStr = "GL_INVALID_OPERATION";
-                else if (error == GL_INVALID_FRAMEBUFFER_OPERATION)
-                    errorStr = "GL_INVALID_FRAMEBUFFER_OPERATION";
-                else if (error == GL_OUT_OF_MEMORY)
-                    errorStr = "GL_OUT_OF_MEMORY";
-                else
-                    errorStr = "Unknown GL error";
-                DBG_LOG("GL_ERROR [%d %s] %s\n", callNo, callName, errorStr);
-            }
-        }
-        else if (strncmp(callName, "egl", 3) == 0)
-        {
-            EGLenum error = eglGetError();
-            if (error != EGL_SUCCESS)
-            {
-                DBG_LOG("EGL_ERROR [%d %s] %d\n", callNo, callName, error);
-            }
-        }
-    }
-}
-
-bool Retracer::RetraceForward(unsigned int frameNum, unsigned int drawNum, bool dumpFrameBuffer)
-{
-    UnCompressedChunk *callChunk;
-
-    while (frameNum || drawNum)
-    {
-        void* fptr;
-        char* src;
-        if (!mFile.GetNextCall(fptr, mCurCall, src, callChunk))
-        {
-            wakeupAllWorkThreads();
-            waitWorkThreadPoolIdle();
-
-            GLWS::instance().Cleanup();
-
-            CloseTraceFile();
-            return false;
-        }
-
-        if (!mOptions.mMultiThread && getCurTid() != mOptions.mRetraceTid)
-        {
-            mCurCallNo++;
-            continue;
-        }
-
-        const char *callName = mFile.ExIdToName(mCurCall.funcId);
-        const bool isSwapBuffers = (mCurCall.funcId == mExIdEglSwapBuffers || mCurCall.funcId == mExIdEglSwapBuffersWithDamage);
-
-        if (fptr)
-        {
-            if (!mOptions.mMultiThread)
-            {
-                (*(RetraceFunc)fptr)(src);
-                CheckError(callName, mCurCallNo);
-            }
-            else
-            {
-                Work* work = new Work(mCurCall.tid, mDispatchFrameNo, mCurCallNo, fptr, src, callName, callChunk);
-                DispatchWork(work);
-                WorkThread* wThread = findWorkThread(mCurCall.tid);
-                wThread->waitIdle();
-            }
-            if (isSwapBuffers && mCurCall.tid==mOptions.mRetraceTid)
-            {
-                mDispatchFrameNo++;
-            }
-        }
-        else
-        {
-            DBG_LOG("    Unsupported function : callNo %d\n", mCurCallNo);
-        }
-
-        if (isSwapBuffers && mCurCall.tid==mOptions.mRetraceTid)
-        {
-            if (frameNum) frameNum--;
-        }
-
-        if ((dumpFrameBuffer && frameNum == 0 && drawNum == 0) || (drawNum == 0 && frameNum == 0))
-        {
-            if (!mOptions.mMultiThread)
-            {
-                StepShot(mCurCallNo, mDispatchFrameNo);
-            }
-            else
-            {
-                StepWork* work = new StepWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo, NULL, NULL, callName, NULL);
-                DispatchWork(work);
-            }
-        }
-
-        mCurCallNo++;
-    }
-
-    return true;
 }
 
 std::vector<Texture> Retracer::getTexturesToDump()
@@ -1379,11 +726,6 @@ void Retracer::StepShot(unsigned int callNo, unsigned int frameNo, const char *f
     }
 }
 
-void Retracer::Flush()
-{
-    _glFinish();
-}
-
 void Retracer::TakeSnapshot(unsigned int callNo, unsigned int frameNo, const char *filename)
 {
     // Only take snapshots inside the measurement range
@@ -1417,7 +759,7 @@ void Retracer::TakeSnapshot(unsigned int callNo, unsigned int frameNo, const cha
 #endif
             if (gRetracer.mOptions.mForceOffscreen) {
                 _glBindFramebuffer(GL_DRAW_FRAMEBUFFER, ON_SCREEN_FBO);
-                _glBindFramebuffer(GL_READ_FRAMEBUFFER, drawFboId);
+                gRetracer.mpOffscrMgr->BindOffscreenReadFBO();
             }
             else {
                 _glBindFramebuffer(GL_READ_FRAMEBUFFER, drawFboId);
@@ -1446,11 +788,11 @@ void Retracer::TakeSnapshot(unsigned int callNo, unsigned int frameNo, const cha
                 }
 
                 std::stringstream ss;
-                if (mOptions.mSnapshotFrameNames)
+                if (mOptions.mSnapshotFrameNames || mOptions.mLoopTimes > 0 || mOptions.mLoopSeconds > 0)
                 {
-                    ss << mOptions.mSnapshotPrefix << std::setw(4) << std::setfill('0') << frameNo << ".png";
+                    ss << mOptions.mSnapshotPrefix << std::setw(4) << std::setfill('0') << frameNo << "_l" << mLoopTimes << ".png";
                 }
-                else
+                else // use classic weird name
                 {
                     ss << mOptions.mSnapshotPrefix << std::setw(10) << std::setfill('0') << callNo << "_c" << attachmentIndex << ".png";
                 }
@@ -1832,141 +1174,35 @@ void Retracer::perfMonInit()
     delayedPerfmonInit = false;
 }
 
-bool Retracer::Retrace()
+// Only one thread runs at a time, so no need for mutexing etc. except for when we go to sleep.
+void Retracer::RetraceThread(const int threadidx, const int our_tid)
 {
-    void* fptr;
-    char* src;
-    UnCompressedChunk *callChunk;
-
-    if (!mOptions.mCpuMask.empty()) set_cpu_mask(mOptions.mCpuMask);
-    report_cpu_mask();
-
-    // open shader cache file if needed
-    OpenShaderCacheFile();
-
-    // prepare for the last glFinish
-    const char *glFinish_name = "glFinish";
-    int glFinish_id = mFile.NameToExId(glFinish_name);
-    void *glFinish_fptr = gApiInfo.NameToFptr(glFinish_name);
-    BCall glFinish_call;
-    glFinish_call.funcId = glFinish_id;
-    glFinish_call.reserved = 0;
-    char *glFinish_src = (char *)&glFinish_call;
-
-    // Only do the preloading setting at the beginning.
-    if (mDispatchFrameNo == 0 && mOptions.mPreload)
+    std::unique_lock<std::mutex> lk(mConditionMutex);
+    thread_result r;
+    r.our_tid = our_tid;
+    while (!mFinish.load(std::memory_order_consume))
     {
-        mFile.SetPreloadRange(mOptions.mBeginMeasureFrame, mOptions.mEndMeasureFrame, mOptions.mRetraceTid);
-    }
-
-    if (!mOptions.mPreload && mOptions.mBeginMeasureFrame == 0 && mCurFrameNo == 0)
-    {
-        StartMeasuring(); // special case, otherwise triggered by eglSwapBuffers()
-        if (mOptions.mPerfmon) delayedPerfmonInit = true;
-    }
-
-    for (;;mCurCallNo++)
-    {
-        if (!mFile.GetNextCall(fptr, mCurCall, src, callChunk) || mFinish)
-        {
-            wakeupAllWorkThreads();
-            waitWorkThreadPoolIdle();
-            if (mOptions.mForceOffscreen) {
-                char empty_src[1] = "";
-                const char *forceRenderMosaicToScreenName = "forceRenderMosaicToScreen";
-                DispatchWork(mCurCall.tid, -1, -1, (void*)forceRenderMosaicToScreen, empty_src, forceRenderMosaicToScreenName, 0);
-            }
-
-            glFinish_call.tid = mCurCall.tid;
-            DispatchWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo, glFinish_fptr, glFinish_src, glFinish_name, 0);
-            if (!mOutOfMemory)
-            {
-                saveResult();
-            }
-            GLWS::instance().Cleanup();
-            CloseTraceFile();
-#if ANDROID
-            if (!mOptions.mForceSingleWindow)
-            {
-                // Figure out if we want to intercept paretracer itself.
-                const char* appListPath = findFirst(applist_cfg_search_paths);
-                ifstream appListIfs(appListPath);
-                if (!appListIfs.is_open())  // no appList.cfg, user doesn't want to trace paretrace
-                {
-                    return false;
-                }
-                pid_t pid = getpid();
-                string itAppName;
-                string pname = getProcessNameByPid(getpid());
-                while (appListIfs >> itAppName)
-                {
-                    if (!strcmp(itAppName.c_str(), pname.c_str()))    // user wants to trace paretrace
-                    {
-                        kill(pid, SIGTERM);
-                        break;
-                    }
-                }
-            }
-#endif
-            return false;
-        }
-
-        if (mOptions.mPreload && mOptions.mBeginMeasureFrame==0 && mTimerBeginTime==0)
-        {
-            StartMeasuring(); // special case for preload from 0. otherwise triggered by eglSwapBuffers
-            if (mOptions.mPerfmon) delayedPerfmonInit = true;
-        }
-
-        if (!mOptions.mMultiThread && mCurCall.tid != mOptions.mRetraceTid)
-        {
-            continue;
-        }
-
-        const bool doTakeSnapshot = mOptions.mSnapshotCallSet &&
-            (mOptions.mSnapshotCallSet->contains(mCurCallNo, mFile.ExIdToName(mCurCall.funcId)));
-
-        const bool doFrameTakeSnapshot = mOptions.mSnapshotCallSet &&
-            (mOptions.mSnapshotCallSet->contains(mDispatchFrameNo, mFile.ExIdToName(mCurCall.funcId)));
-
+        // ---------------------------------------------------------------------------
+        // Handle all packet details
+        const bool doFrameTakeSnapshot = mOptions.mSnapshotCallSet && (mOptions.mSnapshotCallSet->contains(mCurFrameNo, mFile.ExIdToName(mCurCall.funcId)));
         const bool isSwapBuffers = (mCurCall.funcId == mExIdEglSwapBuffers || mCurCall.funcId == mExIdEglSwapBuffersWithDamage);
 
         if (doFrameTakeSnapshot && isSwapBuffers)
         {
-            if (!mOptions.mMultiThread)
-            {
-                // Single thread mode
-                this->TakeSnapshot(mCurCallNo-1, mDispatchFrameNo);
-            }
-            else
-            {
-                SnapshotWork* work = new SnapshotWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo - 1, NULL, NULL, "Snapshot", NULL);
-                DispatchWork(work);
-            }
+            TakeSnapshot(curCallNo - 1, mCurFrameNo);
         }
-
-        const char *funcName = mFile.ExIdToName(mCurCall.funcId);
-
-        bool doSkip = mOptions.mSkipCallSet && (mOptions.mSkipCallSet->contains(mCurCallNo, funcName));
 
         if (fptr)
         {
-            bool discarded = false;
+            bool doSkip = mOptions.mSkipCallSet && (mOptions.mSkipCallSet->contains(curCallNo, mFile.ExIdToName(mCurCall.funcId)));
             // discard work if skipwork enabled and outside measured frame range
-            if (mOptions.mSkipWork >= 0 && (mDispatchFrameNo + mOptions.mSkipWork < mOptions.mBeginMeasureFrame || mDispatchFrameNo >= mOptions.mEndMeasureFrame))
+            if (mOptions.mSkipWork >= 0 && (mCurFrameNo + mOptions.mSkipWork < mOptions.mBeginMeasureFrame || mCurFrameNo >= mOptions.mEndMeasureFrame))
             {
+                const char *funcName = mFile.ExIdToName(mCurCall.funcId);
                 if (strncmp(funcName, "eglSwapBuffers", strlen("eglSwapBuffers")) == 0 || strcmp(funcName, "glReadPixels") == 0 || strcmp(funcName, "glFlush") == 0
                     || strcmp(funcName, "glFinish") == 0 || strcmp(funcName, "glBindFramebuffer") == 0)
                 {
-                    if (!mOptions.mMultiThread)
-                    {
-                        DiscardFramebuffers();
-                    }
-                    else
-                    {
-                        DiscardFramebuffersWork* work = new DiscardFramebuffersWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo, NULL, NULL, "DiscardFramebuffers", NULL);
-                        DispatchWork(work);
-                    }
-                    discarded = true;
+                    DiscardFramebuffers();
                 }
                 else if (strcmp(funcName, "glDispatchCompute") == 0 || strcmp(funcName, "glDispatchComputeIndirect") == 0)
                 {
@@ -1974,99 +1210,236 @@ bool Retracer::Retrace()
                 }
             }
 
-            if (mOptions.mDebug > 1 || (mOptions.mDebug && (doSkip || discarded)))
-            {
-                DBG_LOG("    %s : c%d f%d%s%s\n", funcName, mCurCallNo, mDispatchFrameNo, doSkip ? " (skipped)" : "", discarded ? " (discarded)" : "");
-            }
-
+            r.total++;
             if (!doSkip)
             {
                 if (isSwapBuffers && mOptions.mFinishBeforeSwap)
                 {
-                    if (!mOptions.mMultiThread)
-                    {
-                        _glFinish();
-                    }
-                    else
-                    {
-                        FlushWork* work = new FlushWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo - 1, NULL, NULL, "Flush", NULL);
-                        DispatchWork(work);
-                    }
+                    _glFinish();
                 }
-                DispatchWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo, fptr, src, funcName, callChunk);
+                if (mOptions.mCallStats && mCurFrameNo >= mOptions.mBeginMeasureFrame && mCurFrameNo < mOptions.mEndMeasureFrame)
+                {
+                    const char *funcName = mFile.ExIdToName(mCurCall.funcId);
+                    uint64_t pre = gettime();
+                    (*(RetraceFunc)fptr)(src);
+                    uint64_t post = gettime();
+                    mCallStats[funcName].count++;
+                    mCallStats[funcName].time += post - pre;
+                }
+                else
+                {
+                    (*(RetraceFunc)fptr)(src);
+                }
+                // Error Check
+                if (mOptions.mDebug && hasCurrentContext())
+                {
+                    CheckGlError();
+                }
                 if (isSwapBuffers && mCurCall.tid == mOptions.mRetraceTid)
                 {
-                    mDispatchFrameNo++;
                     if (mOptions.mPerfmon) perfmon_frame();
                 }
+                r.swaps += (int)isSwapBuffers;
             }
-            else
-            {
-                continue;
-            }
+            else r.skipped++;
         }
         else if (mOptions.mDebug)
         {
-            DBG_LOG("    Unsupported function : %s, call no: %d\n", funcName, mCurCallNo);
+            const char *funcName = mFile.ExIdToName(mCurCall.funcId);
+            DBG_LOG("    Unsupported function : %s, call no: %d\n", funcName, curCallNo);
         }
 
         if (isSwapBuffers)
         {
-            if (mOptions.mPerfStart == (int)mDispatchFrameNo + 1) // before perf frame
+            if (mOptions.mPerfStart == (int)mCurFrameNo) // before perf frame
             {
-                if (!mOptions.mMultiThread)
-                {
-                    // Single thread mode
-                    PerfStart();
-                }
-                else
-                {
-                    PerfWork* work = new PerfWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo, NULL, NULL, "PerfStart", NULL);
-                    DispatchWork(work);
-                }
+                PerfStart();
             }
-            else if (mOptions.mPerfStop == (int)mDispatchFrameNo) // last frame
+            else if (mOptions.mPerfStop == (int)mCurFrameNo) // last frame
             {
-                if (!mOptions.mMultiThread)
-                {
-                    // Single thread mode
-                    PerfEnd();
-                }
-                else
-                {
-                    PerfWork* work = new PerfWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo, NULL, NULL, "PerfEnd", NULL);
-                    DispatchWork(work);
-                }
+                PerfEnd();
+            }
+
+            const int secs = (os::getTime() - mTimerBeginTime) / os::timeFrequency;
+            if (mCurFrameNo >= mOptions.mEndMeasureFrame && (mOptions.mLoopTimes > mLoopTimes || (mOptions.mLoopSeconds > 0 && secs < mOptions.mLoopSeconds)))
+            {
+                DBG_LOG("Executing rollback %d / %d times - %d / %d secs\n", mLoopTimes, mOptions.mLoopTimes, secs, mOptions.mLoopSeconds);
+                if (mCollectors) mCollectors->summarize();
+                mFile.rollback();
+                unsigned numOfFrames = mCurFrameNo - mOptions.mBeginMeasureFrame;
+                mCurFrameNo = mOptions.mBeginMeasureFrame;
+                curCallNo = mRollbackCallNo;
+                int64_t endTime;
+                const float duration = getDuration(mLoopBeginTime, &endTime);
+                const float fps = ((double)numOfFrames) / duration;
+                mLoopResults.push_back(fps);
+                mLoopBeginTime = os::getTime();
+                mLoopTimes++;
             }
         }
-        else if (doTakeSnapshot)
+        else if (mOptions.mSnapshotCallSet && (mOptions.mSnapshotCallSet->contains(curCallNo, mFile.ExIdToName(mCurCall.funcId))))
         {
-            if (!mOptions.mMultiThread)
-            {
-                // Single thread mode
-                this->TakeSnapshot(mCurCallNo, mDispatchFrameNo);
-            }
-            else
-            {
-                SnapshotWork* work = new SnapshotWork(mCurCall.tid, mDispatchFrameNo, mCurCallNo, NULL, NULL, "Snapshot", NULL);
-                DispatchWork(work);
-            }
+            TakeSnapshot(curCallNo, mCurFrameNo);
         }
 
         // End conditions
-        if (mDispatchFrameNo >= mOptions.mEndMeasureFrame || mOutOfMemory || mFailedToLinkShaderProgram)
+        if (mFailedToLinkShaderProgram)
         {
-            mFinish = true;
+            mFinish.store(true);
+            for (auto &cv : conditions) cv.notify_one(); // Wake up all other threads
+            break;
+        }
+
+        while (frameBudget <= 0 && drawBudget <= 0) // Step mode
+        {
+            frameBudget = 0;
+            drawBudget = 0;
+            StepShot(curCallNo, mCurFrameNo);
+            GLWS::instance().processStepEvent(); // will wait here for user input to increase budgets
+        }
+
+        // ---------------------------------------------------------------------------
+        // Get next call
+skip_call:
+        curCallNo++;
+
+        if (!mFile.GetNextCall(fptr, mCurCall, src))
+        {
+            mFinish.store(true);
+            for (auto &cv : conditions) cv.notify_one(); // Wake up all other threads
+            break;
+        }
+        // Skip call because it is on an ignored thread?
+        if (!mOptions.mMultiThread && mCurCall.tid != mOptions.mRetraceTid)
+        {
+            r.skipped++;
+            goto skip_call;
+        }
+        // Need to switch active thread?
+        if (our_tid != mCurCall.tid)
+        {
+            latest_call_tid = mCurCall.tid; // need to use an atomic member copy of this here
+            // Do we need to make this thread?
+            if (thread_remapping.count(mCurCall.tid) == 0)
+            {
+                thread_remapping[mCurCall.tid] = threads.size();
+                int newthreadidx = threads.size();
+                conditions.emplace_back();
+                results.emplace_back();
+                threads.emplace_back(&Retracer::RetraceThread, this, (int)newthreadidx, (int)mCurCall.tid);
+            }
+            else // Wake up existing thread
+            {
+                const int otheridx = thread_remapping.at(mCurCall.tid);
+                conditions.at(otheridx).notify_one();
+            }
+            r.handovers++;
+            bool success = false;
+            do {
+                success = conditions.at(threadidx).wait_for(lk, std::chrono::milliseconds(50), [&]{ return our_tid == latest_call_tid || mFinish.load(std::memory_order_consume); });
+                if (!success) r.timeouts++; else r.wakeups++;
+            } while (!success);
         }
     }
+    results[threadidx] = r;
 }
 
-void Retracer::CheckGlError() {
-    GLenum error = glGetError();
-    if (error == GL_NO_ERROR) {
-        return;
+void Retracer::Retrace()
+{
+    if (!mOptions.mCpuMask.empty()) set_cpu_mask(mOptions.mCpuMask);
+    report_cpu_mask();
+
+    // open shader cache file if needed
+    OpenShaderCacheFile();
+
+    mFile.setFrameRange(mOptions.mBeginMeasureFrame, mOptions.mEndMeasureFrame, mOptions.mRetraceTid, mOptions.mPreload, mOptions.mLoopTimes != -1);
+
+    if (mOptions.mBeginMeasureFrame == 0 && mCurFrameNo == 0)
+    {
+        StartMeasuring(); // special case, otherwise triggered by eglSwapBuffers()
+        delayedPerfmonInit = true;
     }
 
+    // Get first packet
+    if (!mFile.GetNextCall(fptr, mCurCall, src) || mFinish.load(std::memory_order_consume))
+    {
+        reportAndAbort("Empty trace file!");
+    }
+    threads.resize(1);
+    conditions.resize(1);
+    results.resize(1);
+    thread_remapping[mCurCall.tid] = 0;
+    results[0].our_tid = mCurCall.tid;
+    RetraceThread(0, mCurCall.tid); // run the first thread on this thread
+
+    for (std::thread &t : threads)
+    {
+        if (t.joinable()) t.join();
+    }
+
+    // When we get here, we're all done
+    if (mOptions.mForceOffscreen)
+    {
+        forceRenderMosaicToScreen();
+    }
+
+    if (GetGLESVersion() > 1)
+    {
+        GLWS::instance().MakeCurrent(gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getDrawable(),
+                                     gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getContext());
+        _glFinish();
+    }
+    saveResult();
+
+    if (mOptions.mDebug)
+    {
+        for (unsigned threadidx = 0; threadidx < results.size(); threadidx++)
+        {
+            thread_result& r = results.at(threadidx);
+            DBG_LOG("Thread %d (%d):\n", threadidx, r.our_tid);
+            DBG_LOG("\tTotal calls: %d\n", r.total);
+            DBG_LOG("\tSkipped calls: %d\n", r.skipped);
+            DBG_LOG("\tSwapbuffer calls: %d\n", r.swaps);
+            DBG_LOG("\tHandovers: %d\n", r.handovers);
+            DBG_LOG("\tWakeups: %d\n", r.wakeups);
+            DBG_LOG("\tTimeouts: %d\n", r.timeouts);
+        }
+    }
+
+    GLWS::instance().Cleanup();
+    CloseTraceFile();
+#if ANDROID
+    if (!mOptions.mForceSingleWindow)
+    {
+        // Figure out if we want to intercept paretracer itself.
+        const char* appListPath = findFirst(applist_cfg_search_paths);
+        ifstream appListIfs(appListPath);
+        if (!appListIfs.is_open())  // no appList.cfg, user doesn't want to trace paretrace
+        {
+            return;
+        }
+        pid_t pid = getpid();
+        std::string itAppName;
+        std::string pname = getProcessNameByPid(getpid());
+        while (appListIfs >> itAppName)
+        {
+            if (!strcmp(itAppName.c_str(), pname.c_str()))    // user wants to trace paretrace
+            {
+                kill(pid, SIGTERM);
+                break;
+            }
+        }
+    }
+#endif
+}
+
+void Retracer::CheckGlError()
+{
+    GLenum error = glGetError();
+    if (error == GL_NO_ERROR)
+    {
+        return;
+    }
     DBG_LOG("[%d] %s  ERR: %d \n", GetCurCallId(), GetCurCallName(), error);
 }
 
@@ -2088,8 +1461,9 @@ void Retracer::StartMeasuring()
     {
         mCollectors->start();
     }
+    mRollbackCallNo = curCallNo;
     DBG_LOG("================== Start timer (Frame: %u) ==================\n", mCurFrameNo);
-    mTimerBeginTime = os::getTime();
+    mTimerBeginTime = mLoopBeginTime = os::getTime();
     mEndFrameTime = mTimerBeginTime;
 }
 
@@ -2097,14 +1471,7 @@ void Retracer::OnNewFrame()
 {
     if (getCurTid() == mOptions.mRetraceTid)
     {
-        // swap (or flush for offscreen) called between OnFrameComplete() and OnNewFrame()
-        mCurFrameNo++;
-
-        // End conditions
-        if (mCurFrameNo >= mOptions.mEndMeasureFrame || mOutOfMemory || mFailedToLinkShaderProgram)
-        {
-            mFinish = true;
-        }
+        IncCurFrameId();
 
         if (mCurFrameNo == mOptions.mBeginMeasureFrame)
         {
@@ -2161,6 +1528,8 @@ void Retracer::PerfStart()
 
 void Retracer::PerfEnd()
 {
+    if(child == -1)
+        return;
     DBG_LOG("Killing instrumented process %ld\n", (long)child);
     if (kill(child, SIGINT) == -1)
     {
@@ -2191,14 +1560,7 @@ void Retracer::reportAndAbort(const char *format, ...)
     char buf[256];
     va_list ap;
     memset(buf, 0, sizeof(buf));
-    if ( mOptions.mMultiThread && (!workThreadPool[getCurTid()] || !GetCurWork(getCurTid())) )
-    {
-        sprintf(buf, "[c%u,f%u] ", 0, 0);
-    }
-    else
-    {
-        sprintf(buf, "[c%u,f%u] ", GetCurCallId(), GetCurFrameId());
-    }
+    sprintf(buf, "[c%u,f%u] ", GetCurCallId(), GetCurFrameId());
     va_start(ap, format);
     const unsigned len = strlen(buf);
     vsnprintf(buf + len, sizeof(buf) - len - 1, format, ap);
@@ -2222,11 +1584,14 @@ void Retracer::saveResult()
     Json::Value result;
 
     if(mTimerBeginTime != 0) {
-        const float fps = ((double)numOfFrames) / duration;
+        const float fps = ((double)numOfFrames * std::max(1, mLoopTimes)) / duration;
+        const float loopDuration = getDuration(mLoopBeginTime, &endTime);
+        const float loopFps = ((double)numOfFrames) / loopDuration;
         DBG_LOG("================== End timer (Frame: %u) ==================\n", mCurFrameNo);
         DBG_LOG("Duration = %f\n", duration);
         DBG_LOG("Frame cnt = %d, FPS = %f\n", numOfFrames, fps);
         result["fps"] = fps;
+        mLoopResults.push_back(loopFps);
     } else {
         DBG_LOG("Never rendered anything.\n");
         numOfFrames = 0;
@@ -2234,6 +1599,8 @@ void Retracer::saveResult()
         result["fps"] = 0;
     }
 
+    result["loopFPS"] = Json::arrayValue;
+    for (const auto fps : mLoopResults) result["loopFPS"].append(fps);
     result["time"] = duration;
     result["frames"] = numOfFrames;
     result["start_time"] = ((double)mTimerBeginTime) / os::timeFrequency;
@@ -2250,161 +1617,13 @@ void Retracer::saveResult()
     {
         reportAndAbort("Error writing result file!");
     }
+    mLoopResults.clear();
     TraceExecutor::clearResult();
 }
 
 void Retracer::initializeCallCounter()
 {
     mCallCounter["glLinkProgram"] = 0;
-}
-
-void Retracer::createWorkThreadPool()
-{
-    workThreadPoolMutex.lock();
-    workThreadPool.clear();
-    workThreadPoolMutex.unlock();
-}
-
-void Retracer::waitWorkThreadPoolIdle()
-{
-    wakeupAllWorkThreads();
-    workThreadPoolMutex.lock();
-    WorkThreadPool_t::iterator it;
-    for (it = workThreadPool.begin(); it != workThreadPool.end(); it++)
-    {
-        WorkThread* wThread = it->second;
-        workThreadPoolMutex.unlock();
-        wThread->waitIdle();
-        workThreadPoolMutex.lock();
-    }
-    workThreadPoolMutex.unlock();
-}
-
-void Retracer::destroyWorkThreadPool()
-{
-    workThreadPoolMutex.lock();
-    WorkThreadPool_t::iterator it;
-    for (it = workThreadPool.begin(); it != workThreadPool.end(); it++)
-    {
-        WorkThread* wThread = it->second;
-        workThreadPool.erase(it);
-        workThreadPoolMutex.unlock();
-        wThread->waitIdle();
-        wThread->setStatus(WorkThread::TERMINATED);
-        wThread->workQueueWakeup();
-        wThread->waitUntilExit();
-        workThreadPoolMutex.lock();
-        delete wThread;
-    }
-    workThreadPoolMutex.unlock();
-}
-
-WorkThread* Retracer::addWorkThread(unsigned tid)
-{
-    WorkThread* wThread = NULL;
-    workThreadPoolMutex.lock();
-    wThread = new WorkThread(&mFile);
-    workThreadPool[tid] = wThread;
-    wThread->start();
-    wThread->waitIdle();
-    workThreadPoolMutex.unlock();
-    return wThread;
-}
-
-WorkThread* Retracer::findWorkThread(unsigned tid)
-{
-    WorkThread* wThread = NULL;
-    workThreadPoolMutex.lock();
-    WorkThreadPool_t::iterator it = workThreadPool.find(tid);
-    if (it != workThreadPool.end())
-    {
-        wThread = it->second;
-    }
-    else
-    {
-        workThreadPoolMutex.unlock();
-        wThread = addWorkThread(tid);
-        workThreadPoolMutex.lock();
-    }
-    workThreadPoolMutex.unlock();
-
-    return wThread;
-}
-
-void Retracer::wakeupAllWorkThreads()
-{
-    WorkThreadPool_t::iterator it;
-    workThreadPoolMutex.lock();
-    for (it = workThreadPool.begin(); it != workThreadPool.end(); it++)
-    {
-        WorkThread* wThread = it->second;
-        wThread->workQueueWakeup();
-    }
-    workThreadPoolMutex.unlock();
-}
-
-void Retracer::DispatchWork(int tid, unsigned frameId, int callID, void* fptr, char* src, const char* name, common::UnCompressedChunk *chunk)
-{
-    if (!mOptions.mMultiThread)
-    {
-        if (mOptions.mCallStats && frameId >= mOptions.mBeginMeasureFrame && frameId < mOptions.mEndMeasureFrame)
-        {
-            uint64_t pre = gettime();
-            (*(RetraceFunc)fptr)(src);
-            uint64_t post = gettime();
-            mCallStats[name].count++;
-            mCallStats[name].time += post - pre;
-        }
-        else
-        {
-            (*(RetraceFunc)fptr)(src);
-        }
-
-        // Error Check
-        if (mOptions.mDebug && hasCurrentContext())
-        {
-            CheckGlError();
-        }
-    }
-    else
-    {
-        Work* work = new Work(tid, frameId, callID, fptr, src, name, chunk);
-        if (mOptions.mCallStats && frameId >= mOptions.mBeginMeasureFrame && frameId < mOptions.mEndMeasureFrame)
-        {
-             work->SetMeasureTime(true);
-        }
-        DispatchWork(work);
-    }
-}
-
-void Retracer::DispatchWork(Work* work)
-{
-    if (work == NULL)
-        return;
-
-    work->retain();
-    if (mOptions.mMultiThread)
-    {
-        WorkThread* wThread = findWorkThread(work->getThreadID());
-        if (wThread)
-        {
-            if (preThread != wThread)
-            {
-                if (preThread != NULL)
-                {
-                    preThread->waitIdle();
-                }
-                preThread = wThread;
-            }
-            wThread->workQueuePush(work);
-        }
-        else
-        {
-            DBG_LOG("Error:Can't create work thread for tid %d.\n", work->getThreadID());
-            exit(-1);
-        }
-    }
-    work->release();
 }
 
 void pre_glDraw()
@@ -2737,7 +1956,7 @@ void hardcode_glBindFramebuffer(int target, unsigned int framebuffer)
 
     if (gRetracer.mOptions.mForceOffscreen && framebuffer == ON_SCREEN_FBO)
     {
-        gRetracer.mpOffscrMgr->BindOffscreenFBO();
+        gRetracer.mpOffscrMgr->BindOffscreenFBO(target);
     }
     else
     {
@@ -2787,7 +2006,7 @@ void hardcode_glDeleteFramebuffers(int n, unsigned int* oldIds)
             const unsigned int ON_SCREEN_FBO = 0;
 #endif
             gRetracer.getCurrentContext()._current_framebuffer = ON_SCREEN_FBO;
-            gRetracer.mpOffscrMgr->BindOffscreenFBO();
+            gRetracer.mpOffscrMgr->BindOffscreenFBO(GL_FRAMEBUFFER);
         }
     }
 }

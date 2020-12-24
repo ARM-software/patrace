@@ -4,150 +4,278 @@
 
 #include "jsoncpp/include/json/writer.h"
 #include "jsoncpp/include/json/reader.h"
-#include <unistd.h>
 
-using namespace os;
-using namespace std;
+#include <unistd.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/mman.h>
 
 namespace common {
 
-unsigned int    gCompBufLen = 0;
-char*           gCompBuf = NULL;
-
-InFile::InFile():
-    InFileBase(),
-    Thread(),
-    mCurChunk(NULL),
-    mReadP(NULL),
-    mCallNo(),
-    mFrameNo(0),
-    mMaxSigId(),
-    mIsOpen(false),
-    mStatus(UNKNOWN),
-    callChunkQueue(MAX_CHUNK_QUEUE_SIZE),
-    pendChunkQueue(MAX_PRELOAD_QUEUE_SIZE),
-    freeChunkQueue(MAX_CHUNK_QUEUE_SIZE + 1),
-    mIsPreloadMode(false),
-    mBeginPreload(false),
-    mBeginPreloadFrame(0),
-    mTotalPreloadFrames(0),
-    mTraceTid(0),
-    eglSwapBuffers_id(0),
-    eglSwapBuffersWithDamage_id(0),
-    mPreloadedChunks(MAX_PRELOAD_QUEUE_SIZE)
+void InFile::rollback()
 {
-}
-
-InFile::~InFile()
-{
-    if(mIsOpen)
-        Close();
-    releaseChunkQueues();
-}
-
-void InFile::releaseChunkQueues()
-{
-    UnCompressedChunk* chunk;
-
-    do
+    if (mCheckpointOffset == -1)
     {
-        chunk = callChunkQueue.trypop();
-        releaseChunk(chunk);
-    }while(chunk);
-
-    do
-    {
-        chunk = pendChunkQueue.trypop();
-        if (chunk)
-            chunk->release();
-    }while(chunk);
-
-    do
-    {
-        chunk = freeChunkQueue.trypop();
-        if (chunk)
-            chunk->release();
-    }while(chunk);
-}
-
-void InFile::prepareChunks()
-{
-    for (int i = 0; i <= MAX_CHUNK_QUEUE_SIZE; i++)
-    {
-        UnCompressedChunk* chunk = new UnCompressedChunk();
-        chunk->retain();
-        if(!freeChunkQueue.trypush(chunk))
-            chunk->release();
+        DBG_LOG("No checkpoint set - not able to rollback!\n");
+        abort();
     }
+    mPreloadedChunks.push_front(mCurrentChunk);
+    while (mFreeChunks.size())
+    {
+        mCurrentChunk = mFreeChunks.back();
+        mFreeChunks.pop_back();
+        mPreloadedChunks.push_front(mCurrentChunk);
+    }
+    mCurrentChunk = mPreloadedChunks.front();
+    mPreloadedChunks.pop_front();
+    mPtr = mCurrentChunk->data() + mCheckpointOffset;
+    mFrameNo = mBeginFrame;
+}
+
+// Read another uncompressed memory chunk from the memory mapped file
+bool InFile::readChunk(std::vector<char> *buf)
+{
+    if (mCompressedRemaining < 4) { return false; }
+    size_t compressedLength = *(unsigned*)mCompressedSource;
+    mCompressedRemaining -= 4;
+    mCompressedSource += 4;
+    if ((int64_t)compressedLength <= mCompressedRemaining)
+    {
+        size_t uncompressedLength = 0;
+        if (!snappy::GetUncompressedLength(mCompressedSource, compressedLength, &uncompressedLength))
+        {
+            DBG_LOG("Failed to parse chunk of size %u - file is corrupt - aborting!\n", (unsigned)compressedLength);
+            abort();
+        }
+        buf->resize(uncompressedLength);
+        if (!snappy::RawUncompress(mCompressedSource, compressedLength, buf->data()))
+        {
+            DBG_LOG("Failed to decompress chunk of size %u - file is corrupt - aborting!\n", (unsigned)compressedLength);
+            abort();
+        }
+        mCompressedSource += compressedLength;
+        mCompressedRemaining -= compressedLength;
+        return true;
+    }
+    return false;
 }
 
 bool InFile::Open(const char* name, bool readHeaderAndExit)
 {
     mFileName = name;
+    mIsOpen = true;
 
-    if (!InFileBase::Open())
+    // Memory map file
+    mFd = open(mFileName.c_str(), O_RDONLY);
+    if (mFd == -1)
     {
+        DBG_LOG("Failed to open %s: %s\n", mFileName.c_str(), strerror(errno));
         return false;
     }
+    struct stat sb;
+    if (fstat(mFd, &sb) == -1)
+    {
+        DBG_LOG("Failed to stat %s: %s\n", mFileName.c_str(), strerror(errno));
+        close(mFd);
+        return false;
+    }
+    mCompressedSize = mCompressedRemaining = sb.st_size;
+    mCompressedBuffer = (char*)mmap(nullptr, sb.st_size, PROT_READ, MAP_PRIVATE, mFd, 0);
+    if (mCompressedBuffer == MAP_FAILED)
+    {
+        DBG_LOG("Failed to mmap %s: %s\n", mFileName.c_str(), strerror(errno));
+        close(mFd);
+        return false;
+    }
+    madvise(mCompressedBuffer, sb.st_size, MADV_SEQUENTIAL);
+
+    // Read Base Header that is common for all header versions
+    common::BHeader* header = (common::BHeader*)mCompressedBuffer;
+    if (header->magicNo != 0x20122012)
+    {
+        DBG_LOG("Error: %s seems to be an invalid trace file!\n", mFileName.c_str());
+        close(mFd);
+        return false;
+    }
+    mHeaderVer = static_cast<HeaderVersion>(header->version);
+    DBG_LOG("### .pat file format Version %d ###\n", header->version - HEADER_VERSION_1 + 1);
+
+    if (header->version == HEADER_VERSION_1)
+    {
+        if (!parseHeader(*(BHeaderV1*)mCompressedBuffer, mJsonHeader)) return false;
+        mCompressedSource = mCompressedBuffer + sizeof(BHeaderV1);
+    }
+    else if (header->version == HEADER_VERSION_2)
+    {
+        if (!parseHeader(*(BHeaderV2*)mCompressedBuffer, mJsonHeader)) return false;
+        mCompressedSource = mCompressedBuffer + sizeof(BHeaderV2);
+    }
+    else if (header->version == HEADER_VERSION_3 || header->version == HEADER_VERSION_4)
+    {
+        BHeaderV3 *hdr = (BHeaderV3*)mCompressedBuffer;
+        Json::Reader reader;
+        if (!reader.parse(mCompressedBuffer + hdr->jsonFileBegin, mCompressedBuffer + hdr->jsonFileEnd, mJsonHeader)
+            || !checkJsonMembers(mJsonHeader))
+        {
+            DBG_LOG("Error: %s seems to have an invalid JSON header!\n", mFileName.c_str());
+            close(mFd);
+            return false;
+        }
+        mCompressedSource = mCompressedBuffer + hdr->jsonFileEnd;
+    }
+    else
+    {
+        DBG_LOG("Unsupported file format version: %d\n", header->version - HEADER_VERSION_1 + 1);
+        close(mFd);
+        return false;
+    }
+    mCompressedRemaining -= mCompressedSource - mCompressedBuffer;
 
     // when we only wanted to use -info to see header contents, no playback
     if (readHeaderAndExit)
     {
+        close(mFd);
         return true;
     }
 
-    if (!BeginBackendRead())
+    // Read first chunk
+    mCurrentChunk = new std::vector<char>;
+    mPrevChunk = new std::vector<char>;
+    if (!readChunk(mCurrentChunk))
     {
+        DBG_LOG("Failed to read first chunk!\n");
         return false;
     }
-
-    // Get the first chunk so that we can read the sig book.
-    if (!MoveToNextChunk())
-    {
-        DBG_LOG("fail to move to next chunk, chunk has zero length?\n");
-    }
+    mPtr = mCurrentChunk->data();
+    mChunkEnd = mCurrentChunk->data() + mCurrentChunk->size();
 
     ReadSigBook();
-    mIsOpen = true;
-    mBeginPreload = false;
-    mCallNo = 0;
-    mFrameNo  = 0;
+    return true;
+}
+
+void InFile::PreloadFrames(int frames_to_read, int tid)
+{
+    int frames_read = 0;
+    std::vector<char> *newchunk = new std::vector<char>;
+    mCheckpointOffset = mPtr - mCurrentChunk->data();
+    while (readChunk(newchunk) && frames_read < frames_to_read)
+    {
+        mPreloadedChunks.push_back(newchunk);
+
+        // Count the number of frames in the chunk
+        char *ptr = newchunk->data();
+        while (ptr < newchunk->data() + newchunk->size())
+        {
+            const common::BCall& call = *(common::BCall*)ptr;
+            if (call.tid == tid && (call.funcId == eglSwapBuffers_id || call.funcId == eglSwapBuffersWithDamage_id)) frames_read++;
+            unsigned int callLen = mExIdToLen[call.funcId];
+            if (callLen == 0)
+            {
+                ptr += reinterpret_cast<common::BCall_vlen*>(ptr)->toNext;
+            } else {
+                ptr += callLen;
+            }
+       }
+
+       newchunk = new std::vector<char>;
+   }
+   delete newchunk; // we always make one in excess
+   mPreload = false;
+}
+
+bool InFile::GetNextCall(void*& fptr, common::BCall_vlen& call, char*& src)
+{
+    if (mPtr >= mChunkEnd) // read more data?
+    {
+        if (mPreloadedChunks.size() > 0)
+        {
+            if (mKeepAll)
+            {
+                mFreeChunks.push_back(mCurrentChunk);
+                mCurrentChunk = mPreloadedChunks.front();
+            }
+            else
+            {
+                delete mPrevChunk;
+                std::swap(mPrevChunk, mCurrentChunk);
+                mPrevChunk = mPreloadedChunks.front();
+            }
+            mPreloadedChunks.pop_front();
+        }
+        else
+        {
+            if (!readChunk(mPrevChunk)) return false;
+            std::swap(mPrevChunk, mCurrentChunk);
+        }
+        mPtr = mCurrentChunk->data();
+        mChunkEnd = mCurrentChunk->data() + mCurrentChunk->size();
+    }
+
+    common::BCall tmp;
+    tmp = *(common::BCall*)mPtr;
+    if (unlikely(tmp.funcId > mMaxSigId || tmp.funcId == 0))
+    {
+        DBG_LOG("funcId %d is out of range (%d max)!\n", (int)tmp.funcId, mMaxSigId);
+        ::abort();
+    }
+
+    const unsigned callLen = mExIdToLen[tmp.funcId];
+    if (callLen == 0)
+    {
+        // Call is in BCall_vlen format -- read it directly
+        call = *(common::BCall_vlen*)mPtr;
+        mDataPtr = src = mPtr + sizeof(common::BCall_vlen);
+        mPtr += call.toNext;
+    }
+    else
+    {
+        call = tmp;
+        mDataPtr = src = mPtr + sizeof(common::BCall);
+        mPtr += callLen;
+    }
+
+    fptr = mExIdToFunc[call.funcId];
+
+    // Count frames and check if we are done or need to start preloading
+    if (tmp.tid == mTraceTid && (tmp.funcId == eglSwapBuffers_id || tmp.funcId == eglSwapBuffersWithDamage_id))
+    {
+        mFrameNo++;
+        if (mFrameNo > mEndFrame) return false; // we're done!
+        if (mFrameNo >= mBeginFrame && mPreload)
+        {
+            // The below count does not include frames still remaining to be read in the current chunk, so we might possibly
+            // be reading more chunks than we need here. Still room to optimize more.
+            PreloadFrames(mEndFrame - mBeginFrame, mTraceTid);
+        }
+    }
     return true;
 }
 
 void InFile::Close()
 {
-    StopBackendRead();
-
-    mStream.close();
+    if (!mIsOpen) return;
+    munmap(mCompressedBuffer, mCompressedSize);
+    close(mFd); mFd = 0;
     mIsOpen = false;
-
-    releaseChunk(mCurChunk);
-    releaseChunkQueues();
-
-    mCurChunk = NULL;
-    mReadP = NULL;
-    mBeginPreload = false;
-
-    delete [] mExIdToName;
-    mExIdToName = NULL;
-    delete [] mExIdToLen;
-    mExIdToLen = NULL;
-    delete [] mExIdToFunc;
-    mExIdToFunc = NULL;
-
-    InFileBase::Close();
+    mPreload = false;
+    for (auto* b : mPreloadedChunks) delete b;
+    for (auto* b : mFreeChunks) delete b;
+    mPreloadedChunks.clear();
+    mFreeChunks.clear();
+    delete mCurrentChunk; mCurrentChunk = nullptr;
+    delete mPrevChunk; mPrevChunk = nullptr;
+    mExIdToName.clear();
+    delete [] mExIdToLen; mExIdToLen = nullptr;
+    delete [] mExIdToFunc; mExIdToFunc = nullptr;
 }
 
 void InFile::ReadSigBook()
 {
-    char *beg = NULL, *end = NULL;
-    GetNextBlock(beg, end);
-
-    char *src = beg;
     unsigned int toNext;
-    src = ReadFixed(src, toNext);
-    src = ReadFixed(src, mMaxSigId);
+    mPtr = ReadFixed(mPtr, toNext);
+    mPtr = ReadFixed(mPtr, mMaxSigId);
 
     if (mMaxSigId > ApiInfo::MaxSigId)
     {
@@ -159,14 +287,14 @@ void InFile::ReadSigBook()
 #endif
     }
 
-    mExIdToName = new std::string[mMaxSigId + 1];
+    mExIdToName.resize(mMaxSigId + 1);
     mExIdToName[0] = "";
-    for (unsigned short id = 1; id <= mMaxSigId; ++id)
+    for (int id = 1; id <= mMaxSigId; ++id)
     {
         unsigned int id_notused;
-        src = ReadFixed<unsigned int>(src, id_notused);
+        mPtr = ReadFixed<unsigned int>(mPtr, id_notused);
         char *str;
-        src = ReadString(src, str);
+        mPtr = ReadString(mPtr, str);
         mExIdToName[id] = str ? str : "";
     }
 
@@ -175,284 +303,12 @@ void InFile::ReadSigBook()
 
     mExIdToLen[0] = 0;
     mExIdToFunc[0] = 0;
-    for (unsigned short id = 1; id <= mMaxSigId; ++id)
+    for (int id = 1; id <= mMaxSigId; ++id)
     {
-        const char* name = mExIdToName[id].c_str();
+        const char* name = mExIdToName.at(id).c_str();
         mExIdToLen[id] = gApiInfo.NameToLen(name);
         mExIdToFunc[id] = gApiInfo.NameToFptr(name);
     }
-}
-
-void InFile::SetPreloadRange(unsigned startFrame, unsigned endFrame, int tid)
-{
-    mIsPreloadMode      = true;
-    mBeginPreloadFrame  = startFrame;
-    mTotalPreloadFrames = endFrame - startFrame;
-    mTraceTid           = tid;
-    eglSwapBuffers_id   = NameToExId("eglSwapBuffers");
-    eglSwapBuffersWithDamage_id = NameToExId("eglSwapBuffersWithDamageKHR");
-}
-
-int InFile::PreloadFrames(unsigned int frameCnt, int tid)
-{
-    bool reachEnd = false;
-    StopBackendRead();
-
-    unsigned long memBefore = MemoryInfo::getFreeMemoryRaw();
-    // pre-load data
-    int preloadedFrameCnt = 0;
-    char *readP = mReadP;
-    UnCompressedChunk *curChunk = mCurChunk;
-    DBG_LOG("Started preloading content\n");
-    while (static_cast<unsigned int>(preloadedFrameCnt) < frameCnt)
-    {
-
-        if (readP >= curChunk->mData+curChunk->mLen)
-        {
-            // Check available memory before loading another chunk
-            // Checking for zero might seem stupid, but keep in mind that there is a margin in MemoryInfo for some devices.
-            unsigned long long freeMemory = MemoryInfo::getFreeMemory();
-            if (freeMemory == 0)
-            {
-                DBG_LOG("Out of memory in preload, aborting! Frame %d, available mem: %lld\n", preloadedFrameCnt, freeMemory);
-                return -1;
-            }
-
-            // Either move to the next chunk that is already loaded by the backend thread
-            curChunk = callChunkQueue.trypop();
-            if (curChunk == NULL)
-            // Or pre-load another chunk from the file stream
-            {
-                curChunk = freeChunkQueue.trypop();
-                if (curChunk == NULL)
-                {
-                    curChunk = new UnCompressedChunk();
-                    curChunk->retain();
-                }
-                curChunk->setStatus(UnCompressedChunk::READING);
-                curChunk->LoadFromFileStream(mStream);
-            }
-            else
-            {
-                curChunk->release();
-            }
-            readP = curChunk->mData;
-            curChunk->retain();
-            curChunk->setStatus(UnCompressedChunk::PRECALLING);
-            if (curChunk->mLen == 0)
-            {
-                reachEnd = true;
-            }
-            mPreloadedChunks.push(curChunk);
-
-            if (reachEnd)
-                break;
-        }
-
-        common::BCall& call = *(common::BCall*)readP;
-        if (call.tid == tid && (call.funcId == eglSwapBuffers_id || call.funcId == eglSwapBuffersWithDamage_id))
-        {
-            preloadedFrameCnt++;
-        }
-
-        unsigned int callLen = mExIdToLen[call.funcId];
-        if (callLen == 0) {
-            readP += reinterpret_cast<common::BCall_vlen*>(readP)->toNext;
-        } else {
-            readP += callLen;
-        }
-    }
-
-    DBG_LOG("Preloading finished, loaded %d frames, consumed %ld MiB\n", preloadedFrameCnt, (memBefore - MemoryInfo::getFreeMemoryRaw())/(1024*1024));
-    return preloadedFrameCnt;
-}
-
-bool InFile::BeginBackendRead()
-{
-    if (!start()) {
-        DBG_LOG("Unable to create the thread for reading trace file.\n");
-        return false;
-    }
-    return true;
-}
-
-void InFile::StopBackendRead()
-{
-    // request the backend reading thread to stop now
-    setStatus(TERMINATE);
-
-    freeChunkQueue.terminate();
-
-    freeChunkQueue.wakeup();
-    callChunkQueue.wakeup();
-
-    // wait until the backend reading thread stopped
-    waitUntilExit();
-}
-
-void InFile::run()
-{
-    UnCompressedChunk* newChunk = NULL;
-    setStatus(IDLE);
-
-    while (getStatus() != TERMINATE)
-    {
-        setStatus(IDLE);
-        callChunkQueue.waitEmptyPos();
-        while (!callChunkQueue.isFull() && getStatus() != TERMINATE)
-        {
-            setStatus(READING);
-            newChunk = freeChunkQueue.reserve_pop();
-            if (newChunk == NULL) break;
-            newChunk->setStatus(UnCompressedChunk::READING);
-            newChunk->LoadFromFileStream(mStream);
-            newChunk->retain();
-            newChunk->setStatus(UnCompressedChunk::PRECALLING);
-
-            if (newChunk->mLen == 0)
-            {
-                DBG_LOG("Reach the end of the trace file, finishing this back thread!\n");
-                setStatus(TERMINATE);
-            }
-
-            callChunkQueue.push(newChunk);
-        }
-    }
-
-    setStatus(END);
-}
-
-bool InFile::GetNextCall(void*& fptr, common::BCall_vlen& call, char*& src)
-{
-    if (unlikely(!mReadP || !mCurChunk))
-        return false; // this should never happen
-
-    if (mReadP >= mCurChunk->mData + mCurChunk->mLen)
-        if (!MoveToNextChunk())
-            return false;
-
-    common::BCall tmpCall;
-    tmpCall = *(common::BCall*)mReadP;
-
-    if (unlikely(tmpCall.funcId > mMaxSigId))
-    {
-        DBG_LOG("funcId %d is out of range (%d max)!\n", (int)tmpCall.funcId, (int)mMaxSigId);
-        return false;
-    }
-
-    unsigned int callLen = mExIdToLen[tmpCall.funcId];
-
-    if (callLen == 0)
-    {
-        // Call is in BCall_vlen format -- read it directly
-        call = *(common::BCall_vlen*) mReadP;
-        mDataPtr = src = mReadP + sizeof(common::BCall_vlen);
-        mReadP += call.toNext;
-    }
-    else
-    {
-        call = tmpCall;
-        mDataPtr = src = mReadP + sizeof(common::BCall);
-        mReadP += callLen;
-    }
-
-    mFuncPtr = fptr = mExIdToFunc[call.funcId];
-
-    if (mIsPreloadMode)
-    {
-        //DBG_LOG("tmpCall.tid(%d), tmpCall.funcId(%d)\n", (int)tmpCall.tid, (int)tmpCall.funcId);
-        if (tmpCall.tid == mTraceTid && (tmpCall.funcId == eglSwapBuffers_id || tmpCall.funcId == eglSwapBuffersWithDamage_id))
-        {
-            mFrameNo++;
-        }
-        //DBG_LOG("mFrameNo(%d)\n", (int)mFrameNo);
-        if (mFrameNo >= mBeginPreloadFrame && !mBeginPreload)
-        {
-            //DBG_LOG("mBeginPreloadFrame(%d), mTotalPreloadFrames(%d), mTraceTid(%d)\n", (int)mBeginPreloadFrame, (int)mTotalPreloadFrames, mTraceTid);
-            mBeginPreload = true;
-            PreloadFrames(mTotalPreloadFrames, mTraceTid);
-        }
-    }
-    return true;
-}
-
-bool InFile::GetNextCall(void*& fptr, common::BCall_vlen& call, char*& src, UnCompressedChunk*& curChunk)
-{
-    bool ret = GetNextCall(fptr, call, src);
-    curChunk = mCurChunk;
-    return ret;
-}
-
-bool InFile::MoveToNextChunk()
-{
-    if (mCurChunk)
-    {
-        mCurChunk->setStatus(UnCompressedChunk::SWITCHING);
-        releaseChunk(mCurChunk);
-    }
-    mCurChunk = NULL;
-
-    if (mIsPreloadMode && mBeginPreload)
-    {
-        mCurChunk = mPreloadedChunks.trypop();
-        if (mCurChunk == NULL)
-        {
-            return false;
-        }
-    }
-    else
-    {
-        mCurChunk = callChunkQueue.pop();
-    }
-
-    if (mCurChunk->mLen == 0)
-    {
-        mCurChunk->setStatus(UnCompressedChunk::SWITCHING);
-        releaseChunk(mCurChunk);
-        mCurChunk = NULL;
-        return false;
-    }
-
-    mCurChunk->setStatus(UnCompressedChunk::CALLING);
-    mReadP = mCurChunk->mData;
-    return true;
-}
-
-void InFile::releaseChunk(UnCompressedChunk* chunk)
-{
-    if (!chunk) return;
-    if (chunk->getRefCount() == 1)
-    {
-        chunk->release();
-        return;
-    }
-
-    chunk->release();
-
-    _access();
-    if (chunk->getRefCount() > 1)
-    {
-        if (chunk->getStatus() == UnCompressedChunk::SWITCHING)
-        {
-            chunk->setStatus(UnCompressedChunk::PENDING);
-            pendChunkQueue.push(chunk);
-        }
-    }
-    else if (chunk->getRefCount() == 1)
-    {
-        if (chunk->getStatus() == UnCompressedChunk::PENDING)
-        {
-            pendChunkQueue.erase(chunk);
-        }
-        chunk->mLen = 0;
-        chunk->setStatus(UnCompressedChunk::FREE);
-        if(!freeChunkQueue.trypush(chunk))
-        {
-            chunk->release();
-        }
-    }
-
-    _exit();
 }
 
 } // namespace

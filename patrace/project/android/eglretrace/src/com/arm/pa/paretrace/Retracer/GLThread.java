@@ -230,6 +230,8 @@ public class GLThread extends Thread {
                 }
 
                 js.put("preload", parentIntent.getBooleanExtra("preload", false));
+                js.put("singlesurface", parentIntent.getIntExtra("singlesurface", -1));
+                js.put("noscreen", parentIntent.getBooleanExtra("noscreen", false));
                 js.put("offscreen", parentIntent.getBooleanExtra("forceOffscreen", false));
                 js.put("offscreenSingleTile", parentIntent.getBooleanExtra("offscreenSingleTile", false)); // equal to "-singleframe"
                 js.put("measurePerFrame", parentIntent.getBooleanExtra("measurePerFrame", false));
@@ -281,7 +283,7 @@ public class GLThread extends Thread {
 
         if (resultFile == null) {
             Log.e(TAG, "result file is null.");
-            resultFile = "/data/apitrace/result_file.txt";
+            resultFile = "/sdcard/results.json";
         }
 
         if (!NativeAPI.initFromJson(json_data, trace_file_path, resultFile)) {
@@ -302,22 +304,13 @@ public class GLThread extends Thread {
         NativeAPI.init(false);
         Log.i(TAG, "EGL initialisation finished.");
 
-        while (true) {
-            synchronized(this) {
-                if (mShouldExit) {
-                    Log.i(TAG, "Stopping...");
-                    NativeAPI.setSurface(null, 0);
-                    NativeAPI.stop();
-                    break;
-                }
-            }
-            try {
-                if (NativeAPI.step() == false)
-                    break;
-            }
-            catch (Exception e) {}
+        try {
+            NativeAPI.step();
         }
+        catch (Exception e) {}
 
+        NativeAPI.setSurface(null, 0);
+        NativeAPI.stop();
         Log.i(TAG, "Restore the orientation mode: " + oldScreenOrientation);
         mRetraceActivity.setRequestedOrientation(oldScreenOrientation);
     }

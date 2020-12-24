@@ -585,10 +585,12 @@ class Tracer:
             print '%s    const char *str = reinterpret_cast<const char*>(_result);' % indent
             print '%s    if (name == GL_EXTENSIONS && _result && tracerParams.ErrorOutOnBinaryShaders && (strcmp(str, "GL_ARM_mali_shader_binary") == 0 || strcmp(str, "GL_ARM_mali_program_binary") == 0 || strcmp(str, "GL_OES_get_program_binary") == 0))' % indent
             print '%s    {' % indent
+            print '%s        gTraceOut->callMutex.lock();' % indent
             print '%s        static std::string s;' % indent
             print '%s        s = str;' % indent
             print "%s        std::replace(s.begin(), s.end(), '_', 'X'); // make it not match anything anymore" % indent
             print '%s        _result = reinterpret_cast<const GLubyte*>(s.c_str());' % indent
+            print '%s        gTraceOut->callMutex.unlock();' % indent
             print '%s    }' % indent
             print '%s}' % indent
             return
@@ -610,12 +612,12 @@ class Tracer:
             print '%s++gTraceThread.at(tid).mCallDepth;' % indent
             print '%s%s%s(%s);' % (indent, result, dispatch, params)
             print '%s_glGetBufferParameteriv(target, GL_BUFFER_SIZE, &length);' % indent
-            print '%s_glUnmapBufferOES(target);' % indent
+            print '%s_glUnmapBuffer(target);' % indent
             print '%s// Overwrite the glMapBufferOES with glMapBufferRange for reading the buffer contents' %indent
             print '%s_result = _glMapBufferRange(target, 0, length, (GL_MAP_READ_BIT | GL_MAP_WRITE_BIT));' %indent
             print '%sif (!_result)' %indent
             print '%s{' %indent
-            print '%s    DBG_LOG("the glMapBufferRange() is not supported, fall back to glMapBufferOES()\\n");' %indent
+            print '%s    DBG_LOG("the glMapBufferRange() is not supported, fall back to %s()\\n");' % (indent, func.name)
             print '%s    %s%s(%s);' % (indent, result, dispatch, params)
             print '%s}' %indent
             print '%s--gTraceThread.at(tid).mCallDepth;' % indent
@@ -679,16 +681,22 @@ class Tracer:
             print '%s}' % indent
             print '%sif (name == GL_EXTENSIONS && tracerParams.ErrorOutOnBinaryShaders) // remove binary shader support by default' % indent
             print '%s{' % indent
+            print '%s    gTraceOut->callMutex.lock();' % indent
             print '%s    vector<string> target;' % indent
             print '%s    target.push_back("GL_ARM_mali_shader_binary");' % indent
             print '%s    target.push_back("GL_ARM_mali_program_binary");' % indent
             print '%s    target.push_back("GL_OES_get_program_binary");' % indent
-            print '%s    _result = reinterpret_cast<const GLubyte*>(removeString(_result, target).c_str());' % indent
+            print '%s    tracerParams._tmp_extensions = removeString(_result, target);' % indent
+            print '%s    _result = reinterpret_cast<const GLubyte*>(tracerParams._tmp_extensions.c_str());' % indent
+            print '%s    gTraceOut->callMutex.unlock();' % indent
             print '%s}' % indent
             print '%sif (name == GL_EXTENSIONS && tracerParams.DisableBufferStorage) { // remove EXT_buffer_storage support' % indent
+            print '%s    gTraceOut->callMutex.lock();' % indent
             print '%s    vector<string> target;' % indent
             print '%s    target.push_back("GL_EXT_buffer_storage");' % indent
-            print '%s    _result = reinterpret_cast<const GLubyte*>(removeString(_result, target).c_str());' % indent
+            print '%s    tracerParams._tmp_extensions = removeString(_result, target);' % indent
+            print '%s    _result = reinterpret_cast<const GLubyte*>(tracerParams._tmp_extensions.c_str());' % indent
+            print '%s    gTraceOut->callMutex.unlock();' % indent
             print '%s}' % indent
             print '%sif (name == GL_RENDERER && tracerParams.RendererName != "") {      // modify renderer\'s name' % indent
             print '%s    _result = reinterpret_cast<const GLubyte*>(tracerParams.RendererName.c_str());' % indent
@@ -928,7 +936,7 @@ class Tracer:
             print '    GetCurTraceContext(tid)->isFullMapping = false;'
         if func.name in stdapi.draw_function_names:
             print '    after_glDraw();'
-        if func.name == 'glUnmapBufferOES':
+        if func.name == ['glUnmapBufferOES', 'glUnmapBuffer']:
             print '    after_glUnmapBuffer(target);'
 
         params = ', '.join([str(arg.name) for arg in func.args])

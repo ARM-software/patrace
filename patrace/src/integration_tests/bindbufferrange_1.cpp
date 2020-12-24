@@ -18,9 +18,8 @@ const int piece_size = sizeof(GLfloat) * 4 * 1024; // 4 = since vec4
 const int total_size = sizeof(GLfloat) * 4 * 1024 * 3; // 3 = canary space before and after
 static GLuint update_buf_cs, cs, result_buffer;
 
-static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
+static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 {
-	setup();
 	update_buf_cs = glCreateProgram();
 	cs = glCreateShader(GL_COMPUTE_SHADER);
 	glShaderSource(cs, 1, update_buf_cs_source, NULL);
@@ -38,7 +37,7 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
 }
 
 // first frame render something, second frame verify it
-static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
+static void callback_draw(PADEMO *handle, void *user_data)
 {
 	glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 0, result_buffer, piece_size, piece_size);
 	glUseProgram(update_buf_cs);
@@ -53,15 +52,15 @@ static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
 	GLfloat *ptr = (GLfloat *)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, total_size, GL_MAP_READ_BIT);
 	for (int i = 0; i < size * 4; i++) // *4 since vec4
 	{
-		assert(ptr[i] == 0.0f);
+		if (!is_null_run()) assert(ptr[i] == 0.0f);
 	}
 	for (int i = size * 4; i < size * 4 * 2; i++)
 	{
-		assert(ptr[i] == 1.0f);
+		if (!is_null_run()) assert(ptr[i] == 1.0f);
 	}
 	for (int i = size * 4 * 2; i < size * 4 * 3; i++)
 	{
-		assert(ptr[i] == 0.0f);
+		if (!is_null_run()) assert(ptr[i] == 0.0f);
 	}
 	(void)ptr; // silence compiler warnings if asserts disabled
 	glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
@@ -71,16 +70,14 @@ static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
 	glAssertBuffer_ARM(GL_SHADER_STORAGE_BUFFER, 0, total_size, "0123456789abcdef");
 }
 
-static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
+static void test_cleanup(PADEMO *handle, void *user_data)
 {
 	glDeleteShader(cs);
 	glDeleteProgram(update_buf_cs);
 	glDeleteBuffers(1, &result_buffer);
 }
 
-#include "paframework_android_glue.h"
-
-int PAFW_Entry_Point(PAFW_HANDLE pafw_handle)
+int main()
 {
-	return init("bindbufferrange_1", pafw_handle, callback_draw, setupGraphics, test_cleanup);
+	return init("bindbufferrange_1", callback_draw, setupGraphics, test_cleanup);
 }

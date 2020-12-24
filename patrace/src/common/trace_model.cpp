@@ -613,8 +613,12 @@ std::string ValueTM::ToC(const CallTM *call, bool asSourceCode)
             if (pname != GL_TEXTURE_MAX_LOD && pname != GL_TEXTURE_MIN_LOD && pname != GL_TEXTURE_BASE_LEVEL
                 && pname != GL_TEXTURE_MAX_LEVEL)
             {
-                sstream << EnumString(mInt, funcName);
-                return sstream.str();
+                const char *str = EnumString(mInt, funcName);
+                if (str)
+                {
+                    sstream << str;
+                    return sstream.str();
+                }
             }
         }
         sstream<<mInt;
@@ -1015,7 +1019,7 @@ ValueTM * CreateBufferReferenceOpaqueValue(unsigned int offset)
     return value;
 }
 
-CallTM::CallTM(InFileBase &infile, unsigned callNo, const BCall_vlen &call)
+CallTM::CallTM(InFileRA &infile, unsigned callNo, const BCall_vlen &call)
  : mCallNo(callNo), mTid(call.tid), mCallId(call.funcId), mBkColor(0xffffffff), mTxtColor(0x000000ff)
 {
     const std::string name = infile.ExIdToName(mCallId);
@@ -1027,11 +1031,23 @@ CallTM::CallTM(InFileBase &infile, unsigned callNo, const BCall_vlen &call)
     (*(ParseFunc)fptr)(src, *this, infile);
 }
 
+CallTM::CallTM(InFile &infile, unsigned callNo, const BCall_vlen &call)
+ : mCallNo(callNo), mTid(call.tid), mCallId(call.funcId), mBkColor(0xffffffff), mTxtColor(0x000000ff)
+{
+    const std::string name = infile.ExIdToName(mCallId);
+    const void *fptr = parse_callbacks.at(name);
+    mRet.mName = "ret";
+    mCallErrNo = static_cast<CALL_ERROR_NO>(call.errNo);
+    mReadPos = 0;
+    char *src = infile.dataPointer();
+    (*(ParseFunc)fptr)(src, *this, infile);
+}
+
 bool CallTM::Load(InFileRA *infile)
 {
-    void*           fptr;
-    common::BCall   curCall;
-    char*           src;
+    void *fptr = nullptr;
+    common::BCall_vlen curCall;
+    char *src = nullptr;
 
     mReadPos = infile->GetReadPos();
     if (!infile->GetNextCall(fptr, curCall, src)) {
@@ -1042,9 +1058,14 @@ bool CallTM::Load(InFileRA *infile)
     mCallErrNo = static_cast<CALL_ERROR_NO>(curCall.errNo);
 
     if (fptr)
+    {
         (*(ParseFunc)fptr)(src, *this, *infile);
+    }
     else
+    {
         mCallName = infile->ExIdToName(curCall.funcId);
+        mCallId = curCall.funcId;
+    }
 
     this->Stylize();
 
@@ -1396,7 +1417,8 @@ bool TraceFileTM::Open(const char* name, bool readHeaderAndExit, const std::stri
 
     gApiInfo.RegisterEntries(parse_callbacks);
 
-    if (!mpInFileRA->Open(name, readHeaderAndExit, ra_target))
+    mpInFileRA->setTarget(ra_target);
+    if (!mpInFileRA->Open(name, readHeaderAndExit))
         return false;
 
     Clear();
@@ -1407,10 +1429,10 @@ bool TraceFileTM::Open(const char* name, bool readHeaderAndExit, const std::stri
     unsigned short eglSwapBuffers_id = mpInFileRA->NameToExId("eglSwapBuffers");
     unsigned short eglSwapBuffersWithDamage_id = mpInFileRA->NameToExId("eglSwapBuffersWithDamageKHR");
 
-    void*               fptr = (void*)0xdeadbeef;
-    common::BCall       curCall;
-    char*               src = (char*)0x0;
-    unsigned int        callNo = 0;
+    void *fptr = nullptr;
+    common::BCall_vlen curCall;
+    char * src = nullptr;
+    unsigned callNo = 0;
 
     FrameTM*            newFrame = new FrameTM;
     newFrame->mReadPos = mpInFileRA->GetReadPos();

@@ -935,7 +935,7 @@ pid_t FerretCollector::poll_for_named_process( std::string const& name )
                             /* We found it.
                              */
                             found = (pid_t) atoi( dp->d_name );
-                            DBG_LOG( "ferret: found '%s' (pid=%d)\n", name.c_str(), found )
+                            DBG_LOG( "ferret: found '%s' (pid=%d)\n", name.c_str(), found );
                             break;
                         }
                     }

@@ -19,10 +19,9 @@ const char *update_buf_cs_source[] =
 const int size = 1024;
 static GLuint update_buf_cs, result_buffer, ppipeline;
 
-static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
+static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 {
 	glUseProgram(0); // work around bug in paframework
-	setup();
 	update_buf_cs = glCreateShaderProgramv(GL_COMPUTE_SHADER, 1, update_buf_cs_source);
 	glGenBuffers(1, &result_buffer);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, result_buffer);
@@ -87,7 +86,7 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
 }
 
 // first frame render something, second frame verify it
-static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
+static void callback_draw(PADEMO *handle, void *user_data)
 {
 	// compute
 	GLfloat value = 0.0f;
@@ -110,7 +109,7 @@ static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
 	GLfloat *ptr = (GLfloat *)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GLfloat) * size * 4, GL_MAP_READ_BIT);
 	for (int i = 0; i < size * 4; i++)
 	{
-		assert(ptr[i] == 1.5f);
+		if (!is_null_run()) assert(ptr[i] == 1.5f);
 	}
 	glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
@@ -118,16 +117,14 @@ static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
 	glAssertBuffer_ARM(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GLfloat) * size * 4, "0123456789abcdef");
 }
 
-static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
+static void test_cleanup(PADEMO *handle, void *user_data)
 {
 	glDeleteProgramPipelines(1, &ppipeline);
 	glDeleteProgram(update_buf_cs);
 	glDeleteBuffers(1, &result_buffer);
 }
 
-#include "paframework_android_glue.h"
-
-int PAFW_Entry_Point(PAFW_HANDLE pafw_handle)
+int main()
 {
-	return init("programs_1", pafw_handle, callback_draw, setupGraphics, test_cleanup);
+	return init("programs_1", callback_draw, setupGraphics, test_cleanup);
 }

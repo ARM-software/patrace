@@ -562,21 +562,20 @@ static inline GLuint _glDrawRangeElementsBaseVertex_count(GLuint start, GLuint e
     return end + basevertex + 1;
 }
 
-#define _glDrawElementsBaseVertexOES_count(mode, count, type, indices, basevertex) _glDrawElementsBaseVertex_count(count, type, indices, basevertex)
-#define _glDrawElementsBaseVertexEXT_count(mode, count, type, indices, basevertex) _glDrawElementsBaseVertex_count(count, type, indices, basevertex)
-#define _glDrawRangeElementsBaseVertex_count(start, end, count, type, indices, basevertex) _glDrawRangeElements_count(start, end, count, type, indices)
-#define _glDrawRangeElementsBaseVertexEXT_count(start, end, count, type, indices, basevertex) _glDrawRangeElements_count(start, end, count, type, indices)
-#define _glDrawRangeElementsBaseVertexOES_count(start, end, count, type, indices, basevertex) _glDrawRangeElements_count(start, end, count, type, indices)
+#define _glDrawRangeElementsBaseVertexOES_count(start, end, count, type, indices, basevertex) _glDrawRangeElementsBaseVertex_count(start, end, count, type, indices, basevertex)
+#define _glDrawRangeElementsBaseVertexEXT_count(start, end, count, type, indices, basevertex) _glDrawRangeElementsBaseVertex_count(start, end, count, type, indices, basevertex)
+#define _glDrawElementsBaseVertexOES_count(count, type, indices, basevertex) _glDrawElementsBaseVertex_count(count, type, indices, basevertex)
+#define _glDrawElementsBaseVertexEXT_count(count, type, indices, basevertex) _glDrawElementsBaseVertex_count(count, type, indices, basevertex)
 #define _glDrawElementsInstancedBaseVertex_count(count, type, indices, primcount, basevertex) _glDrawElementsBaseVertex_count(count, type, indices, basevertex)
 #define _glDrawElementsInstancedBaseVertexOES_count(count, type, indices, primcount, basevertex) _glDrawElementsBaseVertex_count(count, type, indices, basevertex)
 #define _glDrawElementsInstancedBaseVertexEXT_count(count, type, indices, primcount, basevertex) _glDrawElementsBaseVertex_count(count, type, indices, basevertex)
 #define _glDrawArraysInstanced_count(first, count, primcount) _glDrawArrays_count(first, count)
 #define _glDrawElements_count(count, type, indices) _glDrawElementsBaseVertex_count(count, type, indices, 0);
-#define _glDrawRangeElements_count(start, end, count, type, indices) _glDrawElements_count(count, type, indices)
+#define _glDrawRangeElements_count(start, end, count, type, indices) _glDrawRangeElementsBaseVertex_count(start, end, count, type, indices, 0)
 #define _glDrawElementsInstanced_count(count, type, indices, primcount) _glDrawElements_count(count, type, indices)
-#define _glDrawArraysInstancedBaseInstanceEXT(mode, first, count, instancecount, baseinstance) _glDrawArrays_count(first, count)
-#define _glDrawElementsInstancedBaseInstanceEXT(mode, count, type, indices, instancecount, baseinstance) _glDrawElementsBaseVertex_count(count, type, indices, 0)
-#define _glDrawElementsInstancedBaseVertexBaseInstanceEXT(mode, count, type, indices, instancecount, basevertex, baseinstance) _glDrawElementsBaseVertex_count(count, type, indices, basevertex)
+#define _glDrawArraysInstancedBaseInstanceEXT_count(first, count, instancecount, baseinstance) _glDrawArrays_count(first, count)
+#define _glDrawElementsInstancedBaseInstanceEXT_count(count, type, indices, instancecount, baseinstance) _glDrawElementsBaseVertex_count(count, type, indices, 0)
+#define _glDrawElementsInstancedBaseVertexBaseInstanceEXT_count(count, type, indices, instancecount, basevertex, baseinstance) _glDrawElementsBaseVertex_count(count, type, indices, basevertex)
 
 struct image_info
 {

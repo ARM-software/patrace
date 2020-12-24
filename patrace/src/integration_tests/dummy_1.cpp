@@ -41,10 +41,8 @@ static int width = 1024;
 static int height = 600;
 static GLuint draw_program, vpos_obj, vcol_obj, vao, vs, fs;
 
-static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
+static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 {
-	setup();
-
 	width = w;
 	height = h;
 
@@ -90,7 +88,7 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
 }
 
 // first frame render something, second frame verify it
-static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
+static void callback_draw(PADEMO *handle, void *user_data)
 {
 	glUseProgram(draw_program);
 	glDrawArraysInstanced(GL_TRIANGLES, 0, 3, 1);
@@ -100,7 +98,7 @@ static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
 	assert_fb(width, height);
 }
 
-static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
+static void test_cleanup(PADEMO *handle, void *user_data)
 {
 	glDeleteShader(vs);
 	glDeleteShader(fs);
@@ -110,9 +108,7 @@ static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
 	glDeleteBuffers(1, &vpos_obj);
 }
 
-#include "paframework_android_glue.h"
-
-int PAFW_Entry_Point(PAFW_HANDLE pafw_handle)
+int main()
 {
-	return init("dummy_1", pafw_handle, callback_draw, setupGraphics, test_cleanup);
+	return init("dummy_1", callback_draw, setupGraphics, test_cleanup);
 }

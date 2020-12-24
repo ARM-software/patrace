@@ -621,6 +621,7 @@ GLSLShader GLSLParser::preprocessor(std::string shader, int shaderType)
                 std::string newlineno = scan_token(line).str;
                 long lineno2 = strtol(newlineno.c_str(), nullptr, 10);
                 assert(lineno2 != INT_MAX && lineno2 != INT_MIN); // over-/underflow
+                (void)lineno2; // make compiler happy
                 if (mDebug) ret.code += "//## gobbled up (ignored) line " + newlineno;
             }
             else if (directive == "pragma")
@@ -981,6 +982,10 @@ void GLSLParser::self_test()
     shader = preprocessor(ppin10, GL_FRAGMENT_SHADER);
     (void)parse(shader); // just checking the asserts
 
+    std::string gnshin = "#version 310 es\nshared struct { uint value[4]; } TGSM0[100];\n";
+    GLSLShader gshader = preprocessor(gnshin, GL_COMPUTE_SHADER);
+    (void)parse(gshader); // just checking the asserts
+
     mDebug = was_debug;
 }
 
@@ -1234,10 +1239,14 @@ GLSLRepresentation GLSLParser::parse(const GLSLShader& shader)
             {
                 Token type_name = scan_token(feed); // either name or {
                 in_struct = true;
-                ASSERT(type_name.str != "{", feed.c_str(), "Anonymous structs are forbidden");
                 if (type_name.str != "{") // named struct
                 {
                     struct_name = type_name.str;
+                }
+                else // anonymous struct
+                {
+                    nesting.push_back(var);
+                    var = GLSLRepresentation::Variable();
                 }
                 state = curr.keyword;
                 break;
@@ -1330,4 +1339,51 @@ int GLSLParser::shaderType(const std::string& extension)
     {
         return 0;
     }
+}
+
+void GLSLShader::upgrade_to_glsl310()
+{
+    std::string target;
+    bool must_add_fragout = false;
+    std::string s = code;
+    while (s.size())
+    {
+        Token t = scan_token(s);
+        if (t.str == "varying")
+        {
+            target += t.whitespace;
+            if (shaderType == GL_FRAGMENT_SHADER)
+            {
+                target += "in";
+            }
+            else if (shaderType == GL_VERTEX_SHADER)
+            {
+                target += "out";
+            }
+        }
+        else if (t.str == "attribute" && shaderType == GL_VERTEX_SHADER)
+        {
+            target += t.whitespace;
+            target += "in";
+        }
+        else if (t.str.compare(0, 7, "texture") == 0)
+        {
+            target += t.whitespace;
+            target += "texture";
+        }
+        else if (t.str == "gl_FragColor")
+        {
+            target += t.whitespace;
+            target += "myFragColor";
+            must_add_fragout = true;
+        }
+        else
+        {
+            target += t.whitespace;
+            target += t.str;
+        }
+    }
+    if (must_add_fragout) target = "out vec4 myFragColor;\n" + target;
+    version = std::max(version, 310); // upgrade to 310, but don't downgrade!
+    code = target; // replace
 }

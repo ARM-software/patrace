@@ -64,6 +64,7 @@ void printVersion()
 extern "C"
 int main(int argc, char **argv)
 {
+    int count = 0;
     int argIndex = 1;
     for (; argIndex < argc; ++argIndex)
     {
@@ -172,8 +173,8 @@ int main(int argc, char **argv)
 
         outputFile->write(call);
 
-        if (strcmp(callName, "glDrawElements") == 0 ||
-            strcmp(callName, "glDrawArrays") == 0)
+        if (strcmp(callName, "glDrawElements") == 0 || strcmp(callName, "glDrawArrays") == 0
+            || strcmp(callName, "glDrawRangeElements") == 0)
         {
             std::vector<unsigned int>::const_iterator citer = buffersToBeDeleted.begin();
             for (; citer != buffersToBeDeleted.end(); ++citer)
@@ -181,6 +182,7 @@ int main(int argc, char **argv)
                 CallInterface * newCall = DeleteBuffer(*citer, call->GetThreadID());
                 outputFile->write(newCall);
                 delete newCall;
+                count++;
             }
 
             buffersToBeDeleted.clear();
@@ -191,6 +193,7 @@ int main(int argc, char **argv)
 
     inputFile->close();
     outputFile->close();
+    PAT_DEBUG_LOG("Injected %d delete calls\n", count);
 
     return 0;
 }

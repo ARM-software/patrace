@@ -129,7 +129,6 @@ public:
             perThreadEGLConfigs[i].timesUsed = 0;
         }
     }
-
 };
 
 class BHeaderV3 {

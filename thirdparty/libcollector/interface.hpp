@@ -1,5 +1,6 @@
 #pragma once
 
+#include <assert.h>
 #include <vector>
 #include <string>
 #include <cmath>
@@ -18,43 +19,65 @@
 #include <android/log.h>
 #define DBG_LOG(...) __android_log_print(ANDROID_LOG_INFO, "LIBCOLLECTOR", __VA_ARGS__);
 #else
-#define DBG_LOG(...) fprintf(stdout, "LIBCOLLECTOR DEBUG :: FILE: %s, LINE: %d, INFO: ", __FILE__, __LINE__);printf(__VA_ARGS__);
+#define DBG_LOG(...) do { fprintf(stdout, "LIBCOLLECTOR DEBUG :: FILE: %s, LINE: %d, INFO: ", __FILE__, __LINE__);printf(__VA_ARGS__); } while(0)
 #endif
 #endif
 
 // Value
-struct CollectorValue
+union CollectorValue
+{
+    double fp64;
+    uint64_t u64;
+    int64_t i64;
+};
+
+// Value list
+struct CollectorValueList
 {
     enum vtype
     {
         TYPE_FP64,
         TYPE_U64,
-        TYPE_I64
+        TYPE_I64,
+        TYPE_UNASSIGNED
     };
-    enum vtype type;
-    union
+    enum vtype type = TYPE_UNASSIGNED;
+    std::vector<CollectorValue> list;
+    std::vector<CollectorValue> summaries;
+
+    void push_back(double val) { assert(type == TYPE_UNASSIGNED || type == TYPE_FP64); type = TYPE_FP64; CollectorValue fp64; fp64.fp64 = val; list.push_back(fp64); }
+    void push_back(float val) { assert(type == TYPE_UNASSIGNED || type == TYPE_FP64); type = TYPE_FP64; CollectorValue fp64; fp64.fp64 = val; list.push_back(fp64); }
+    void push_back(int val) { assert(type == TYPE_UNASSIGNED || type == TYPE_I64); type = TYPE_I64; CollectorValue i64; i64.i64 = val; list.push_back(i64); }
+    void push_back(long val) { assert(type == TYPE_UNASSIGNED || type == TYPE_I64); type = TYPE_I64; CollectorValue i64; i64.i64 = val; list.push_back(i64); }
+    void push_back(long long val) { assert(type == TYPE_UNASSIGNED || type == TYPE_I64); type = TYPE_I64; CollectorValue i64; i64.i64 = val; list.push_back(i64); }
+    void push_back(unsigned int val) { assert(type == TYPE_UNASSIGNED || type == TYPE_U64); type = TYPE_U64; CollectorValue u64; u64.u64 = val; list.push_back(u64); }
+    void push_back(unsigned long val) { assert(type == TYPE_UNASSIGNED || type == TYPE_U64); type = TYPE_U64; CollectorValue u64; u64.u64 = val; list.push_back(u64); }
+    void push_back(CollectorValue val) { assert(type != TYPE_UNASSIGNED); list.push_back(val); }
+
+    void summarize()
     {
-        double fp64;
-        uint64_t u64;
-        int64_t i64;
-    };
-    CollectorValue(double val) { type = TYPE_FP64; fp64 = val; }
-    CollectorValue(float val) { type = TYPE_FP64; fp64 = val; }
-    CollectorValue(int val) { type = TYPE_I64; i64 = val; }
-    CollectorValue(long val) { type = TYPE_I64; i64 = val; }
-    CollectorValue(long long val) { type = TYPE_I64; i64 = val; }
-    CollectorValue(unsigned int val) { type = TYPE_U64; u64 = val; }
-    CollectorValue(unsigned long val) { type = TYPE_U64; u64 = val; }
+        switch (type)
+        {
+        case TYPE_FP64: { double s = 0.0; for (const auto v : list) s += v.fp64; CollectorValue c; c.fp64 = s / (double)list.size(); summaries.push_back(c); list.clear(); } break;
+        case TYPE_I64: { int64_t s = 0; for (const auto v : list) s += v.i64; CollectorValue c; c.i64 = s / (int64_t)list.size(); summaries.push_back(c); list.clear(); } break;
+        case TYPE_U64: { uint64_t s = 0; for (const auto v : list) s += v.u64; CollectorValue c; c.u64 = s / (uint64_t)list.size(); summaries.push_back(c); list.clear(); } break;
+        case TYPE_UNASSIGNED: assert(false); break;
+        }
+    }
+    void clear() { list.clear(); }
+    size_t size() const { return list.size(); }
+    CollectorValue at(int index) const { return list.at(index); }
+    const std::vector<CollectorValue>& data() const { if (summaries.size() > 0) return summaries; else return list; }
 };
 
-typedef std::map<std::string, std::vector<CollectorValue>> CollectorValueResults;
+typedef std::map<std::string, CollectorValueList> CollectorValueResults;
 
 // General collector class
 class Collector
 {
 public:
     Collector(const Json::Value& config, const std::string& name)
-        : finished(false), mIsThreaded(false), mSampleRate(100), mCollecting(false), mConfig(config.get(name, Json::Value()))
+        : finished(false), mSampleRate(100), mCollecting(false), mConfig(config.get(name, Json::Value()))
         , mName(name), mFactor(NAN) {}
     virtual ~Collector() {}
 
@@ -74,6 +97,16 @@ public:
     virtual void doubleTransform(double factor) final { mFactor = factor; }
     virtual void useThreading(int sampleRate) final;
     virtual bool isThreaded() const final { return mIsThreaded; }
+    virtual bool isSummarized() const final { return mIsSummarized; }
+
+    virtual void summarize()
+    {
+        for (auto& pair : mResults)
+        {
+            pair.second.summarize();
+        }
+        mIsSummarized = true;
+    }
 
     /// Subclass overrides of this should call this parent function
     virtual void clear()
@@ -84,10 +117,13 @@ public:
         }
     }
 
-    virtual void add(const std::string& key, CollectorValue value) final
-    {
-        mResults[key].push_back(value);
-    }
+    virtual void add(const std::string& key, double value) final { mResults[key].push_back(value); }
+    virtual void add(const std::string& key, float value) final { mResults[key].push_back(value); }
+    virtual void add(const std::string& key, int value) final { mResults[key].push_back(value); }
+    virtual void add(const std::string& key, long value) final { mResults[key].push_back(value); }
+    virtual void add(const std::string& key, long long value) final { mResults[key].push_back(value); }
+    virtual void add(const std::string& key, unsigned value) final { mResults[key].push_back(value); }
+    virtual void add(const std::string& key, unsigned long value) final { mResults[key].push_back(value); }
 
     /// For multi-threaded operation, this loop is called instead of owning class calling collect() directly.
     virtual void loop() final;
@@ -103,7 +139,9 @@ protected:
     /// In debug mode?
     bool mDebug = false;
     /// Is this collector multi-threaded?
-    bool mIsThreaded;
+    bool mIsThreaded = false;
+    /// Is this collector being summarized?
+    bool mIsSummarized = false;
     /// Ideal sample rate in milliseconds
     int mSampleRate;
     /// Are we collecting?
@@ -197,6 +235,10 @@ public:
     /// Stop collecting data
     void stop();
 
+    /// Summarize existing data as an average. Useful for looping tests. Once this has been
+    /// called once, what you get out with results() later will be these averages.
+    void summarize();
+
     /// Check if any collector is running
     bool is_running() const { return running; }
 
@@ -216,7 +258,9 @@ private:
     std::vector<Collector*> mRunning;
     std::map<std::string, Collector*> mCollectorMap;
     std::vector<int64_t> mTiming;
+    std::vector<int64_t> mTimingSummarized;
     std::vector<std::vector<int64_t>> mCustom; // custom results
+    std::vector<std::vector<int64_t>> mCustomSummarized; // custom results
     std::vector<std::string> mCustomHeaders;
     int64_t mStartTime = 0;
     int64_t mPreviousTime = 0;

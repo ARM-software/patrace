@@ -6,7 +6,7 @@ include_directories(
 	${SRC_ROOT}/common
 )
 
-add_definitions(-DGLES_CALLCONVENTION= -std=gnu++0x)
+add_definitions(-DGLES_CALLCONVENTION=)
 
 add_library(egltrace SHARED
 	${SRC_EGLTRACE}

@@ -3,7 +3,6 @@
 #include "dispatch/eglimports.hpp"
 #include "dispatch/eglproc_auto.hpp"
 
-#include <mutex>
 #include <ostream>
 #include <sstream>
 #include <fstream>
@@ -52,7 +51,6 @@ public:
 private:
     void checkIfOpen();
     void _logState(std::stringstream& ss, unsigned char tid, GLsizei instancecount, const IndexList_t& indices, uint64_t flags);
-    std::mutex mStateMutex;
     // Function call count
     std::vector<FunctionCountMap_t> mPerThreadCallCount;
     bool mLogOpen;

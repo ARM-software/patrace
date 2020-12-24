@@ -81,17 +81,17 @@ struct dma_buf_te_ioctl_alloc
     uint64_t size; /* size of buffer to allocate, in pages */
 };
 
-static int alloc_memory(egl_image_fixture *const fix, const size_t pages, bool dmaSharedMemory)
+static int alloc_and_map_memory(egl_image_fixture *const fix, const size_t size, bool dmaSharedMemory, const unsigned index)
 {
     int fd;
+    unsigned pages = (size + TPI_PAGE_SIZE - 1) / TPI_PAGE_SIZE;
+    fix->memory_sizes[index] = pages * TPI_PAGE_SIZE;
 
     if (!dmaSharedMemory)
     {
         dma_buf_te_ioctl_alloc data;
         data.size = pages;
         fd = ioctl(fix->dma_buf_te, DMA_BUF_TE_ALLOC, &data);
-
-        return fd;
     }
     else // On model or x86 where shared memory is created
     {
@@ -104,46 +104,58 @@ static int alloc_memory(egl_image_fixture *const fix, const size_t pages, bool d
             shm_unlink(ufname);
             if (0 != ftruncate(fd, TPI_PAGE_SIZE * pages))
             {
+                DBG_LOG("alloc memory buf failed for dma_buf[%d] on model.\n", index);
                 close(fd);
                 return -1;
             }
         }
-        return fd;
     }
-}
 
-static int alloc_and_map_fixture_memory_buf(egl_image_fixture *const fix,
-        const size_t size, bool dmaSharedMemory, const unsigned index)
-{
-    unsigned pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-    int fd;
-    void *buf;
-
-    fix->memory_sizes[index] = pages * PAGE_SIZE;
-
-    fd = alloc_memory(fix, pages, dmaSharedMemory);
     if (fd < 0)
     {
-        DBG_LOG("alloc_memory failed\n");
-        goto err;
+        DBG_LOG("alloc memory buf failed for dma_buf[%d]\n", index);
+        return -1;
     }
 
-    buf = mmap(NULL, fix->memory_sizes[index], PROT_WRITE, MAP_SHARED, fd, 0);
+    void *buf = mmap(NULL, fix->memory_sizes[index], PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
     if (buf == MAP_FAILED)
     {
-        DBG_LOG("mmap failed\n");
-        goto fd;
+        DBG_LOG("mmap failed for dma_buf[%d]\n", index);
+        close(fd);
+        return -1;
     }
 
     fix->memory_bufs[index] = fd;
     fix->memory_mappings[index] = buf;
 
     return 0;
+}
 
-fd:
-    close(fd);
-err:
-    return -1;
+struct dma_buf_sync
+{
+	uint64_t flags;
+};
+
+#define DMA_BUF_SYNC_READ (1 << 0)
+#define DMA_BUF_SYNC_WRITE (2 << 0)
+#define DMA_BUF_SYNC_RW (DMA_BUF_SYNC_READ | DMA_BUF_SYNC_WRITE)
+#define DMA_BUF_SYNC_START (0 << 2)
+#define DMA_BUF_SYNC_END (1 << 2)
+
+#define DMA_BUF_BASE 'b'
+#define DMA_BUF_IOCTL_SYNC _IOW(DMA_BUF_BASE, 0, struct dma_buf_sync)
+
+static void dma_buf_raw_sync(int fd, uint64_t flags)
+{
+	struct dma_buf_sync args = { flags };
+	int err;
+
+	err = ioctl(fd, DMA_BUF_IOCTL_SYNC, &args);
+
+    if (err)
+    {
+        DBG_LOG("sync dma buf failed for fd %d \n", fd);
+    }
 }
 
 void close_fixture_memory_bufs(egl_image_fixture *const fix)
@@ -165,17 +177,13 @@ void close_fixture_memory_bufs(egl_image_fixture *const fix)
 
 void unmap_fixture_memory_bufs(egl_image_fixture *const fix)
 {
-    int close_err;
-    int i;
-
-    for (i = 0; i != sizeof(fix->memory_mappings) / sizeof(fix->memory_mappings[0]); ++i)
+    for (int i=0; i != sizeof(fix->memory_mappings) / sizeof(fix->memory_mappings[0]); ++i)
     {
-        if(fix->memory_mappings[i] != NULL)
+        if (fix->memory_mappings[i] != NULL)
         {
-            close_err = munmap(fix->memory_mappings[i], fix->memory_sizes[i]);
+            int close_err = munmap(fix->memory_mappings[i], fix->memory_sizes[i]);
             fix->memory_mappings[i] = NULL;
-            if (0 != close_err)
-                DBG_LOG("unmap_fixture_memory_bufs failed! close_err = 0x%x\n", close_err);
+            if (0 != close_err) DBG_LOG("unmap fixture memory buf failed for dma_buf[%d]! close_err = 0x%x\n", i, close_err);
         }
     }
 }
@@ -189,7 +197,7 @@ static int memory_init(egl_image_fixture *const fix, bool dmaSharedMemory)
         fix->dma_buf_te = open("/dev/dma_buf_te", O_RDWR|O_CLOEXEC);
         if (-1 == fix->dma_buf_te)
         {
-            DBG_LOG("Error creating dma_buf_te device on the platform\n");
+            DBG_LOG("Error creating /dev/dma_buf_te device on the platform. Perhaps dma-buf-test-exporter.ko has not been loaded\n");
             return -1;
         }
     }
@@ -215,26 +223,24 @@ int fill_image_attributes(egl_image_fixture *const fix,
 
     get_strides_heights(format, width, height, strides, heights);
 
-    if (alloc_and_map_fixture_memory_buf(fix, strides[0]*heights[0], dmaSharedMemory, 0))
+    if (alloc_and_map_memory(fix, strides[0]*heights[0], dmaSharedMemory, 0) < 0)
     {
-        DBG_LOG("alloc_and_map_fixture_memory_buf failed for dma_buf[0]\n");
-        goto err_dma_buf;
+        return -1;
     }
+
     if (strides[1] && heights[1])
     {
-        if (alloc_and_map_fixture_memory_buf(fix, strides[1]*heights[1], dmaSharedMemory, 1))
+        if (alloc_and_map_memory(fix, strides[1]*heights[1], dmaSharedMemory, 1) < 0)
         {
-            DBG_LOG("alloc_and_map_fixture_memory_buf failed for dma_buf[1]\n");
-            goto err_dma_buf;
+            return -1;
         }
     }
 
     if (strides[2] && heights[2])
     {
-        if (alloc_and_map_fixture_memory_buf(fix, strides[2]*heights[2], dmaSharedMemory, 2))
+        if (alloc_and_map_memory(fix, strides[2]*heights[2], dmaSharedMemory, 2) < 0)
         {
-            DBG_LOG("alloc_and_map_fixture_memory_buf failed for dma_buf[2]\n");
-            goto err_dma_buf;
+            return -1;
         }
     }
 
@@ -306,34 +312,43 @@ int fill_image_attributes(egl_image_fixture *const fix,
     attribs[attrib_size++] = EGL_NONE;
 
     return 0;
-
-err_dma_buf:
-    unmap_fixture_memory_bufs(fix);
-    close_fixture_memory_bufs(fix);
-    return -1;
 }
 
-int refresh_dma_data(egl_image_fixture *const fix, size_t size, const unsigned char *data)
+static void sync_memcpy(egl_image_fixture *const fix, size_t size, const unsigned char *data, const unsigned int index, bool dmaSharedMemory)
+{
+    if (!dmaSharedMemory)
+    {
+        dma_buf_raw_sync(fix->memory_bufs[index], DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW);
+    }
+
+    memcpy((void*)fix->memory_mappings[index], data, size);
+
+    if (!dmaSharedMemory)
+    {
+        dma_buf_raw_sync(fix->memory_bufs[index], DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW);
+    }
+}
+
+int refresh_dma_data(egl_image_fixture *const fix, size_t size, const unsigned char *data, bool dmaSharedMemory)
 {
     if (fix->format == MALI_TPI_EGL_PIXMAP_FORMAT_B8G8R8)
     {
-        memcpy((void*)fix->memory_mappings[0], data, size);
+        sync_memcpy(fix, size, data, 0, dmaSharedMemory);
     }
     else if (fix->format == MALI_TPI_EGL_PIXMAP_FORMAT_YV12_BT601_NARROW ||
              fix->format == MALI_TPI_EGL_PIXMAP_FORMAT_YV12_BT601_WIDE)
     {
-        memcpy((void*)fix->memory_mappings[0], data, strides[0] * heights[0]);
-        memcpy((void*)fix->memory_mappings[1], data + strides[0] * heights[0], strides[1] * heights[1]);
-        memcpy((void*)fix->memory_mappings[2], data + strides[0] * heights[0] + strides[1] * heights[1], strides[2] * heights[2]);
+        sync_memcpy(fix, strides[0] * heights[0], data, 0, dmaSharedMemory);
+        sync_memcpy(fix, strides[1] * heights[1], data+strides[0]*heights[0], 1, dmaSharedMemory);
+        sync_memcpy(fix, strides[2] * heights[2], data+strides[0]*heights[0]+strides[1]*heights[1], 2, dmaSharedMemory);
     }
     else
     {
         /* This memcpy is again specific to NV12 and NV21 formats because of the packing.
         The format uses Y plane followed by interleaved UV plane, Y plane which is 2/3rd of the total size
         is in [0] and UV place in [1]*/
-
-        memcpy((void*)fix->memory_mappings[0], data, strides[0] * heights[0]);
-        memcpy((void*)fix->memory_mappings[1], data + strides[0] * heights[0], strides[1] * heights[1]);
+        sync_memcpy(fix, strides[0] * heights[0], data, 0, dmaSharedMemory);
+        sync_memcpy(fix, strides[1] * heights[1], data+strides[0]*heights[0], 1, dmaSharedMemory);
     }
     return 0;
 }

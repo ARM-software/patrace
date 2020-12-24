@@ -3,7 +3,6 @@
 
 #include "dispatch/eglproc_auto.hpp"
 
-
 namespace retracer
 {
 
@@ -64,16 +63,26 @@ Drawable* GlwsEglFbdev::CreateDrawable(int width, int height, int /*win*/, EGLin
     // TODO: Delete
     // fbdev only supports one single native window. Therefor, map everything to 0.
     Drawable* handler = NULL;
-    NativeWindowMutex.lock();
     gWinNameToNativeWindowMap[0] = new FbdevWindow(width, height, "0");
     handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, gWinNameToNativeWindowMap[0], attribList);
-    NativeWindowMutex.unlock();
     return handler;
+}
+
+static void usage()
+{
+    printf("Cmd usage:\n");
+    printf("    s: render one draw call.\n");
+    printf("    n: render one frame.\n");
+    printf("    N: render 10 frames.\n");
+    printf("    m: render 100 frames.\n");
+    printf("    q: exit.\n");
+    printf("    h: show this usage.\n");
 }
 
 GlwsEglFbdev::GlwsEglFbdev()
     : GlwsEgl()
 {
+    if (gRetracer.mOptions.mStepMode) usage();
 }
 
 GlwsEglFbdev::~GlwsEglFbdev()
@@ -98,4 +107,35 @@ GLWS& GLWS::instance()
     static GlwsEglFbdev g;
     return g;
 }
+
+void GlwsEglFbdev::processStepEvent()
+{
+    const char cmd = getchar();
+
+    if (cmd == 'n')
+    {
+        gRetracer.frameBudget++;
+    }
+    else if (cmd == 'N')
+    {
+        gRetracer.frameBudget += 10;
+    }
+    else if (cmd == 'm')
+    {
+        gRetracer.frameBudget += 100;
+    }
+    else if (cmd == 's')
+    {
+        gRetracer.drawBudget++;
+    }
+    else if (cmd == 'q')
+    {
+        gRetracer.mFinish = true;
+    }
+    else if (cmd == 'h')
+    {
+        usage();
+    }
+}
+
 } // namespace retracer

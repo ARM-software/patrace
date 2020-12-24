@@ -5,9 +5,9 @@ set (PYTHON_EXECUTABLE python)
 
 message(STATUS "main ar: ${CMAKE_AR}")
 
-set (PATRACE_VERSION_MAJOR 2)
-set (PATRACE_VERSION_MINOR 16)
-set (PATRACE_VERSION_PATCH 2)
+set (PATRACE_VERSION_MAJOR 3)
+set (PATRACE_VERSION_MINOR 0)
+set (PATRACE_VERSION_PATCH 0)
 
 IF(DEFINED ENV{SVN_REVISION})
     set (PATRACE_REVISION $ENV{SVN_REVISION})
@@ -27,16 +27,9 @@ ENDIF(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
 
 execute_process(COMMAND ${CMAKE_C_COMPILER} -dumpversion OUTPUT_VARIABLE GCC_VERSION)
 
-IF(CMAKE_BUILD_TYPE STREQUAL "Debug" OR
-   CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+IF(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     message(STATUS "*** DEBUG BUILD ***")
-    if (GCC_VERSION VERSION_GREATER 4.8 OR GCC_VERSION VERSION_EQUAL 4.8)
-        message(STATUS "GCC version >= 4.8 - using dwarf-3")
-        add_definitions (-DREPORT_GL_ERRORS -DSTATE_LOGGING -gdwarf-3)
-    else()
-        message(STATUS "GCC version < 4.8 - using old dwarf")
-        add_definitions (-DREPORT_GL_ERRORS -DSTATE_LOGGING)
-    endif()
+    add_definitions(-DREPORT_GL_ERRORS -DDEBUG -gdwarf)
 ENDIF()
 
 include(FindPkgConfig)
@@ -57,20 +50,13 @@ set (SPECS_SCRIPTS
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fPIC -fvisibility=hidden -Werror")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -std=gnu++0x -fvisibility=hidden -Werror")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -std=c++11 -fvisibility=hidden -Werror")
     set(CMAKE_C_FLAGS_RELEASE "-Os")
     set(CMAKE_CXX_FLAGS_RELEASE "-Os")
-    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fstack-protector-all")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fstack-protector-all")
-    # Enable lines below for extra debugging
-    #if (GCC_VERSION VERSION_GREATER 4.8 OR GCC_VERSION VERSION_EQUAL 4.8)
-    #    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fsanitize=address")
-    #    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=address")
-    #endif()
-    #if (GCC_VERSION VERSION_GREATER 4.9 OR GCC_VERSION VERSION_EQUAL 4.9)
-    #    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fsanitize=undefined")
-    #    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=undefined")
-    #endif()
+    if (SANITIZELIB)
+        set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fstack-protector-all -fsanitize=address -fsanitize-undefined-trap-on-error -fuse-ld=gold")
+        set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fstack-protector-all -fsanitize=address -fsanitize-undefined-trap-on-error -fuse-ld=gold")
+    endif()
 
     if (CMAKE_SIZEOF_VOID_P EQUAL 8)
         add_definitions (-DPLATFORM_64BIT)
@@ -202,9 +188,9 @@ if (ENABLE_TOOLS AND NOT FF_ONLY)
 
     set(PATRACE_VERSION_FULL ${PATRACE_VERSION_MAJOR}.${PATRACE_VERSION_MINOR}.${PATRACE_VERSION_PATCH})
 
-if (${PATRACE_VERSION_PATCH} EQUAL 0)
-    set(PATRACE_VERSION_FULL ${PATRACE_VERSION_MAJOR}.${PATRACE_VERSION_MINOR})
-endif ()
+    if (${PATRACE_VERSION_PATCH} EQUAL 0)
+        set(PATRACE_VERSION_FULL ${PATRACE_VERSION_MAJOR}.${PATRACE_VERSION_MINOR})
+    endif ()
 
     # Build source distribution for pypatrace
     set(PYPATRACE_TIMESTAMP "${PAT_PYTHON_DIR}/pypatrace/dist/timestamp")
@@ -260,6 +246,10 @@ endif ()
         add_subdirectory(pat_editor)
         add_subdirectory(pat_editor_gui)
     endif ()
+endif ()
+
+if (WINDOWSYSTEM MATCHES "fbdev" AND ENABLE_TESTS)
+    add_subdirectory(integration_tests)
 endif ()
 
 install(FILES ${PROJECT_SOURCE_DIR}/../../ARM_RELEASE_NOTE DESTINATION . OPTIONAL)

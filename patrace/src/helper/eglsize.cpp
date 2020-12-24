@@ -303,7 +303,7 @@ struct image_info* _EGLImageKHR_get_image_info(EGLImageKHR image, GLenum target,
 
     _glGenTextures(1, &tex);
     bool is_external_tex = false;
-    if (target == EGL_NATIVE_BUFFER_ANDROID)
+    if (target == EGL_NATIVE_BUFFER_ANDROID || target == EGL_LINUX_DMA_BUF_EXT)
         is_external_tex = true;
     else
         is_external_tex = false;

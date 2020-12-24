@@ -161,7 +161,6 @@ int main(int argc, char **argv)
 			printf("Error checking chunk size (pass 1)\n");
 			abort();
 		}
-		printf("Chunk size %lu kb\n", (unsigned long)size / 1024);
 		uncompressed_length += size;
 	}
 	fseek(in, start_pos, SEEK_SET);

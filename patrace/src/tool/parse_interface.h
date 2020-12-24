@@ -13,7 +13,7 @@
 
 #include "dispatch/eglimports.hpp"
 #include "common/analysis_utility.hpp"
-#include "common/in_file.hpp"
+#include "common/in_file_mt.hpp"
 #include "common/file_format.hpp"
 #include "common/out_file.hpp"
 #include "common/api_info.hpp"
@@ -54,6 +54,9 @@ struct DrawParams
     double spatial_locality = 0.0;
 
     void* index_buffer = nullptr;
+
+    int client_side_buffer_name = UNBOUND;
+    unsigned client_side_buffer_offset = 0;
 };
 
 static inline std::string drawEnum(unsigned int enumToFind)
@@ -94,13 +97,16 @@ struct Buffer
     unsigned frame_created;
     unsigned frame_destroyed = 0;
     // A buffer can be viewed in several different ways, if interleaved.
-    std::set<std::tuple<GLenum, GLint, GLsizei, uint64_t, GLuint>> types; // type, components, stride, offset, id
+    std::set<std::tuple<GLenum, GLint, GLsizei>> types; // type, components, stride
     std::set<GLenum> usages;
+    std::set<GLenum> bindings;
     GLsizeiptr size = 0;
 
     // These are only set in retracer mode
     void *ptr = nullptr;
     intptr_t offset = 0;
+
+    int clientsidebuffer = UNBOUND;
 
     Buffer(int _id, int _index, unsigned _call_created, unsigned _frame_created) : id(_id), index(_index),
         call_created(_call_created), frame_created(_frame_created) {}
@@ -221,6 +227,7 @@ struct Sampler : public Resource
 
 struct Query : public Resource
 {
+    GLenum target; // each query object can only be of a single type
     Query(int _id, int _index, unsigned _call_created, unsigned _frame_created) : Resource(_id, _index, _call_created, _frame_created) {}
 };
 
@@ -265,8 +272,8 @@ struct FillState
     {
         GLint x = 0;
         GLint y = 0;
-        GLsizei width = -1;
-        GLsizei height = -1;
+        GLsizei width = 0;
+        GLsizei height = 0;
     } scissor;
     struct blend_op
     {
@@ -321,9 +328,10 @@ enum GLSLPrecision
 struct GLSLSampler
 {
     GLSLPrecision precision = HIGHP;
-    GLuint value = 0;
+    GLint value = -1;
     GLenum type = GL_NONE;
-    GLSLSampler(GLSLPrecision p, GLuint v, GLenum t) : precision(p), value(v), type(t) {}
+    GLSLSampler(GLSLPrecision p, GLint v, GLenum t) : precision(p), value(v), type(t) {}
+    GLSLSampler() {}
 };
 
 struct Shader : public Resource
@@ -382,13 +390,13 @@ struct Program : public Resource
     GLint activeBufferVariables = 0;
     GLint activeSSBOs = 0;
     GLint activeTransformFeedbackBuffers = 0;
+
     struct ProgramSampler
     {
-        std::string name;
         GLenum type;
         GLint value;
     };
-    std::vector<ProgramSampler> texture_bindings;
+    std::map<std::string, ProgramSampler> texture_bindings;
 
     std::map<int, std::string> uniformNames;
     std::map<std::string, int> uniformLocations;
@@ -420,22 +428,22 @@ struct RenderPass
     int depth = 0;
 
     int index; // 0...N for each frame
+    int unique_index = 0; // increased monotonically
     int frame;
-    bool active;
+    bool active = false;
     int first_call; // first draw call in render pass
-    int last_call; // last draw call in render pass
-    unsigned drawframebuffer; // currently bound, stored by ID
-    int drawframebuffer_index; // currently bound, stored by index
+    int last_call = -1; // last draw call in render pass
+    unsigned drawframebuffer = 0; // currently bound, stored by ID
+    int drawframebuffer_index = 0; // currently bound, stored by index
     std::set<int> used_renderbuffers; // usage statistics, by index
     std::set<int> used_texture_targets; // usage statistics, by index, only counted if used as render target
     std::set<int> used_programs; // usage statistics, by index
     std::map<GLenum, std::pair<GLenum, int>> render_targets; // detailed info, buffer type : renderbuffer/texture : index
-    int draw_calls;
-    int64_t vertices;
-    int64_t primitives;
+    int draw_calls = 0;
+    int64_t vertices = 0;
+    int64_t primitives = 0;
     std::string snapshot_filename;
-    RenderPass(int _index, int _call, int _frame) : index(_index), frame(_frame), active(true), first_call(_call), last_call(-1),
-               drawframebuffer(0), draw_calls(0), vertices(0), primitives(0) {}
+    RenderPass(int _index, int _call, int _frame, int _unique_index) : index(_index), unique_index(_unique_index), frame(_frame), first_call(_call) {}
 };
 
 struct VertexArrayObject : public Resource
@@ -449,7 +457,7 @@ struct VertexArrayObject : public Resource
         GLsizeiptr size;
     };
     std::map<GLenum, std::map<GLuint, BufferBinding>> boundBufferIds; // target : GL buffer index : buffer info
-    std::map<GLuint, std::tuple<GLenum, GLint, GLsizei, uint64_t, GLuint>> boundVertexAttribs; // index : (type, components, stride, pointer/offset)
+    std::map<GLuint, std::tuple<GLenum, GLint, GLsizei, uint64_t, GLuint, int>> boundVertexAttribs; // index : (type, components, stride, pointer/offset, csb)
 
     std::set<GLuint> array_enabled; // currently enabled arrays
 };
@@ -458,7 +466,6 @@ struct Context : public Resource
 {
     int display;
     int share_context = 0; // by id
-    Context* share = nullptr;
 
     /// Global clear fill states
     FillState fillstate;
@@ -563,7 +570,7 @@ struct Context : public Resource
     std::map<GLenum, bool> enabled;
 
     Context(int _id, int _display, int _index, int _share_context, unsigned _call_created, unsigned _frame_created, Context* _share)
-            : Resource(_id, _index, _call_created, _frame_created), display(_display), share_context(_share_context), share(_share),
+            : Resource(_id, _index, _call_created, _frame_created), display(_display), share_context(_share_context),
               framebuffers(nullptr, 0),
               textures(&_share->textures),
               renderbuffers(&_share->renderbuffers),
@@ -602,6 +609,7 @@ private:
             enabled[GL_DITHER] = true; // the only one that starts enabled
             buffers.add(0, _call_created, _frame_created); // create default buffer for GL_ARRAY_BUFFER
         }
+        render_passes.emplace_back(0, 0, 0, 0);
     }
 };
 
@@ -645,14 +653,19 @@ struct EglConfig
 class ParseInterfaceBase
 {
 public:
+    using Callback = bool(*)(ParseInterfaceBase& input, common::CallTM *call, void *data);
+
     ParseInterfaceBase()
     {
         context_remapping[0] = UNBOUND;
     }
+    virtual ~ParseInterfaceBase() {}
     virtual bool open(const std::string& input, const std::string& output = std::string()) = 0;
     virtual void close() = 0;
     virtual common::CallTM* next_call() = 0;
     virtual DrawParams getDrawCallCount(common::CallTM *call);
+    virtual void loop(Callback c, void *data) = 0;
+    virtual int64_t getCpuCycles() { return 0; }
 
     void dumpFrameBuffers(bool value) { mDumpFramebuffers = value; }
     void setQuickMode(bool value) { mQuickMode = value; }
@@ -661,6 +674,7 @@ public:
     void setDumpRenderpassJSON(bool value) { mDumpRenderpassJson = value; }
     void setOutputName(const std::string& name) { mOutputName = name; }
     void setRenderpassJSON(bool value) { mRenderpassJSON = value; }
+    void setDebug(bool debug) { mDebug = debug; }
     void interpret_call(common::CallTM *call);
 
     std::deque<StateTracker::Context> contexts; // using deque to avoid moving contents around in memory, invalidating pointers
@@ -669,6 +683,9 @@ public:
     std::map<int, int> surface_remapping; // from id to index in the original file
     std::map<int, int> current_context; // map threads to contexts
     std::map<int, int> current_surface; // map threads to surfaces
+
+    std::map<int, std::map<int, int>> client_side_last_use; // thread -> (client id, call no)
+    std::map<int, std::map<int, std::string>> client_side_last_use_reason; // thread -> (client id, reason), for debugging!!
 
     std::string filename;
     unsigned numThreads = 0;
@@ -695,11 +712,14 @@ public:
 private:
     bool find_duplicate_clears(const StateTracker::FillState& f, const StateTracker::Attachment& at, GLenum type, StateTracker::Framebuffer& fbo, const std::string& call);
     void setEglConfig(StateTracker::EglConfig& config, int attribute, int value);
+    void new_renderpass(common::CallTM *call, StateTracker::Context& ctx, bool newframe);
+    void update_renderpass(common::CallTM *call, StateTracker::Context& ctx, StateTracker::RenderPass &rp, const int fb_index);
 
 protected:
-    virtual void completed_drawcall(int frame, const DrawParams& params, const StateTracker::RenderPass &rp, int fb_index) { DBG_LOG("ignored\n"); }
-    virtual void completed_renderpass(int index, const StateTracker::RenderPass &rp) { DBG_LOG("ignored\n"); }
+    virtual void completed_drawcall(int frame, const DrawParams& params, const StateTracker::RenderPass &rp) {}
+    virtual void completed_renderpass(const StateTracker::RenderPass &rp) {}
 
+    bool only_default = false; // only parse default tid calls
     std::string mOutputName = "trace";
     bool mDumpFramebuffers = false;
     bool mQuickMode = true;
@@ -707,26 +727,31 @@ protected:
     bool mScreenshots = true;
     bool mDumpRenderpassJson = false;
     bool mRenderpassJSON = false;
+    bool mDebug = false;
 };
 
 class ParseInterface : public ParseInterfaceBase
 {
 public:
-    ParseInterface(bool _only_default = false) : ParseInterfaceBase(), only_default(_only_default) {}
+    ParseInterface(bool _only_default = false) : ParseInterfaceBase() { only_default = _only_default; }
+    virtual ~ParseInterface() {}
 
     virtual bool open(const std::string& input, const std::string& output = std::string()) override;
     virtual void close() override;
     virtual common::CallTM* next_call() override;
+    virtual void loop(Callback c, void *data) override;
 
     virtual void writeout(common::OutFile &outputFile, common::CallTM *call);
 
-    common::TraceFileTM inputFile;
+    common::InFile inputFile;
     common::OutFile outputFile = "trace";
+    common::CallTM *mCall = nullptr;
 
 private:
     unsigned _curFrameIndex = 0;
     common::FrameTM* _curFrame = nullptr;
     unsigned _curCallIndexInFrame = 0;
+    int mCallNo = 0;
     bool only_default; // only parse default tid calls
 };
 

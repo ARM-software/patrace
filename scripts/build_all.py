@@ -115,7 +115,7 @@ def update_cmake_versions(major, minor, patch, revision, version_type, source_ro
             patch=patch,
             revision=revision,
             version_type=version_type,
-            testlib=os.environ['TEST_LIBRARY'] if 'TEST_LIBRARY' in os.environ else '',
+            testlib=os.environ.get('TEST_LIBRARY', '/usr/lib/x86_64-linux-gnu'),
             cmake_script=cmake_script,
         )
     )
@@ -164,6 +164,10 @@ def check_log_erros(log_file):
 
 
 def build_project(platform, variant, build_dir, install_dir, project_path, log_file=sys.stdout, make_target='install', cmake_defines=[], stop_early=False):
+    sanitizer = 'false'
+    if variant == 'sanitizer':
+        sanitizer = 'true'
+        variant = 'debug'
     if platform == 'win':
         cmake_command = (
             'cmake'
@@ -186,6 +190,7 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
             ' -H{project_path}'
             ' -DCMAKE_INSTALL_PREFIX:PATH={install_dir}'
             ' -DCMAKE_BUILD_TYPE={variant}'
+            ' -DSANITIZELIB={sanitizer}'
             ' -DWINDOWSYSTEM=fbdev'
             ' -DENABLE_TOOLS=FALSE'
             ' -DENABLE_PYTHON_TOOLS=FALSE'
@@ -196,6 +201,7 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
         ).format(
             project_path=project_path,
             variant=variant.capitalize(),
+            sanitizer=sanitizer.capitalize(),
             build_dir=build_dir,
             install_dir=install_dir,
             arch=platform.split('_')[1],
@@ -208,6 +214,7 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
             ' -DCMAKE_TOOLCHAIN_FILE=toolchains/{toolchain}.cmake'
             ' -DCMAKE_INSTALL_PREFIX:PATH={install_dir}'
             ' -DCMAKE_BUILD_TYPE={variant}'
+            ' -DSANITIZELIB={sanitizer}'
             ' -DTEST_LIBRARY={testlib}'
             ' -B{build_dir}'
             ' {other_params}'
@@ -215,8 +222,9 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
             project_path=project_path,
             toolchain=platform,
             variant=variant.capitalize(),
+            sanitizer=sanitizer,
             build_dir=build_dir,
-            testlib=os.environ['TEST_LIBRARY'] if 'TEST_LIBRARY' in os.environ else '',
+            testlib=os.environ.get('TEST_LIBRARY', '/usr/lib/x86_64-linux-gnu'),
             install_dir=install_dir,
             other_params="".join(["-D{} ".format(opt) for opt in cmake_defines]),
         )
@@ -317,7 +325,7 @@ def build_cmake(src_path, build_base_dir, install_base_dir):
         },
     ]
 
-    variants = ('release', 'debug')
+    variants = ('release', 'debug', 'sanitizer')
 
     for product in products:
         for platform in product['platforms']:

@@ -22,28 +22,6 @@ void PrintMemory(const void *mem, size_t len)
     printf("\nMEMORY PRINT END : %d <<<<<<<<<<<<< }\n", (int)len);
 }
 
-bool ClientSideBufferObject::overlap(const void *p, ptrdiff_t s) const
-{
-    return (PTR_DIFF(p, base_address) < size) &&
-           (PTR_DIFF(base_address, p) < s);
-}
-
-const MD5Digest ClientSideBufferObject::md5_digest() const
-{
-    if (_dirty_md5_digest)
-    {
-        calculate_md5_digest();
-    }
-
-    return _md5_digest;
-}
-
-void ClientSideBufferObject::calculate_md5_digest() const
-{
-    _md5_digest = MD5Digest(base_address, size);
-    _dirty_md5_digest = false;
-}
-
 void * ClientSideBufferObject::extend(const void *p, ptrdiff_t s)
 {
     const void *new_base_address = PTR_DIFF(base_address, p) > (ptrdiff_t)(0) ? p : base_address;
@@ -52,10 +30,6 @@ void * ClientSideBufferObject::extend(const void *p, ptrdiff_t s)
     base_address = const_cast<void*>(new_base_address);
     size = size1 > size2 ? size1 : size2;
     return base_address;
-}
-
-VertexAttributeMemoryMerger::VertexAttributeMemoryMerger()
-{
 }
 
 VertexAttributeMemoryMerger::~VertexAttributeMemoryMerger()

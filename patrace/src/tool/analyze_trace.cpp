@@ -31,12 +31,13 @@
 #include "tool/config.hpp"
 #include "base/base.hpp"
 
+#pragma GCC diagnostic ignored "-Wunused-variable"
+
 static int startframe = 0;
 static int lastframe = INT_MAX;
 static bool debug = false;
 static bool dump_to_text = false;
 static std::string dump_csv_filename;
-static int frames = 0;
 static std::set<int> renderpassframes;
 static bool complexity_only_mode = false;
 static bool dumpCallTime = false;
@@ -62,7 +63,7 @@ static inline bool relevant(int frame)
     return (frame >= startframe && frame <= lastframe);
 }
 #define debugstream if (!debug) {} else std::cerr
-#define dumpstream if (!(relevant(frames) && dump_to_text)) {} else std::cout
+#define dumpstream if (!dump_to_text) {} else std::cout
 #define DEBUG_LOG(...) if (debug) DBG_LOG(__VA_ARGS__)
 
 // For legacy texture functions, merge input format and type into sized internal format
@@ -300,6 +301,7 @@ static std::map<std::string, PerUnit> createPerFrame()
     v["textures"].csv_description = "Texture sources";
     v["vao_binding"].csv_description = "Vertex array object binding calls";
     v["fbo_attachments"].csv_description = "Framebuffer attachment changes"; // compare vs 'framebuffers'
+    v["occlusion_queries"].csv_description = "Occlusion queries";
     return v;
 }
 
@@ -402,18 +404,20 @@ enum { FEATURE_VA, FEATURE_VBO, FEATURE_INDIRECT, FEATURE_SSBO, FEATURE_UBO, FEA
        FEATURE_INSTANCING, FEATURE_EGL_IMAGE, FEATURE_SEPARATE_SHADER_OBJECTS, FEATURE_VERTEX_ATTR_BINDING,
        FEATURE_VERTEX_BUFFER_BINDING, FEATURE_DISCARD_FBO, FEATURE_INVALIDATE_FBO, FEATURE_BINARY_SHADERS, FEATURE_TESSELLATION,
        FEATURE_GEOMETRY_SHADER, FEATURE_COMPUTE_SHADER, FEATURE_EGLCREATEIMAGE, FEATURE_POLYGON_OFFSET_FILL, FEATURE_VAO,
-       FEATURE_FBO_REUSE, FEATURE_INDIRECT_COMPUTE, FEATURE_CONTEXT_SHARING, FEATURE_ANISOTROPY, FEATURE_MAX };
+       FEATURE_FBO_REUSE, FEATURE_INDIRECT_COMPUTE, FEATURE_CONTEXT_SHARING, FEATURE_ANISOTROPY,
+       FEATURE_OCCLUSION_QUERIES, FEATURE_OCCLUSION_QUERIES_CONSERVATIVE,
+       FEATURE_MAX };
 static std::vector<const char*> featurenames = { "VA", "VBO", "DrawIndirect", "SSBO", "UBO", "TransformFeedback", "PrimitiveRestart",
                                    "Instancing", "EGLImage", "SeparateShaderObjects", "VertexAttribBinding", "VertexBufferBinding",
                                    "DiscardFBO", "InvalidateFBO", "BinaryShaders", "Tessellation", "GeometryShader", "ComputeShader",
                                    "EglCreateImage", "PolygonOffsetFill", "VAO", "FramebufferReuse", "IndirectCompute", "ContextSharing",
-                                   "AnisotropicFiltering" };
+                                   "AnisotropicFiltering", "OcclusionQueries", "ConservativeOcclusionQueries" };
 static std::vector<double> complexity_feature_value = { 0.02, 0.04, 0.2, 0.07, 0.06, 0.1, 0.2, 0.08, 0.08, 0.5, 0.15, 0.15, 0.05, 0.05, 0.3,
-                                                        0.4, 0.3, 0.2, 0.2, 0.2, 0.15, 0.5, 0.6, 0.2, 0.3 };
+                                                        0.4, 0.3, 0.2, 0.2, 0.2, 0.15, 0.5, 0.6, 0.2, 0.3, 0.4, 0.6 };
 
 class AnalyzeTrace
 {
-private:
+public:
     std::map<std::string, PerUnit> perframe = createPerFrame();
     std::map<std::string, PerUnit> perdraw = createPerDraw();
     std::map<int, std::set<int>> textures_by_renderpass;
@@ -429,10 +433,9 @@ private:
     int faceculled = 0;
     int indexed = 0;
     int calls = 0; // actually "executed" calls
-    int relative_frames = 0;
     long drawcalls = 0;
     std::vector<int> calls_per_frame;
-    GLuint numColorAttachments = 0;
+    GLuint highestColorAttachment = 0;
     GLuint highestTextureUnitUsed = 0;
     std::map<GLenum, bool> depthfuncs;
     std::map<BlendMode, int> blendModes; // number of times a particular blend mode is used in a draw call
@@ -444,8 +447,6 @@ private:
     std::map<std::string, Json::Value::Int64> texturetypes; // texture target as type
     std::map<std::string, std::map<std::string, Json::Value::Int64>> texturetypefilters; // for each texture target type, how many of each type of filtering is used
     std::map<std::string, std::map<std::string, Json::Value::Int64>> texturetypesizes; // for each texture target type, how many of each type of filtering is used
-    struct ALT { int a; int l; int t; }; // arithemtic, load-store, texture pipe cycles
-    std::map<GLenum, ALT> shadercycles; // A,L,T cycles for each shader type
     int clientsidebuffers = 0; // total number
     int64_t clientsidebuffersize = 0; // total size of
     int last_changed_vertex_buffer = -1;
@@ -472,17 +473,11 @@ private:
         GLuint id;
         int index;
         int display;
-        unsigned call_created;
-        unsigned call_destroyed;
-        unsigned frame_created;
-        unsigned frame_destroyed;
         int glcount;
         int eglcount;
         int activations;
         int swaps;
-        Surface(int _id, int _index, int _display, unsigned _call_created, unsigned _frame_created)
-                : id(_id), index(_index), display(_display), call_created(_call_created), call_destroyed(0),
-                  frame_created(_frame_created), frame_destroyed(0), glcount(0), eglcount(0), activations(0), swaps(0) {}
+        Surface(int _id, int _index, int _display) : id(_id), index(_index), display(_display), glcount(0), eglcount(0), activations(0), swaps(0) {}
         std::map<int, bool> threads_used;
         std::map<int, bool> contexts_used; // by idx
     };
@@ -491,23 +486,22 @@ private:
     std::map<std::string, Json::Value::Int64> tex_sizes;
     std::map<std::string, Json::Value::Int64> scissor_sizes;
 
-public:
     AnalyzeTrace() : features(FEATURE_MAX) {}
 
-    void analyze(ParseInterfaceRetracing &input);
+    void analyze(ParseInterfaceBase &input);
 
-private:
     void buffer_changed(GLenum target);
     void buffer_bound(GLenum target);
-    Json::Value trace_json(ParseInterfaceRetracing& input);
-    Json::Value frame_json(ParseInterfaceRetracing& input, int frame);
+    Json::Value trace_json(ParseInterfaceBase& input);
+    Json::Value frame_json(ParseInterfaceBase& input, int frame);
     Json::Value json_program(const StateTracker::Context& context, const StateTracker::Program& program, int frame);
-    double calculate_heaviness(const ParseInterfaceRetracing& input, int frame);
-    double calculate_dump_heaviness(const ParseInterfaceRetracing& input, int frame);
-    double calculate_complexity(const ParseInterfaceRetracing& input);
+    double calculate_heaviness(const ParseInterfaceBase& input, int frame);
+    double calculate_dump_heaviness(const ParseInterfaceBase& input, int frame);
+    double calculate_complexity(const ParseInterfaceBase& input);
+    bool in_renderpass_frame = false;
 };
 
-static void write_callstats(const ParseInterfaceRetracing& input, const std::string& basename)
+static void write_callstats(const ParseInterfaceBase& input, const std::string& basename)
 {
     std::string filename = basename + "_callstats.csv";
     FILE *fp = fopen(filename.c_str(), "w");
@@ -516,10 +510,10 @@ static void write_callstats(const ParseInterfaceRetracing& input, const std::str
         DBG_LOG("Could not open %s for writing: %s\n", filename.c_str(), strerror(errno));
         return;
     }
-    fprintf(fp, "Function, Count, Duplicates, %% dupes\n");
+    fprintf(fp, "Function,Count,Duplicates,%% dupes\n");
     for (auto& pair : input.callstats)
     {
-        fprintf(fp, "%s, %ld, %ld, %f\n", pair.first.c_str(), pair.second.count, pair.second.dupes, (double)pair.second.dupes / (double)pair.second.count);
+        fprintf(fp, "%s,%ld,%ld,%f\n", pair.first.c_str(), pair.second.count, pair.second.dupes, (double)pair.second.dupes / (double)pair.second.count);
     }
     fclose(fp);
 }
@@ -564,14 +558,793 @@ void AnalyzeTrace::buffer_bound(GLenum target)
     }
 }
 
-void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
+static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *custom)
 {
-    common::CallTM *call = NULL;
-    bool in_renderpass_frame = false;
+    AnalyzeTrace* az = (AnalyzeTrace*)custom;
+    const int context_index = input.context_index;
 
+    dumpstream << "[t" << call->mTid << ":c" << ((context_index != UNBOUND) ? std::to_string(context_index) : std::string("-"))
+               << ":s" << ((input.surface_index != UNBOUND) ? std::to_string(input.surface_index) : std::string("-"));
+    if (dumpCallTime)
+    {
+            dumpstream << ":" << std::setfill('0') << std::setw(10) << input.getCpuCycles();
+    }
+    dumpstream << "] ";
+    if (!bareLog)
+    {
+        dumpstream << call->mCallNo << ": ";
+    }
+    dumpstream << call->ToStr(false) << std::endl;
+
+    if (call->mCallName == "eglCreateWindowSurface" || call->mCallName == "eglCreateWindowSurface2"
+        || call->mCallName == "eglCreatePbufferSurface" || call->mCallName == "eglCreatePixmapSurface")
+    {
+        const int mret = call->mRet.GetAsInt();
+        const int display = call->mArgs[0]->GetAsInt();
+        dumpstream << "    idx=" << az->surfaces.size() << std::endl;
+        az->surfaces.push_back(AnalyzeTrace::Surface(mret, az->surfaces.size(), display));
+    }
+    else if (call->mCallName == "eglCreateImage" || call->mCallName == "eglCreateImageKHR")
+    {
+        az->features[FEATURE_EGLCREATEIMAGE]++;
+    }
+    else if (call->mCallName == "glEGLImageTargetTexture2DOES") // size can be inferred, original format lost
+    {
+        const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt());
+        const GLuint unit = az->contexts[context_index].activeTextureUnit;
+        const GLuint tex_id = az->contexts[context_index].boundTextureIds[target][unit];
+        az->contexts[context_index].textureIdCompressed[tex_id] = false;
+        az->contexts[context_index].textures++;
+        az->texturetypes[texEnum(target)]++;
+        az->features[FEATURE_EGL_IMAGE]++;
+        dumpstream << "    bound=" << tex_id << " active=" << unit << std::endl;
+        DEBUG_LOG("Created EGL image texture %u on context %d with target 0x%04x\n", tex_id, context_index, target);
+    }
+    else if (call->mCallName == "eglCreateContext")
+    {
+        const int mret = call->mRet.GetAsInt();
+        const int display = call->mArgs[0]->GetAsInt();
+        const int share = call->mArgs[2]->GetAsInt();
+        dumpstream << "    idx=" << az->contexts.size() << std::endl;
+        az->contexts.push_back(AnalyzeTrace::Context(mret, az->contexts.size(), display, share));
+        if (share != 0)
+        {
+            az->features[FEATURE_CONTEXT_SHARING]++;
+        }
+    }
+    else if (call->mCallName == "eglMakeCurrent")
+    {
+        const int surface = call->mArgs[1]->GetAsInt();
+        const int context = call->mArgs[3]->GetAsInt();
+        const int new_context_index = input.context_remapping[context];
+        if (surface != (int64_t)EGL_NO_SURFACE)
+        {
+            const int new_surface_index = input.surface_remapping[surface];
+            az->surfaces[new_surface_index].activations++;
+            az->surfaces[new_surface_index].eglcount++;
+            az->surfaces[new_surface_index].threads_used[call->mTid] = true;
+            az->surfaces[new_surface_index].contexts_used[new_context_index] = true;
+        }
+    }
+    else if (call->mCallName.compare(0, 14, "eglSwapBuffers") == 0)
+    {
+        const int surface = call->mArgs[1]->GetAsInt();
+        const int target_surface_index = input.surface_remapping[surface];
+        az->surfaces[target_surface_index].swaps++;
+        for (auto& c : az->contexts) // handle texture counting
+        {
+            // patrace defines 'frame' as any eglSwapBuffers on any context, so count all contexts
+            // TODO, handle shared contexts. For now, they will be counted as uncompressed.
+            for (auto& t : c.textureIdUsed)
+            {
+                if (c.textureIdCompressed.count(t) == 0)
+                {
+                    DBG_LOG("Texture ID %d on context ID=%d has been used, but never registered (call=%d)!\n", t, c.id, (int)call->mCallNo);
+                    continue;
+                }
+                bool compressed = c.textureIdCompressed.at(t);
+                if (relevant(input.frames))
+                {
+                    az->perframe["compressed_textures"].values.back() += compressed ? 1 : 0;
+                    az->perframe["uncompressed_textures"].values.back() += compressed ? 0 : 1;
+                }
+            }
+            c.textureIdUsed.clear();
+        }
+        if (relevant(input.frames))
+        {
+            startNewRows(az->perframe);
+        }
+        az->calls_per_frame.push_back(0);
+
+        if (az->in_renderpass_frame) // previous frame was in our renderpass list
+        {
+            write_CSV((dump_csv_filename.empty() ? "frame" : dump_csv_filename) + "_draws_f" + std::to_string(input.frames - 1), az->perdraw, true);
+            input.setQuickMode(true);
+            input.setDumpRenderpassJSON(false);
+            heavinesses[input.frames - 1] = az->calculate_dump_heaviness(input, input.frames - 1);
+        }
+
+        if (renderpassframes.count(input.frames))
+        {
+            input.dumpFrameBuffers(true); // start dumping FBOs for this frame
+            input.setQuickMode(false); // start analysing index buffers
+            input.setDumpRenderpassJSON(true);
+            az->in_renderpass_frame = true;
+        }
+        else if (az->in_renderpass_frame)
+        {
+            input.dumpFrameBuffers(false);
+            az->in_renderpass_frame = false;
+        }
+
+        if (input.frames > lastframe)
+        {
+            return false; // stop parsing file here
+        }
+
+        az->perdraw = createPerDraw();
+        startNewRows(az->perdraw);
+    }
+    /// --- end EGL ---
+    else if (context_index == UNBOUND)
+    {
+        // nothing, just prevent the GLES calls below from being processed without a GLES context
+    }
+    /// --- start GLES ---
+    else if (call->mCallName == "glBeginQuery" || call->mCallName == "glBeginQueryEXT")
+    {
+        const GLenum target = call->mArgs[0]->GetAsUInt();
+        if (target == GL_ANY_SAMPLES_PASSED) az->features[FEATURE_OCCLUSION_QUERIES]++;
+        else if (target == GL_ANY_SAMPLES_PASSED_CONSERVATIVE) az->features[FEATURE_OCCLUSION_QUERIES_CONSERVATIVE]++;
+        if (relevant(input.frames) && (target == GL_ANY_SAMPLES_PASSED || target == GL_ANY_SAMPLES_PASSED_CONSERVATIVE))
+        {
+            az->perframe["occlusion_queries"].values.back()++;
+        }
+    }
+    else if (call->mCallName == "glDiscardFramebufferEXT")
+    {
+        az->features[FEATURE_DISCARD_FBO]++;
+    }
+    else if (call->mCallName == "glInvalidateFramebuffer")
+    {
+        az->features[FEATURE_INVALIDATE_FBO]++;
+    }
+    else if (call->mCallName == "glBlendEquation")
+    {
+        const int mode = call->mArgs[0]->GetAsInt();
+        az->contexts[context_index].blendMode.setEquation(mode, mode);
+    }
+    else if (call->mCallName == "glBlendEquationSeparate")
+    {
+        const int modeRGB = call->mArgs[0]->GetAsInt();
+        const int modeAlpha = call->mArgs[1]->GetAsInt();
+        az->contexts[context_index].blendMode.setEquation(modeRGB, modeAlpha);
+    }
+    else if (call->mCallName == "glBlendFunc")
+    {
+        const int sfactor = call->mArgs[0]->GetAsInt();
+        const int dfactor = call->mArgs[1]->GetAsInt();
+        az->contexts[context_index].blendMode.setFunction(sfactor, dfactor, sfactor, dfactor);
+    }
+    else if (call->mCallName == "glBlendFuncSeparate")
+    {
+        const int sfactorRGB = call->mArgs[0]->GetAsInt();
+        const int dfactorRGB = call->mArgs[1]->GetAsInt();
+        const int sfactorAlpha = call->mArgs[2]->GetAsInt();
+        const int dfactorAlpha = call->mArgs[3]->GetAsInt();
+        az->contexts[context_index].blendMode.setFunction(sfactorRGB, dfactorRGB, sfactorAlpha, dfactorAlpha);
+    }
+    else if (call->mCallName == "glDepthFunc")
+    {
+        const GLenum func = call->mArgs[0]->GetAsUInt();
+        az->depthfuncs[func] = true;
+    }
+    else if (call->mCallName == "glGenProgramPipelines")
+    {
+        az->features[FEATURE_SEPARATE_SHADER_OBJECTS] += call->mArgs[0]->GetAsInt();
+    }
+    else if (call->mCallName == "glLinkProgram" && relevant(input.frames))
+    {
+        az->perframe["programs_linked"].values.back()++;
+    }
+    else if (call->mCallName.find("glTexImage") != std::string::npos
+             || call->mCallName.find("glTexStorage") != std::string::npos
+             || call->mCallName.find("glCompressedTexImage") != std::string::npos)
+    {
+        const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt());
+        int level = 0;
+        const GLuint unit = az->contexts[context_index].activeTextureUnit;
+        const GLuint tex_id = az->contexts[context_index].boundTextureIds[target][unit];
+        dumpstream << "    bound=" << tex_id << " active=" << unit << std::endl;
+        DEBUG_LOG("Created texture %u on context %d with target 0x%04x\n", tex_id, context_index, target);
+        const int x = call->mArgs[3]->GetAsInt();
+        std::string size;
+        std::string format = SafeEnumString(call->mArgs[2]->GetAsUInt(), call->mCallName.c_str());
+        if (format == "Unknown")
+        {
+            DBG_LOG("Could not decipher texture format 0x%04x\n", (unsigned)call->mArgs[2]->GetAsUInt());
+        }
+        int type_param = -1;
+
+        if (call->mCallName.find("1D") != std::string::npos) // 1D
+        {
+            size = std::to_string(x);
+            type_param = 6;
+        }
+        else if (call->mCallName.find("2D") != std::string::npos) // 2D
+        {
+            const int y = call->mArgs[4]->GetAsInt();
+            size = std::to_string(x) + "x" + std::to_string(y);
+            type_param = 7;
+        }
+        else if (call->mCallName.find("3D") != std::string::npos) // is 3D
+        {
+            const int y = call->mArgs[4]->GetAsInt();
+            const int z = call->mArgs[5]->GetAsInt();
+            size = std::to_string(x) + "x" + std::to_string(y) + "x" + std::to_string(z);
+            type_param = 8;
+        }
+        else
+        {
+            DBG_LOG("%s texture function not handled!\n", call->mCallName.c_str());
+        }
+
+        if (call->mCallName.find("glTexImage") != std::string::npos && type_param != -1)
+        {
+            level = call->mArgs[1]->GetAsInt();
+            // internal format may have to be derived from input format
+            format = SafeEnumString(merge_texture_format(call->mArgs[2]->GetAsUInt(), call->mArgs[type_param]->GetAsUInt()), call->mCallName.c_str());
+            if (format == "Unknown")
+            {
+                DBG_LOG("Could not decipher texture format 0x%04x merged with type 0x%04x (type@%d)\n", (unsigned)call->mArgs[2]->GetAsUInt(), (unsigned)call->mArgs[type_param]->GetAsUInt(), type_param);
+            }
+            az->contexts[context_index].textureIdCompressed[tex_id] = false;
+        }
+        else if (call->mCallName.find("glTexStorage") != std::string::npos)
+        {
+            const bool compressed = isCompressedFormat(call->mArgs[2]->GetAsUInt());
+            az->contexts[context_index].textureIdCompressed[tex_id] = compressed;
+            az->contexts[context_index].compressed_textures += compressed ? 1 : 0;
+        }
+        else // compressed variant
+        {
+            az->contexts[context_index].compressed_textures++;
+            az->contexts[context_index].textureIdCompressed[tex_id] = true;
+        }
+
+        if (level == 0) // do not count uploading individual mipmaps as separate textures
+        {
+            az->contexts[context_index].textures++;
+            az->tex_formats[format]++;
+            az->tex_sizes[size]++;
+            az->texturetypes[texEnum(target)]++;
+        }
+    }
+    else if (call->mCallName == "glVertexAttribBinding")
+    {
+        az->features[FEATURE_VERTEX_ATTR_BINDING] = true;
+    }
+    else if (call->mCallName == "glBindVertexBuffer" && relevant(input.frames))
+    {
+        az->features[FEATURE_VERTEX_BUFFER_BINDING] = true;
+        if (relevant(input.frames))
+        {
+            az->perdraw["buffer_binding"].values.back()++;
+            az->perdraw["vertex_buffer_binding"].values.back()++;
+            az->perframe["buffer_binding"].values.back()++;
+        }
+    }
+    else if (call->mCallName == "glCreateShader" || call->mCallName == "glCreateShaderProgramv")
+    {
+        const int mret = call->mRet.GetAsInt();
+        const int type = call->mArgs[0]->GetAsInt();
+        az->contexts[context_index].shadertypes[mret] = type;
+        az->shaders[type]++;
+    }
+    else if (call->mCallName == "glBindFramebuffer")
+    {
+        const GLenum target = call->mArgs[0]->GetAsUInt();
+        const GLuint fb = call->mArgs[1]->GetAsUInt();
+        bool valid;
+        if (target == GL_FRAMEBUFFER || target == GL_DRAW_FRAMEBUFFER)
+        {
+            az->contexts[context_index].drawframebuffer = fb;
+            // Setting it to the same value as the old value does not count
+            valid = (input.contexts[context_index].drawframebuffer != input.contexts[context_index].prev_drawframebuffer);
+        }
+        else
+        {
+            valid = (input.contexts[context_index].readframebuffer != input.contexts[context_index].prev_readframebuffer);
+        }
+        if (fb != 0 && relevant(input.frames) && valid)
+        {
+            az->perframe["framebuffers"].values.back()++;
+        }
+    }
+    else if (call->mCallName == "glFramebufferTexture2D" || call->mCallName == "glFramebufferTextureLayer"
+             || call->mCallName == "glFramebufferRenderbuffer" || call->mCallName == "glFramebufferTexture2DOES"
+             || call->mCallName == "glFramebufferTextureLayerOES" || call->mCallName == "glFramebufferRenderbufferOES")
+    {
+        const GLenum target = call->mArgs[0]->GetAsUInt();
+        const GLenum attachment = call->mArgs[1]->GetAsUInt();
+        GLuint fb = 0;
+        GLuint id = 0;
+
+        if (call->mCallName == "glFramebufferTextureLayer")
+        {
+            id = call->mArgs[2]->GetAsUInt();
+        }
+        else
+        {
+            id = call->mArgs[3]->GetAsUInt();
+        }
+
+        if (target == GL_FRAMEBUFFER || target == GL_DRAW_FRAMEBUFFER)
+        {
+            fb = input.contexts[context_index].drawframebuffer;
+        }
+        else
+        {
+            fb = input.contexts[context_index].readframebuffer;
+        }
+
+        if (fb != 0 && relevant(input.frames) && id != 0)
+        {
+            const int fbo_idx = input.contexts[context_index].framebuffers.remap(input.contexts[context_index].drawframebuffer);
+            const StateTracker::Framebuffer& framebuffer = input.contexts[context_index].framebuffers[fbo_idx];
+            // If the framebuffer attachments are modified in the same frame as they have been drawn to, then we consider it 'reused'.
+            if (framebuffer.used && framebuffer.last_used == input.frames)
+            {
+                az->features[FEATURE_FBO_REUSE]++;
+            }
+            az->perframe["fbo_attachments"].values.back()++;
+        }
+
+        if (attachment >= GL_COLOR_ATTACHMENT0 && attachment <= GL_COLOR_ATTACHMENT31)
+        {
+            az->highestColorAttachment = std::max<unsigned>(az->highestColorAttachment, attachment - GL_COLOR_ATTACHMENT0 + 1);
+        }
+    }
+    else if ((call->mCallName == "glFinish" || call->mCallName == "glFlush") && relevant(input.frames))
+    {
+       az->perframe["flushes"].values.back()++;
+       az->flushes++;
+    }
+    else if (call->mCallName == "glGenFramebuffers")
+    {
+        az->contexts[context_index].framebuffers += call->mArgs[0]->GetAsUInt();
+    }
+    else if (call->mCallName == "glActiveTexture")
+    {
+        const GLuint unit = call->mArgs[0]->GetAsUInt() - GL_TEXTURE0;
+        az->contexts[context_index].activeTextureUnit = unit;
+        if (relevant(input.frames))
+        {
+            az->highestTextureUnitUsed = std::max<GLuint>(az->highestTextureUnitUsed, unit);
+        }
+    }
+    else if (call->mCallName == "glUseProgram")
+    {
+        const GLuint id = call->mArgs[0]->GetAsUInt();
+        if (id != 0 && relevant(input.frames))
+        {
+            az->perdraw["program_binding"].values.back()++;
+            az->perframe["program_binding"].values.back()++;
+        }
+    }
+    else if (call->mCallName == "glBindTexture")
+    {
+        const unsigned unit = az->contexts[context_index].activeTextureUnit;
+        const unsigned target = call->mArgs[0]->GetAsUInt();
+        const unsigned tex_id = call->mArgs[1]->GetAsUInt();
+        az->contexts[context_index].boundTextureIds[target][unit] = tex_id;
+        dumpstream << "    active=" << unit << std::endl;
+        if (tex_id != 0 && relevant(input.frames))
+        {
+            az->perdraw["texture_binding"].values.back()++;
+            az->perframe["texture_binding"].values.back()++;
+        }
+    }
+    else if (call->mCallName == "glMapBuffer" || call->mCallName == "glMapBufferRange")
+    {
+        const GLenum target = call->mArgs[0]->GetAsUInt();
+        unsigned access = 0;
+
+        if (call->mCallName == "glMapBuffer")
+        {
+            access = call->mArgs[1]->GetAsUInt();
+        }
+        else
+        {
+            access = call->mArgs[3]->GetAsUInt();
+        }
+
+        if ((access | GL_MAP_WRITE_BIT) && relevant(input.frames))
+        {
+            az->buffer_changed(target);
+        }
+    }
+    else if (relevant(input.frames) && (call->mCallName == "glBufferData" || call->mCallName == "glBufferSubData"))
+    {
+        const GLenum target = call->mArgs[0]->GetAsUInt();
+        az->buffer_changed(target);
+    }
+    else if (relevant(input.frames) && call->mCallName == "glCopyBufferSubData")
+    {
+        // This is likely to use GL_COPY_WRITE_BUFFER for target, which will not tell us anything useful,
+        // but we try looking anyway.
+        const GLenum writetarget = call->mArgs[1]->GetAsUInt();
+        az->buffer_changed(writetarget);
+    }
+    else if (call->mCallName == "glVertexAttribIPointer" || call->mCallName == "glVertexAttribPointer")
+    {
+        if (az->last_changed_vertex_buffer == -1)
+        {
+            StateTracker::VertexArrayObject& vao = input.contexts[context_index].vaos.at(input.contexts[context_index].vao_index);
+            if (relevant(input.frames))
+            {
+                az->buffer_changed(GL_ARRAY_BUFFER);
+            }
+            az->last_changed_vertex_buffer = vao.boundBufferIds[GL_ARRAY_BUFFER][0].buffer;
+        }
+    }
+    else if (call->mCallName == "glBindBuffer" || call->mCallName == "glBindBufferBase" || call->mCallName == "glBindBufferRange")
+    {
+        const GLenum target = call->mArgs[0]->GetAsInt();
+        GLenum bufferid;
+        if (call->mCallName == "glBindBuffer")
+        {
+            bufferid = call->mArgs[1]->GetAsInt();
+        }
+        else
+        {
+            bufferid = call->mArgs[2]->GetAsInt();
+        }
+        switch (target)
+        {
+        case GL_SHADER_STORAGE_BUFFER: if (relevant(input.frames)) az->features[FEATURE_SSBO] = true; break;
+        case GL_UNIFORM_BUFFER: if (relevant(input.frames)) az->features[FEATURE_UBO] = true; break;
+        case GL_TRANSFORM_FEEDBACK_BUFFER: if (relevant(input.frames)) az->features[FEATURE_TF] = true; break;
+        case GL_ARRAY_BUFFER: // never used with glBindBuffer{Base|Range}
+            az->contexts[context_index].curbuffer = call->mArgs[1]->GetAsUInt();
+            az->last_changed_vertex_buffer = -1;
+            break;
+        default: break;
+        }
+        if (bufferid != 0 && relevant(input.frames))
+        {
+            az->buffer_bound(target);
+        }
+    }
+    else if (call->mCallName.find("glUniform") != std::string::npos || call->mCallName.find("glProgramUniform") != std::string::npos)
+    {
+        GLint location = 0;
+        GLuint program_id = 0;
+        int program_index = UNBOUND;
+
+        if (call->mCallName.find("glUniform") != std::string::npos)
+        {
+            program_index = input.contexts[context_index].program_index;
+            if (program_index != UNBOUND)
+            {
+                program_id = input.contexts[context_index].programs[program_index].id;
+                location = call->mArgs[0]->GetAsInt();
+            }
+        }
+        else // glProgramUniform*()
+        {
+            program_id = call->mArgs[0]->GetAsUInt();
+            if (input.contexts[context_index].programs.contains(program_id))
+            {
+                program_index = input.contexts[context_index].programs.remap(program_id);
+                location = call->mArgs[1]->GetAsInt();
+            }
+        }
+        if (program_index != UNBOUND)
+        {
+            StateTracker::Program &p = input.contexts[context_index].programs[program_index];
+            dumpstream << "    program=" << program_id << " name=" << p.uniformNames[location] << std::endl;
+        }
+        else
+        {
+            dumpstream << "    program=ERROR name=ERROR" << std::endl;
+        }
+        if (relevant(input.frames))
+        {
+            const int count = count_uniform_values(call);
+            az->perdraw["uniforms"].values.back()++;
+            az->perdraw["uniform_values"].values.back() += count;
+            az->perframe["uniforms"].values.back()++;
+            az->perframe["uniform_values"].values.back() += count;
+        }
+    }
+    else if (call->mCallName == "glEnable")
+    {
+        const GLenum target = call->mArgs[0]->GetAsInt();
+        if (target == GL_PRIMITIVE_RESTART_FIXED_INDEX && relevant(input.frames))
+        {
+           az->features[FEATURE_PRIMRESTART] = true;
+        }
+    }
+    else if (call->mCallName == "glVertexAttribPointer" && relevant(input.frames))
+    {
+        if (az->contexts[context_index].curbuffer != 0)
+        {
+            az->features[FEATURE_VBO]++;
+        }
+        else
+        {
+            az->features[FEATURE_VA]++;
+        }
+    }
+    else if (relevant(input.frames) && (call->mCallName == "glGenVertexArrays" || call->mCallName == "glGenVertexArraysOES"))
+    {
+        az->features[FEATURE_VAO]++;
+    }
+    else if (relevant(input.frames) && (call->mCallName == "glBindVertexArray" || call->mCallName == "glBindVertexArrayOES"))
+    {
+        az->perframe["vao_binding"].values.back()++;
+    }
+    else if (call->mCallName == "glClientSideBufferData" && relevant(input.frames))
+    {
+        az->clientsidebuffersize += call->mArgs[1]->GetAsUInt();
+        az->clientsidebuffers = std::max<int>(az->clientsidebuffers, call->mArgs[0]->GetAsInt() + 1);
+    }
+    else if (call->mCallName == "glProgramBinary" || call->mCallName == "glProgramBinaryOES")
+    {
+        // binaryFormat=0xDEADDEAD means we're messing with the driver to make this feature fail
+        const GLenum binaryFormat = call->mArgs[1]->GetAsUInt();
+        if (binaryFormat != 0xdeaddead)
+        {
+            az->features[FEATURE_BINARY_SHADERS]++;
+        }
+    }
+    else if (call->mCallName.compare(0, 10, "glDispatch") == 0 && relevant(input.frames))
+    {
+        az->compute++;
+        az->perframe["compute"].values.back()++;
+        if (call->mCallName == "glDispatchComputeIndirect")
+        {
+            az->features[FEATURE_VAO]++;
+            const unsigned count = call->mArgs[0]->GetAsUInt();
+            for (unsigned i = 0; i < count; i++)
+            {
+                const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
+                const int index = input.contexts[context_index].vaos.remap(id);
+                dumpstream << "    id=" << id << " index=" << index;
+            }
+            dumpstream << std::endl;
+            az->features[FEATURE_INDIRECT_COMPUTE]++;
+        }
+    }
+    else if (call->mCallName == "glDrawTexiOES")
+    {
+        // GLES1 texture to screen blitting extension
+    }
+    else if (call->mCallName.compare(0, 6, "glDraw") == 0 && call->mCallName != "glDrawBuffers" && relevant(input.frames))
+    {
+        StateTracker::Framebuffer* writeframebuffer = nullptr;
+
+        if (input.contexts[context_index].drawframebuffer != 0)
+        {
+            const GLuint id = call->mArgs[0]->GetAsUInt();
+            az->perframe["vao_binding"].values.back()++;
+            if (id != 0)
+            {
+                dumpstream << "    id=" << id << " index=" << input.contexts[context_index].vao_index << " program_index=" << input.contexts[context_index].program_index;
+            }
+            else dumpstream << "    id=" << id << " index=UNBOUND program_index=" << input.contexts[context_index].program_index;
+            dumpstream << std::endl;
+            int fbo_idx = input.contexts[context_index].framebuffers.remap(input.contexts[context_index].drawframebuffer);
+            writeframebuffer = &input.contexts[context_index].framebuffers[fbo_idx];
+        }
+
+        dumpstream << "    ";
+        const GLenum mode = call->mArgs[0]->GetAsUInt();
+        az->perframe["draws.total"].values.back()++;
+        az->perdraw["renderpass"].values.back() = input.contexts[context_index].render_passes.size();
+        if (input.contexts[context_index].enabled[GL_PRIMITIVE_RESTART_FIXED_INDEX])
+        {
+            az->perframe["draws.primitive_restart"].values.back()++;
+            dumpstream << "primitive_restart ";
+        }
+        if (input.contexts[context_index].enabled[GL_DITHER])
+        {
+            az->dither++;
+            az->perframe["draws.dither"].values.back()++;
+            dumpstream << "dither ";
+        }
+        if (input.contexts[context_index].enabled[GL_BLEND])
+        {
+            az->blended++;
+            az->perframe["draws.blended"].values.back()++;
+            az->blendModes[az->contexts[context_index].blendMode]++;
+            dumpstream << "blended ";
+        }
+        if (input.contexts[context_index].enabled[GL_SCISSOR_TEST]
+            && input.contexts[context_index].fillstate.scissor.width > 0
+            && input.contexts[context_index].fillstate.scissor.height > 0)
+        {
+            dumpstream << "scissored(" << input.contexts[context_index].fillstate.scissor.width << "x" << input.contexts[context_index].fillstate.scissor.height << ") ";
+            std::string size = std::to_string(input.contexts[context_index].fillstate.scissor.width) + "x" + std::to_string(input.contexts[context_index].fillstate.scissor.height);
+            az->scissor_sizes[size]++;
+        }
+        if (input.contexts[context_index].enabled[GL_DEPTH_TEST])
+        {
+            az->depthtested++;
+            az->perframe["draws.depthtested"].values.back()++;
+            dumpstream << "depthtested ";
+            if (input.contexts[context_index].fillstate.depthmask
+                && (input.contexts[context_index].drawframebuffer == 0
+                    || writeframebuffer->attachments.count(GL_DEPTH_ATTACHMENT) > 0))
+            {
+                az->depthwriting++;
+                az->perframe["draws.depthwriting"].values.back()++;
+                dumpstream << "depthwriting ";
+            }
+        }
+        if (input.contexts[context_index].enabled[GL_STENCIL_TEST])
+        {
+            az->stenciled++;
+            az->perframe["draws.stenciled"].values.back()++;
+            dumpstream << "stenciled ";
+        }
+        if (input.contexts[context_index].enabled[GL_CULL_FACE])
+        {
+            az->faceculled++;
+            az->perframe["draws.faceculled"].values.back()++;
+            dumpstream << "facefulled ";
+        }
+        if (call->mCallName.find("Indirect") != std::string::npos)
+        {
+            az->features[FEATURE_INDIRECT]++;
+            az->drawtypesindirect[mode]++;
+            az->perframe["draws.indirect"].values.back()++;
+        }
+
+        const DrawParams params = input.getDrawCallCount(call);
+        az->drawtypescount[mode] += params.vertices;
+        az->drawtypes[mode]++;
+        if (renderpassframes.count(input.frames))
+        {
+            az->perdraw["primitive_type"].values.back() = mode;
+            az->perdraw["primitives"].values.back() = params.primitives;
+            az->perdraw["vertices"].values.back() = params.vertices;
+            az->perdraw["vertices.unique"].values.back() = params.unique_vertices;
+            az->perdraw["max_sparseness"].values.back() = params.max_sparseness;
+            az->perdraw["avg_sparseness"].values.back() = params.avg_sparseness;
+            az->perdraw["spatial_locality"].values.back() = params.spatial_locality * 100.0;
+            az->perdraw["temporal_locality"].values.back() = params.temporal_locality * 100.0;
+            az->perdraw["vec4_locality"].values.back() = params.vec4_locality * 100.0;
+            az->perdraw["instancing"].values.back() = params.instances;
+            startNewRows(az->perdraw);
+        }
+        az->drawtypesprimitives[mode] += params.primitives;
+        az->perframe["vertices"].values.back() += params.vertices;
+        az->perframe["instancing"].values.back() += params.instances;
+        az->perframe["primitives"].values.back() += params.primitives;
+
+        if (call->mCallName.find("Elements") != std::string::npos)
+        {
+            az->indexed++;
+            az->perframe["draws.indexed"].values.back()++;
+            az->perframe["vertices.indexed"].values.back() += params.vertices;
+            az->perframe["vertices.unique"].values.back() += params.unique_vertices;
+        }
+
+        if (params.instances > 1)
+        {
+            az->features[FEATURE_INSTANCING]++;
+            az->perframe["draws.instanced"].values.back()++;
+        }
+
+        if (input.contexts[context_index].enabled[GL_POLYGON_OFFSET_FILL])
+        {
+            az->features[FEATURE_POLYGON_OFFSET_FILL]++;
+            az->perframe["draws.polygonoffset"].values.back()++;
+        }
+
+        // figure out used texture types
+        const int program_index = input.contexts[context_index].program_index;
+        if (program_index >= 0) // will be zero for GLES1
+        {
+            dumpstream << std::endl << "    ";
+            const StateTracker::Program& p = input.contexts[context_index].programs[program_index];
+            for (const auto& pair : p.texture_bindings)
+            {
+                const StateTracker::Program::ProgramSampler& s = pair.second;
+                const GLenum binding = samplerTypeToBindingType(s.type);
+                if (binding == GL_NONE)
+                {
+                    DBG_LOG("Could not map sampler %s of type %04x at call %d\n", pair.first.c_str(), s.type, (int)call->mCallNo);
+                    continue;
+                }
+                else if (input.contexts[context_index].textureUnits.count(s.value) == 0
+                         || input.contexts[context_index].textureUnits[s.value].count(binding) == 0)
+                {
+                    continue; // no textures bound
+                }
+                const GLuint texture_id = input.contexts[context_index].textureUnits.at(s.value).at(binding);
+                dumpstream << "TextureUnit:" << s.value << "(" + texEnum(binding) + ") = TexureId:" << texture_id << ",SamplerId:"
+                           << input.contexts[context_index].sampler_binding[s.value] << std::endl << "    ";
+                if (texture_id == 0) continue;
+                StateTracker::SamplerState sampler;
+                const GLuint samplerObject = input.contexts[context_index].sampler_binding[s.value];
+                if (samplerObject) // do we have a sampler object bound?
+                {
+                    const int idx = input.contexts[context_index].samplers.remap(samplerObject);
+                    sampler = input.contexts[context_index].samplers[idx].state;
+                }
+                else // if not, use texture's sampler state
+                {
+                    const int idx = input.contexts[context_index].textures.remap(texture_id);
+                    sampler = input.contexts[context_index].textures[idx].state;
+                }
+                az->contexts[context_index].textureIdUsed.insert(texture_id);
+                az->texturetypefilters[texEnum(binding)][texEnum(sampler.min_filter)]++;
+                const int idx = input.contexts[context_index].textures.remap(texture_id);
+                StateTracker::Texture& texture = input.contexts[context_index].textures[idx];
+                az->texturetypesizes[texEnum(binding)][std::to_string(texture.width) + "x" + std::to_string(texture.height) + "x" + std::to_string(texture.depth)]++;
+                az->perframe["textures"].values.back()++;
+                az->perdraw["textures"].values.back()++;
+                if (sampler.anisotropy > 1.0)
+                {
+                    az->features[FEATURE_ANISOTROPY] = 1;
+                }
+                if (renderpassframes.count(input.frames))
+                {
+                    az->textures_by_renderpass[input.contexts[context_index].render_passes.back().unique_index].insert(texture_id);
+                }
+                texture.used_min_filters.insert(sampler.min_filter);
+                texture.used_mag_filters.insert(sampler.mag_filter);
+            }
+        }
+        if (input.contexts[context_index].render_passes.back().active)
+        {
+            dumpstream << "renderpass=" << input.contexts[context_index].render_passes.back().index << " ";
+        }
+        dumpstream << "drawfb=" << input.contexts[context_index].drawframebuffer << " ";
+        dumpstream << "readfb=" << input.contexts[context_index].readframebuffer << " ";
+        dumpstream << "program=" << (program_index >= 0 ? input.contexts[context_index].programs[program_index].id : 0) << " ";
+        dumpstream << "drawcall=" << az->drawcalls << " ";
+        dumpstream << "frame=" << input.frames << " ";
+        dumpstream << std::endl;
+        az->drawcalls++;
+    }
+    else if ((call->mCallName == "glClear" || call->mCallName.compare(0, 13, "glClearBuffer") == 0) && relevant(input.frames))
+    {
+        az->clears++;
+        az->perframe["clears"].values.back()++;
+    }
+
+    if (az->surfaces.size() > static_cast<unsigned>(input.surface_index) && input.surface_index != UNBOUND)
+    {
+        az->surfaces[input.surface_index].threads_used[call->mTid] = true;
+        if (call->mCallName.compare(0, 2, "gl") == 0)
+        {
+            az->surfaces[input.surface_index].glcount++;
+        }
+        else if (call->mCallName.compare(0, 3, "egl") == 0)
+        {
+            az->surfaces[input.surface_index].eglcount++;
+        }
+    }
+
+    az->calls_per_frame.back()++;
+    if (relevant(input.frames))
+    {
+        az->calls++;
+        az->perframe["calls"].values.back()++;
+    }
+
+    return true;
+}
+
+void AnalyzeTrace::analyze(ParseInterfaceBase& input)
+{
     if (startframe == 0)
     {
-        relative_frames++;
         startNewRows(perframe);
     }
     startNewRows(perdraw);
@@ -583,781 +1356,8 @@ void AnalyzeTrace::analyze(ParseInterfaceRetracing& input)
         input.setDumpRenderpassJSON(true);
         in_renderpass_frame = true;
     }
-    while ((call = input.next_call()))
-    {
-        const int context_index = input.context_index;
 
-        dumpstream << "[t" << call->mTid << ":c" << ((context_index != UNBOUND) ? std::to_string(context_index) : std::string("-"))
-                   << ":s" << ((input.surface_index != UNBOUND) ? std::to_string(input.surface_index) : std::string("-"));
-        if (dumpCallTime)
-        {
-            dumpstream << ":" << std::setfill('0') << std::setw(10) << input.getCpuCycles();
-        }
-        dumpstream << "] ";
-        if (!bareLog)
-        {
-            dumpstream << call->mCallNo << ": ";
-        }
-        dumpstream << call->ToStr(false) << std::endl;
-
-        if (call->mCallName == "eglCreateWindowSurface" || call->mCallName == "eglCreateWindowSurface2"
-            || call->mCallName == "eglCreatePbufferSurface" || call->mCallName == "eglCreatePixmapSurface")
-        {
-            int mret = call->mRet.GetAsInt();
-            int display = call->mArgs[0]->GetAsInt();
-            dumpstream << "    idx=" << surfaces.size() << std::endl;
-            surfaces.push_back(Surface(mret, surfaces.size(), display, call->mCallNo, frames));
-        }
-        else if (call->mCallName == "eglCreateImage" || call->mCallName == "eglCreateImageKHR")
-        {
-            features[FEATURE_EGLCREATEIMAGE]++;
-        }
-        else if (call->mCallName == "glEGLImageTargetTexture2DOES") // size can be inferred, original format lost
-        {
-            const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt());
-            const GLuint unit = contexts[context_index].activeTextureUnit;
-            const GLuint tex_id = contexts[context_index].boundTextureIds[target][unit];
-            contexts[context_index].textureIdCompressed[tex_id] = false;
-            contexts[context_index].textures++;
-            texturetypes[texEnum(target)]++;
-            features[FEATURE_EGL_IMAGE]++;
-            dumpstream << "    bound=" << tex_id << " active=" << unit << std::endl;
-            DEBUG_LOG("Created EGL image texture %u on context %d with target 0x%04x\n", tex_id, context_index, target);
-        }
-        else if (call->mCallName == "eglCreateContext")
-        {
-            int mret = call->mRet.GetAsInt();
-            int display = call->mArgs[0]->GetAsInt();
-            int share = call->mArgs[2]->GetAsInt();
-            dumpstream << "    idx=" << contexts.size() << std::endl;
-            contexts.push_back(Context(mret, contexts.size(), display, share));
-            if (share != 0)
-            {
-                features[FEATURE_CONTEXT_SHARING]++;
-            }
-        }
-        else if (call->mCallName == "eglDestroySurface")
-        {
-            int surface = call->mArgs[1]->GetAsInt();
-            int target_surface_index = input.surface_remapping[surface];
-            surfaces[target_surface_index].call_destroyed = call->mCallNo;
-            surfaces[target_surface_index].frame_destroyed = frames;
-            dumpstream << "    call created=" << surfaces[target_surface_index].call_created << " frames=" << frames - surfaces[target_surface_index].frame_created << std::endl;
-        }
-        else if (call->mCallName == "eglDestroyContext")
-        {
-            int context = call->mArgs[1]->GetAsInt();
-            int target_context_index = input.context_remapping[context];
-            dumpstream << "    call created=" << input.contexts[target_context_index].call_created << " frames=" << frames - input.contexts[target_context_index].frame_created << std::endl;
-        }
-        else if (call->mCallName == "eglMakeCurrent")
-        {
-            int surface = call->mArgs[1]->GetAsInt();
-            int context = call->mArgs[3]->GetAsInt();
-            int new_context_index = input.context_remapping[context];
-            if (surface != (int64_t)EGL_NO_SURFACE)
-            {
-                int new_surface_index = input.surface_remapping[surface];
-                surfaces[new_surface_index].activations++;
-                surfaces[new_surface_index].eglcount++;
-                surfaces[new_surface_index].threads_used[call->mTid] = true;
-                surfaces[new_surface_index].contexts_used[new_context_index] = true;
-                if (surfaces[new_surface_index].call_destroyed != 0)
-                {
-                    DBG_LOG("Warning: eglMakeCurrent on destroyed thread idx %d, id %u at call %u!\n", new_surface_index, surfaces[new_surface_index].id, call->mCallNo);
-                }
-            }
-        }
-        else if (call->mCallName.compare(0, 14, "eglSwapBuffers") == 0)
-        {
-            int surface = call->mArgs[1]->GetAsInt();
-            int target_surface_index = input.surface_remapping[surface];
-            surfaces[target_surface_index].swaps++;
-            frames++;
-            for (auto& c : contexts) // handle texture counting
-            {
-                // patrace defines 'frame' as any eglSwapBuffers on any context, so count all contexts
-                // TODO, handle shared contexts. For now, they will be counted as uncompressed.
-                for (auto& t : c.textureIdUsed)
-                {
-                    if (c.textureIdCompressed.count(t) == 0)
-                    {
-                        DBG_LOG("Texture ID %d on context ID=%d has been used, but never registered (call=%d)!\n", t, c.id, (int)call->mCallNo);
-                    }
-                    bool compressed = c.textureIdCompressed[t];
-                    if (relevant(frames))
-                    {
-                        perframe["compressed_textures"].values.back() += compressed ? 1 : 0;
-                        perframe["uncompressed_textures"].values.back() += compressed ? 0 : 1;
-                    }
-                }
-                c.textureIdUsed.clear();
-            }
-            if (relevant(frames))
-            {
-                relative_frames++;
-                startNewRows(perframe);
-            }
-            calls_per_frame.push_back(0);
-
-            if (in_renderpass_frame) // previous frame was in our renderpass list
-            {
-                write_CSV((dump_csv_filename.empty() ? "frame" : dump_csv_filename) + "_draws_f" + std::to_string(frames - 1), perdraw, true);
-                input.setQuickMode(true);
-                input.setDumpRenderpassJSON(false);
-                heavinesses[frames - 1] = calculate_dump_heaviness(input, frames - 1);
-            }
-
-            if (renderpassframes.count(frames))
-            {
-                input.dumpFrameBuffers(true); // start dumping FBOs for this frame
-                input.setQuickMode(false); // start analysing index buffers
-                input.setDumpRenderpassJSON(true);
-                in_renderpass_frame = true;
-            }
-            else if (in_renderpass_frame)
-            {
-                input.dumpFrameBuffers(false);
-                in_renderpass_frame = false;
-            }
-
-            if (frames > lastframe)
-            {
-                break; // stop parsing file here
-            }
-
-            perdraw = createPerDraw();
-            startNewRows(perdraw);
-        }
-        /// --- end EGL ---
-        else if (context_index == UNBOUND)
-        {
-            // nothing, just prevent the GLES calls below from being processed without a GLES context
-        }
-        /// --- start GLES ---
-        else if (call->mCallName == "glDiscardFramebufferEXT")
-        {
-            features[FEATURE_DISCARD_FBO]++;
-        }
-        else if (call->mCallName == "glInvalidateFramebuffer")
-        {
-            features[FEATURE_INVALIDATE_FBO]++;
-        }
-        else if (call->mCallName == "glBlendEquation")
-        {
-            int mode = call->mArgs[0]->GetAsInt();
-            contexts[context_index].blendMode.setEquation(mode, mode);
-        }
-        else if (call->mCallName == "glBlendEquationSeparate")
-        {
-            int modeRGB = call->mArgs[0]->GetAsInt();
-            int modeAlpha = call->mArgs[1]->GetAsInt();
-            contexts[context_index].blendMode.setEquation(modeRGB, modeAlpha);
-        }
-        else if (call->mCallName == "glBlendFunc")
-        {
-            int sfactor = call->mArgs[0]->GetAsInt();
-            int dfactor = call->mArgs[1]->GetAsInt();
-            contexts[context_index].blendMode.setFunction(sfactor, dfactor, sfactor, dfactor);
-        }
-        else if (call->mCallName == "glBlendFuncSeparate")
-        {
-            int sfactorRGB = call->mArgs[0]->GetAsInt();
-            int dfactorRGB = call->mArgs[1]->GetAsInt();
-            int sfactorAlpha = call->mArgs[2]->GetAsInt();
-            int dfactorAlpha = call->mArgs[3]->GetAsInt();
-            contexts[context_index].blendMode.setFunction(sfactorRGB, dfactorRGB, sfactorAlpha, dfactorAlpha);
-        }
-        else if (call->mCallName == "glDepthFunc")
-        {
-            GLenum func = call->mArgs[0]->GetAsUInt();
-            depthfuncs[func] = true;
-        }
-        else if (call->mCallName == "glGenProgramPipelines")
-        {
-            features[FEATURE_SEPARATE_SHADER_OBJECTS] += call->mArgs[0]->GetAsInt();
-        }
-        else if (call->mCallName == "glLinkProgram" && relevant(frames))
-        {
-            perframe["programs_linked"].values.back()++;
-        }
-        else if (call->mCallName.find("glTexImage") != std::string::npos
-                 || call->mCallName.find("glTexStorage") != std::string::npos
-                 || call->mCallName.find("glCompressedTexImage") != std::string::npos)
-        {
-            const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt());
-            int level = 0;
-            const GLuint unit = contexts[context_index].activeTextureUnit;
-            const GLuint tex_id = contexts[context_index].boundTextureIds[target][unit];
-            dumpstream << "    bound=" << tex_id << " active=" << unit << std::endl;
-            DEBUG_LOG("Created texture %u on context %d with target 0x%04x\n", tex_id, context_index, target);
-            const int x = call->mArgs[3]->GetAsInt();
-            std::string size;
-            std::string format = SafeEnumString(call->mArgs[2]->GetAsUInt(), call->mCallName.c_str());
-            if (format == "Unknown")
-            {
-                DBG_LOG("Could not decipher texture format 0x%04x\n", (unsigned)call->mArgs[2]->GetAsUInt());
-            }
-            int type_param = -1;
-
-            if (call->mCallName.find("1D") != std::string::npos) // 1D
-            {
-                size = std::to_string(x);
-                type_param = 6;
-            }
-            else if (call->mCallName.find("2D") != std::string::npos) // 2D
-            {
-                const int y = call->mArgs[4]->GetAsInt();
-                size = std::to_string(x) + "x" + std::to_string(y);
-                type_param = 7;
-            }
-            else if (call->mCallName.find("3D") != std::string::npos) // is 3D
-            {
-                const int y = call->mArgs[4]->GetAsInt();
-                const int z = call->mArgs[5]->GetAsInt();
-                size = std::to_string(x) + "x" + std::to_string(y) + "x" + std::to_string(z);
-                type_param = 8;
-            }
-            else
-            {
-                DBG_LOG("%s texture function not handled!\n", call->mCallName.c_str());
-            }
-
-            if (call->mCallName.find("glTexImage") != std::string::npos && type_param != -1)
-            {
-                level = call->mArgs[1]->GetAsInt();
-                // internal format may have to be derived from input format
-                format = SafeEnumString(merge_texture_format(call->mArgs[2]->GetAsUInt(), call->mArgs[type_param]->GetAsUInt()), call->mCallName.c_str());
-                if (format == "Unknown")
-                {
-                    DBG_LOG("Could not decipher texture format 0x%04x merged with type 0x%04x (type@%d)\n", (unsigned)call->mArgs[2]->GetAsUInt(), (unsigned)call->mArgs[type_param]->GetAsUInt(), type_param);
-                }
-                contexts[context_index].textureIdCompressed[tex_id] = false;
-            }
-            else if (call->mCallName.find("glTexStorage") != std::string::npos)
-            {
-                const bool compressed = isCompressedFormat(call->mArgs[2]->GetAsUInt());
-                contexts[context_index].textureIdCompressed[tex_id] = compressed;
-                contexts[context_index].compressed_textures += compressed ? 1 : 0;
-            }
-            else // compressed variant
-            {
-                contexts[context_index].compressed_textures++;
-                contexts[context_index].textureIdCompressed[tex_id] = true;
-            }
-
-            if (level == 0) // do not count uploading individual mipmaps as separate textures
-            {
-                contexts[context_index].textures++;
-                tex_formats[format]++;
-                tex_sizes[size]++;
-                texturetypes[texEnum(target)]++;
-            }
-        }
-        else if (call->mCallName == "glVertexAttribBinding")
-        {
-            features[FEATURE_VERTEX_ATTR_BINDING] = true;
-        }
-        else if (call->mCallName == "glBindVertexBuffer" && relevant(frames))
-        {
-            features[FEATURE_VERTEX_BUFFER_BINDING] = true;
-            if (relevant(frames))
-            {
-                perdraw["buffer_binding"].values.back()++;
-                perdraw["vertex_buffer_binding"].values.back()++;
-                perframe["buffer_binding"].values.back()++;
-            }
-        }
-        else if (call->mCallName == "glCreateShader" || call->mCallName == "glCreateShaderProgramv")
-        {
-            const int mret = call->mRet.GetAsInt();
-            const int type = call->mArgs[0]->GetAsInt();
-            contexts[context_index].shadertypes[mret] = type;
-            shaders[type]++;
-        }
-        else if (call->mCallName == "glBindFramebuffer")
-        {
-            GLenum target = call->mArgs[0]->GetAsUInt();
-            GLuint fb = call->mArgs[1]->GetAsUInt();
-            bool valid;
-            if (target == GL_FRAMEBUFFER || target == GL_DRAW_FRAMEBUFFER)
-            {
-                contexts[context_index].drawframebuffer = fb;
-                // Setting it to the same value as the old value does not count
-                valid = (input.contexts[context_index].drawframebuffer != input.contexts[context_index].prev_drawframebuffer);
-            }
-            else
-            {
-                valid = (input.contexts[context_index].readframebuffer != input.contexts[context_index].prev_readframebuffer);
-            }
-            if (fb != 0 && relevant(frames) && valid)
-            {
-                perframe["framebuffers"].values.back()++;
-            }
-        }
-        else if (call->mCallName == "glFramebufferTexture2D" || call->mCallName == "glFramebufferTextureLayer"
-                 || call->mCallName == "glFramebufferRenderbuffer" || call->mCallName == "glFramebufferTexture2DOES"
-                 || call->mCallName == "glFramebufferTextureLayerOES" || call->mCallName == "glFramebufferRenderbufferOES")
-        {
-            GLenum target = call->mArgs[0]->GetAsUInt();
-            GLenum attachment = call->mArgs[1]->GetAsUInt();
-            GLuint fb = 0;
-            GLuint id = 0;
-
-            if (call->mCallName == "glFramebufferTextureLayer")
-            {
-                id = call->mArgs[2]->GetAsUInt();
-            }
-            else
-            {
-                id = call->mArgs[3]->GetAsUInt();
-            }
-
-            if (target == GL_FRAMEBUFFER || target == GL_DRAW_FRAMEBUFFER)
-            {
-                fb = input.contexts[context_index].drawframebuffer;
-            }
-            else
-            {
-                fb = input.contexts[context_index].readframebuffer;
-            }
-
-            if (fb != 0 && relevant(frames) && id != 0)
-            {
-                const int fbo_idx = input.contexts[context_index].framebuffers.remap(input.contexts[context_index].drawframebuffer);
-                const StateTracker::Framebuffer& framebuffer = input.contexts[context_index].framebuffers[fbo_idx];
-                // If the framebuffer attachments are modified in the same frame as they have been drawn to, then we consider it 'reused'.
-                if (framebuffer.used && framebuffer.last_used == frames)
-                {
-                    features[FEATURE_FBO_REUSE]++;
-                }
-                perframe["fbo_attachments"].values.back()++;
-            }
-            (void)attachment; // silence compiler
-        }
-        else if ((call->mCallName == "glFinish" || call->mCallName == "glFlush") && relevant(frames))
-        {
-           perframe["flushes"].values.back()++;
-           flushes++;
-        }
-        else if (call->mCallName == "glGenFramebuffers")
-        {
-            contexts[context_index].framebuffers += call->mArgs[0]->GetAsUInt();
-        }
-        else if (relevant(frames) && (call->mCallName == "glFramebufferRenderbuffer" || call->mCallName == "glFramebufferTexture2D"))
-        {
-            const unsigned attachment = call->mArgs[1]->GetAsUInt();
-            if (attachment >= GL_COLOR_ATTACHMENT0 && attachment <= GL_COLOR_ATTACHMENT31)
-            {
-                numColorAttachments = std::max<unsigned>(numColorAttachments, attachment - GL_COLOR_ATTACHMENT0 + 1);
-            }
-        }
-        else if (call->mCallName == "glActiveTexture")
-        {
-            GLuint unit = call->mArgs[0]->GetAsUInt() - GL_TEXTURE0;
-            contexts[context_index].activeTextureUnit = unit;
-            if (relevant(frames))
-            {
-                highestTextureUnitUsed = std::max<GLuint>(highestTextureUnitUsed, unit);
-            }
-        }
-        else if (call->mCallName == "glUseProgram")
-        {
-            const GLuint id = call->mArgs[0]->GetAsUInt();
-            if (id != 0 && relevant(frames))
-            {
-                perdraw["program_binding"].values.back()++;
-                perframe["program_binding"].values.back()++;
-            }
-        }
-        else if (call->mCallName == "glBindTexture")
-        {
-            const unsigned unit = contexts[context_index].activeTextureUnit;
-            const unsigned target = call->mArgs[0]->GetAsUInt();
-            const unsigned tex_id = call->mArgs[1]->GetAsUInt();
-            contexts[context_index].boundTextureIds[target][unit] = tex_id;
-            dumpstream << "    active=" << unit << std::endl;
-            if (tex_id != 0 && relevant(frames))
-            {
-                perdraw["texture_binding"].values.back()++;
-                perframe["texture_binding"].values.back()++;
-            }
-        }
-        else if (call->mCallName == "glMapBuffer" || call->mCallName == "glMapBufferRange")
-        {
-            const GLenum target = call->mArgs[0]->GetAsUInt();
-            unsigned access = 0;
-
-            if (call->mCallName == "glMapBuffer")
-            {
-                access = call->mArgs[1]->GetAsUInt();
-            }
-            else
-            {
-                access = call->mArgs[3]->GetAsUInt();
-            }
-
-            if ((access | GL_MAP_WRITE_BIT) && relevant(frames))
-            {
-                buffer_changed(target);
-            }
-        }
-        else if (relevant(frames) && (call->mCallName == "glBufferData" || call->mCallName == "glBufferSubData"))
-        {
-            const GLenum target = call->mArgs[0]->GetAsUInt();
-            buffer_changed(target);
-        }
-        else if (relevant(frames) && call->mCallName == "glCopyBufferSubData")
-        {
-            // This is likely to use GL_COPY_WRITE_BUFFER for target, which will not tell us anything useful,
-            // but we try looking anyway.
-            const GLenum writetarget = call->mArgs[1]->GetAsUInt();
-            buffer_changed(writetarget);
-        }
-        else if (call->mCallName == "glVertexAttribIPointer" || call->mCallName == "glVertexAttribPointer")
-        {
-            if (last_changed_vertex_buffer == -1)
-            {
-                StateTracker::VertexArrayObject& vao = input.contexts[context_index].vaos.at(input.contexts[context_index].vao_index);
-                if (relevant(frames))
-                {
-                    buffer_changed(GL_ARRAY_BUFFER);
-                }
-                last_changed_vertex_buffer = vao.boundBufferIds[GL_ARRAY_BUFFER][0].buffer;
-            }
-        }
-        else if (call->mCallName == "glBindBuffer" || call->mCallName == "glBindBufferBase" || call->mCallName == "glBindBufferRange")
-        {
-            GLenum target = call->mArgs[0]->GetAsInt();
-            GLenum bufferid;
-            if (call->mCallName == "glBindBuffer")
-            {
-                bufferid = call->mArgs[1]->GetAsInt();
-            }
-            else
-            {
-                bufferid = call->mArgs[2]->GetAsInt();
-            }
-            switch (target)
-            {
-            case GL_SHADER_STORAGE_BUFFER: if (relevant(frames)) features[FEATURE_SSBO] = true; break;
-            case GL_UNIFORM_BUFFER: if (relevant(frames)) features[FEATURE_UBO] = true; break;
-            case GL_TRANSFORM_FEEDBACK_BUFFER: if (relevant(frames)) features[FEATURE_TF] = true; break;
-            case GL_ARRAY_BUFFER: // never used with glBindBuffer{Base|Range}
-                contexts[context_index].curbuffer = call->mArgs[1]->GetAsUInt();
-                last_changed_vertex_buffer = -1;
-                break;
-            default: break;
-            }
-            if (bufferid != 0 && relevant(frames))
-            {
-                buffer_bound(target);
-            }
-        }
-        else if (call->mCallName.find("glUniform") != std::string::npos || call->mCallName.find("glProgramUniform") != std::string::npos)
-        {
-            GLint location = 0;
-            GLuint program_id = 0;
-            int program_index = UNBOUND;
-
-            if (call->mCallName.find("glUniform") != std::string::npos)
-            {
-                program_index = input.contexts[context_index].program_index;
-                if (program_index != UNBOUND)
-                {
-                    program_id = input.contexts[context_index].programs[program_index].id;
-                    location = call->mArgs[0]->GetAsInt();
-                }
-            }
-            else // glProgramUniform*()
-            {
-                program_id = call->mArgs[0]->GetAsUInt();
-                if (input.contexts[context_index].programs.contains(program_id))
-                {
-                    program_index = input.contexts[context_index].programs.remap(program_id);
-                    location = call->mArgs[1]->GetAsInt();
-                }
-            }
-            if (program_index != UNBOUND)
-            {
-                StateTracker::Program &p = input.contexts[context_index].programs[program_index];
-                dumpstream << "    program=" << program_id << " name=" << p.uniformNames[location] << std::endl;
-            }
-            else
-            {
-                dumpstream << "    program=ERROR name=ERROR" << std::endl;
-            }
-            if (relevant(frames))
-            {
-                const int count = count_uniform_values(call);
-                perdraw["uniforms"].values.back()++;
-                perdraw["uniform_values"].values.back() += count;
-                perframe["uniforms"].values.back()++;
-                perframe["uniform_values"].values.back() += count;
-            }
-        }
-        else if (call->mCallName == "glEnable")
-        {
-            GLenum target = call->mArgs[0]->GetAsInt();
-            if (target == GL_PRIMITIVE_RESTART_FIXED_INDEX && relevant(frames))
-            {
-                features[FEATURE_PRIMRESTART] = true;
-            }
-        }
-        else if (call->mCallName == "glVertexAttribPointer" && relevant(frames))
-        {
-            if (contexts[context_index].curbuffer != 0)
-            {
-                features[FEATURE_VBO]++;
-            }
-            else
-            {
-                features[FEATURE_VA]++;
-            }
-        }
-        else if (relevant(frames) && (call->mCallName == "glGenVertexArrays" || call->mCallName == "glGenVertexArraysOES"))
-        {
-            features[FEATURE_VAO]++;
-        }
-        else if (relevant(frames) && (call->mCallName == "glBindVertexArray" || call->mCallName == "glBindVertexArrayOES"))
-        {
-            perframe["vao_binding"].values.back()++;
-        }
-        else if (call->mCallName == "glClientSideBufferData" && relevant(frames))
-        {
-            clientsidebuffersize += call->mArgs[1]->GetAsUInt();
-            clientsidebuffers = std::max<int>(clientsidebuffers, call->mArgs[0]->GetAsInt() + 1);
-        }
-        else if (call->mCallName == "glProgramBinary" || call->mCallName == "glProgramBinaryOES")
-        {
-            // binaryFormat=0xDEADDEAD means we're messing with the driver to make this feature fail
-            GLenum binaryFormat = call->mArgs[1]->GetAsUInt();
-            if (binaryFormat != 0xdeaddead)
-            {
-                features[FEATURE_BINARY_SHADERS]++;
-            }
-        }
-        else if (call->mCallName.compare(0, 10, "glDispatch") == 0 && relevant(frames))
-        {
-            compute++;
-            perframe["compute"].values.back()++;
-            if (call->mCallName == "glDispatchComputeIndirect")
-            {
-                features[FEATURE_INDIRECT_COMPUTE]++;
-            }
-        }
-        else if (call->mCallName == "glDrawTexiOES")
-        {
-            // GLES1 texture to screen blitting extension
-        }
-        else if (call->mCallName.compare(0, 6, "glDraw") == 0 && call->mCallName != "glDrawBuffers" && relevant(frames))
-        {
-            StateTracker::Framebuffer* writeframebuffer = nullptr;
-
-            if (input.contexts[context_index].drawframebuffer != 0)
-            {
-                int fbo_idx = input.contexts[context_index].framebuffers.remap(input.contexts[context_index].drawframebuffer);
-                writeframebuffer = &input.contexts[context_index].framebuffers[fbo_idx];
-            }
-
-            dumpstream << "    ";
-            GLenum mode = call->mArgs[0]->GetAsUInt();
-            perframe["draws.total"].values.back()++;
-            perdraw["renderpass"].values.back() = input.contexts[context_index].render_passes.size();
-            if (input.contexts[context_index].enabled[GL_PRIMITIVE_RESTART_FIXED_INDEX])
-            {
-                perframe["draws.primitive_restart"].values.back()++;
-                dumpstream << "primitive_restart ";
-            }
-            if (input.contexts[context_index].enabled[GL_DITHER])
-            {
-                dither++;
-                perframe["draws.dither"].values.back()++;
-                dumpstream << "dither ";
-            }
-            if (input.contexts[context_index].enabled[GL_BLEND])
-            {
-                blended++;
-                perframe["draws.blended"].values.back()++;
-                blendModes[contexts[context_index].blendMode]++;
-                dumpstream << "blended ";
-            }
-            if (input.contexts[context_index].enabled[GL_SCISSOR_TEST]
-                && input.contexts[context_index].fillstate.scissor.width > 0
-                && input.contexts[context_index].fillstate.scissor.height > 0)
-            {
-                dumpstream << "scissored(" << input.contexts[context_index].fillstate.scissor.width << "x" << input.contexts[context_index].fillstate.scissor.height << ") ";
-                std::string size = std::to_string(input.contexts[context_index].fillstate.scissor.width) + "x" + std::to_string(input.contexts[context_index].fillstate.scissor.height);
-                scissor_sizes[size]++;
-            }
-            if (input.contexts[context_index].enabled[GL_DEPTH_TEST])
-            {
-                depthtested++;
-                perframe["draws.depthtested"].values.back()++;
-                dumpstream << "depthtested ";
-                if (input.contexts[context_index].fillstate.depthmask
-                    && (input.contexts[context_index].drawframebuffer == 0
-                        || writeframebuffer->attachments.count(GL_DEPTH_ATTACHMENT) > 0))
-                {
-                    depthwriting++;
-                    perframe["draws.depthwriting"].values.back()++;
-                    dumpstream << "depthwriting ";
-                }
-            }
-            if (input.contexts[context_index].enabled[GL_STENCIL_TEST])
-            {
-                stenciled++;
-                perframe["draws.stenciled"].values.back()++;
-                dumpstream << "stenciled ";
-            }
-            if (input.contexts[context_index].enabled[GL_CULL_FACE])
-            {
-                faceculled++;
-                perframe["draws.faceculled"].values.back()++;
-                dumpstream << "facefulled ";
-            }
-            if (call->mCallName.find("Indirect") != std::string::npos)
-            {
-                features[FEATURE_INDIRECT]++;
-                drawtypesindirect[mode]++;
-                perframe["draws.indirect"].values.back()++;
-            }
-
-            const DrawParams params = input.getDrawCallCount(call);
-            drawtypescount[mode] += params.vertices;
-            drawtypes[mode]++;
-            if (renderpassframes.count(frames))
-            {
-                perdraw["primitive_type"].values.back() = mode;
-                perdraw["primitives"].values.back() = params.primitives;
-                perdraw["vertices"].values.back() = params.vertices;
-                perdraw["vertices.unique"].values.back() = params.unique_vertices;
-                perdraw["max_sparseness"].values.back() = params.max_sparseness;
-                perdraw["avg_sparseness"].values.back() = params.avg_sparseness;
-                perdraw["spatial_locality"].values.back() = params.spatial_locality * 100.0;
-                perdraw["temporal_locality"].values.back() = params.temporal_locality * 100.0;
-                perdraw["vec4_locality"].values.back() = params.vec4_locality * 100.0;
-                perdraw["instancing"].values.back() = params.instances;
-                startNewRows(perdraw);
-            }
-            drawtypesprimitives[mode] += params.primitives;
-            perframe["vertices"].values.back() += params.vertices;
-            perframe["instancing"].values.back() += params.instances;
-            perframe["primitives"].values.back() += params.primitives;
-
-            if (call->mCallName.find("Elements") != std::string::npos)
-            {
-                indexed++;
-                perframe["draws.indexed"].values.back()++;
-                perframe["vertices.indexed"].values.back() += params.vertices;
-                perframe["vertices.unique"].values.back() += params.unique_vertices;
-            }
-
-            if (params.instances > 1)
-            {
-                features[FEATURE_INSTANCING]++;
-                perframe["draws.instanced"].values.back()++;
-            }
-
-            if (input.contexts[context_index].enabled[GL_POLYGON_OFFSET_FILL])
-            {
-                features[FEATURE_POLYGON_OFFSET_FILL]++;
-                perframe["draws.polygonoffset"].values.back()++;
-            }
-
-            // figure out used texture types
-            const int program_index = input.contexts[context_index].program_index;
-            if (program_index >= 0) // will be zero for GLES1
-            {
-                dumpstream << std::endl << "    ";
-                const StateTracker::Program& p = input.contexts[context_index].programs[program_index];
-                for (const StateTracker::Program::ProgramSampler& s : p.texture_bindings)
-                {
-                    GLenum binding = samplerTypeToBindingType(s.type);
-                    if (binding == GL_NONE)
-                    {
-                        DBG_LOG("Could not map sampler %s of type %04x at call %d\n", s.name.c_str(), s.type, (int)call->mCallNo);
-                        continue;
-                    }
-                    else if (input.contexts[context_index].textureUnits.count(s.value) == 0
-                        || input.contexts[context_index].textureUnits[s.value].count(binding) == 0)
-                    {
-                        continue; // no textures bound
-                    }
-                    const GLuint texture_id = input.contexts[context_index].textureUnits[s.value][binding];
-                    dumpstream << "TextureUnit:" << s.value << "(" + texEnum(binding) + ") = TexureId:" << texture_id << ",SamplerId:"
-                               << input.contexts[context_index].sampler_binding[s.value] << std::endl << "    ";
-                    if (texture_id == 0) continue;
-                    StateTracker::SamplerState sampler;
-                    const GLuint samplerObject = input.contexts[context_index].sampler_binding[s.value];
-                    if (samplerObject) // do we have a sampler object bound?
-                    {
-                        const int idx = input.contexts[context_index].samplers.remap(samplerObject);
-                        sampler = input.contexts[context_index].samplers[idx].state;
-                    }
-                    else // if not, use texture's sampler state
-                    {
-                        const int idx = input.contexts[context_index].textures.remap(texture_id);
-                        sampler = input.contexts[context_index].textures[idx].state;
-                    }
-                    contexts[context_index].textureIdUsed.insert(texture_id);
-                    texturetypefilters[texEnum(binding)][texEnum(sampler.min_filter)]++;
-                    const int idx = input.contexts[context_index].textures.remap(texture_id);
-                    StateTracker::Texture& texture = input.contexts[context_index].textures[idx];
-                    texturetypesizes[texEnum(binding)][std::to_string(texture.width) + "x" + std::to_string(texture.height) + "x" + std::to_string(texture.depth)]++;
-                    perframe["textures"].values.back()++;
-                    perdraw["textures"].values.back()++;
-                    if (sampler.anisotropy > 1.0)
-                    {
-                        features[FEATURE_ANISOTROPY] = 1;
-                    }
-                    if (input.contexts[context_index].render_passes.size() > 0 && input.contexts[context_index].render_passes.back().active
-                        && renderpassframes.count(frames))
-                    {
-                        textures_by_renderpass[input.contexts[context_index].render_passes.back().index].insert(texture_id);
-                    }
-                    texture.used_min_filters.insert(sampler.min_filter);
-                    texture.used_mag_filters.insert(sampler.mag_filter);
-                }
-            }
-            if (input.contexts[context_index].render_passes.size() > 0 && input.contexts[context_index].render_passes.back().active)
-            {
-                dumpstream << "renderpass=" << input.contexts[context_index].render_passes.back().index << " ";
-            }
-            dumpstream << "drawfb=" << input.contexts[context_index].drawframebuffer << " ";
-            dumpstream << "readfb=" << input.contexts[context_index].readframebuffer << " ";
-            dumpstream << "program=" << (program_index >= 0 ? input.contexts[context_index].programs[program_index].id : 0) << " ";
-            dumpstream << "drawcall=" << drawcalls << " ";
-            dumpstream << "frame=" << frames << " ";
-            dumpstream << std::endl;
-            drawcalls++;
-        }
-        else if ((call->mCallName == "glClear" || call->mCallName.compare(0, 13, "glClearBuffer") == 0) && relevant(frames))
-        {
-            clears++;
-            perframe["clears"].values.back()++;
-        }
-
-        if (surfaces.size() > static_cast<unsigned>(input.surface_index) && input.surface_index != UNBOUND)
-        {
-            surfaces[input.surface_index].threads_used[call->mTid] = true;
-            if (call->mCallName.compare(0, 2, "gl") == 0)
-            {
-                surfaces[input.surface_index].glcount++;
-            }
-            else if (call->mCallName.compare(0, 3, "egl") == 0)
-            {
-                surfaces[input.surface_index].eglcount++;
-            }
-        }
-
-        calls_per_frame.back()++;
-        if (relevant(frames))
-        {
-            calls++;
-            perframe["calls"].values.back()++;
-        }
-    }
+    input.loop(callback, this);
 
     for (auto& c : input.contexts)
     {
@@ -1409,7 +1409,7 @@ static double ratio_with_cap(long limit, long value)
 }
 
 // Calculates how heavy it is to run up to and including this frame
-double AnalyzeTrace::calculate_dump_heaviness(const ParseInterfaceRetracing& input, int frame)
+double AnalyzeTrace::calculate_dump_heaviness(const ParseInterfaceBase& input, int frame)
 {
     const double w_ca = ratio_with_cap(7500000, calls);
     long _pr = 0;
@@ -1438,7 +1438,7 @@ double AnalyzeTrace::calculate_dump_heaviness(const ParseInterfaceRetracing& inp
 }
 
 // Calculates how heavy it is to run this frame alone
-double AnalyzeTrace::calculate_heaviness(const ParseInterfaceRetracing& input, int frame)
+double AnalyzeTrace::calculate_heaviness(const ParseInterfaceBase& input, int frame)
 {
     const double w_ca = ratio_with_cap(10000, calls_per_frame.at(frame));
     long _pr = 0;
@@ -1469,7 +1469,7 @@ double AnalyzeTrace::calculate_heaviness(const ParseInterfaceRetracing& input, i
     return (w_ca + w_dr + w_pr + w_px) / 4.0;
 }
 
-double AnalyzeTrace::calculate_complexity(const ParseInterfaceRetracing& input)
+double AnalyzeTrace::calculate_complexity(const ParseInterfaceBase& input)
 {
     double feature_complexity = 0.0;
     for (unsigned i = 0; i < features.size(); i++)
@@ -1586,7 +1586,7 @@ Json::Value AnalyzeTrace::json_program(const StateTracker::Context& context, con
         json["compute_dispatches"] = program.stats.dispatches;
         json["draw_calls"] = (Json::Value::Int64)program.stats.drawcalls;
     }
-    else
+    else if (program.stats_per_frame.count(frame))
     {
         json["vertices"] = (Json::Value::Int64)program.stats_per_frame.at(frame).vertices;
         json["primitives"] = (Json::Value::Int64)program.stats_per_frame.at(frame).primitives;
@@ -1650,7 +1650,7 @@ Json::Value AnalyzeTrace::json_program(const StateTracker::Context& context, con
     return json;
 }
 
-Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
+Json::Value AnalyzeTrace::trace_json(ParseInterfaceBase& input)
 {
     Json::Value result;
     result["source"] = input.filename;
@@ -1709,7 +1709,8 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
         }
         v["renderbuffers"] = (int)c.renderbuffers.all().size();
         v["samplers"] = (int)c.samplers.all().size();
-        v["buffers"] = (int)c.buffers.all().size();
+        v["buffers"] = Json::Value();
+        v["buffers"]["total"] = (int)c.buffers.all().size() - 1;
         v["queries"] = (int)c.queries.all().size();
         v["draw_calls"] = sum_map(c.draw_calls_per_frame);
         v["flush_calls"] = sum_map(c.flush_calls_per_frame);
@@ -1736,16 +1737,48 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
         v["framerange"]["no_state_changed_draws"] = sum_map_range(c.no_state_changed_draws_per_frame);
         v["framerange"]["no_state_or_uniform_changed_draws"] = sum_map_range(c.no_state_or_uniform_changed_draws_per_frame);
         v["framerange"]["no_state_or_index_buffer_changed_draws"] = sum_map_range(c.no_state_or_index_buffer_changed_draws_per_frame);
-        v["transform_feedback_objects"] = (int)c.transform_feedbacks.all().size();
+        v["transform_feedback_objects"] = (int)c.transform_feedbacks.all().size() - 1;
         v["attribute_buffers"] = Json::arrayValue;
-        std::map<std::tuple<GLenum, GLint, GLsizei, uint64_t, GLuint>, int> buffer_combos;
+        std::map<std::tuple<GLenum, GLint, GLsizei>, GLsizei> buffer_combos;
+        int attr_buffers = 0;
+        int uniform_buffers = 0;
+        int ssbo_buffers = 0;
+        int index_buffers = 0;
+        int mixed_buffers = 0;
+        int other_buffers = 0;
         for (const auto& buffer : c.buffers.all())
         {
+            bool index_buffer = false;
+            bool attributes = false;
+            bool uniforms = false;
+            bool ssbo = false;
+            bool other = false;
             for (const auto& tuple : buffer.types)
             {
-                buffer_combos[tuple]++;
+                std::tuple<GLenum, GLint, GLsizei> t{ std::get<0>(tuple), std::get<1>(tuple), std::get<2>(tuple) };
+                buffer_combos[t]++;
             }
+            for (const GLenum type : buffer.bindings)
+            {
+                if (type == GL_ELEMENT_ARRAY_BUFFER) index_buffer = true;
+                else if (type == GL_ARRAY_BUFFER) attributes = true;
+                else if (type == GL_UNIFORM_BUFFER) uniforms = true;
+                else if (type == GL_SHADER_STORAGE_BUFFER) ssbo = true;
+                else if (type == GL_ATOMIC_COUNTER_BUFFER || type == GL_DRAW_INDIRECT_BUFFER || type == GL_DISPATCH_INDIRECT_BUFFER || type == GL_TRANSFORM_FEEDBACK_BUFFER) other = true;
+            }
+            if (index_buffer) index_buffers++;
+            if (attributes) attr_buffers++;
+            if (uniforms) uniform_buffers++;
+            if (ssbo) ssbo_buffers++;
+            if (other) other_buffers++;
+            if (index_buffer && (attributes || uniforms || ssbo || other)) mixed_buffers++;
         }
+        v["buffers"]["attribute_buffers"] = attr_buffers;
+        v["buffers"]["index_buffers"] = index_buffers;
+        v["buffers"]["ssbo_buffers"] = ssbo_buffers;
+        v["buffers"]["other_buffers"] = other_buffers;
+        v["buffers"]["uniform_buffers"] = uniform_buffers;
+        v["buffers"]["mixed_buffers"] = mixed_buffers;
         for (const auto& pair : buffer_combos)
         {
             Json::Value tv;
@@ -1759,9 +1792,8 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
             }
             tv["type"] = type;
             tv["components"] = (int)std::get<1>(pair.first);
-            tv["stride"] = (int)std::get<2>(pair.first);
             tv["count"] = pair.second;
-            v["attribute_buffers"].append(tv);
+            v["attribute_buffer_histogram"].append(tv);
         }
         v["programs"] = Json::arrayValue;
         for (auto& p : c.programs.all())
@@ -1824,7 +1856,7 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
         result["surfaces"].append(v);
     }
     result["threads"] = input.numThreads;
-    result["frames"] = frames;
+    result["frames"] = input.frames;
     result["framerange"] = Json::Value();
     result["framerange"]["client_side_buffers"] = Json::Value();
     result["framerange"]["client_side_buffers"]["count"] = clientsidebuffers;
@@ -1833,7 +1865,7 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceRetracing& input)
     result["framerange"]["start"] = startframe;
     result["framerange"]["end"] = lastframe;
     result["framerange"]["texture_units"] = highestTextureUnitUsed + 1; // simplification, sparse usage not terribly interesting
-    result["framerange"]["color_attachments"] = numColorAttachments; // another simplification, as above
+    result["framerange"]["color_attachments"] = highestColorAttachment; // another simplification, as above
     result["framerange"]["absolute"]["clears"] = clears;
     result["framerange"]["absolute"]["flushes"] = flushes;
     result["framerange"]["absolute"]["compute"] = compute;
@@ -1934,7 +1966,7 @@ static std::string dim2str(int width, int height, int depth) // return nice dime
     else return std::to_string(width) + "x" + std::to_string(height) + "x" + std::to_string(depth);
 }
 
-Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
+Json::Value AnalyzeTrace::frame_json(ParseInterfaceBase& input, int frame)
 {
     Json::Value result;
     int frame_clears = 0;
@@ -1965,8 +1997,9 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
             {
                 Json::Value v;
                 v["index"] = r.index;
-                if (!bareLog) v["first_drawcall"] = r.first_call;
-                if (!bareLog) v["last_drawcall"] = r.last_call;
+                v["unique_index"] = r.unique_index;
+                if (!bareLog) v["first_call"] = r.first_call;
+                if (!bareLog) v["last_call"] = r.last_call;
                 v["framebuffer_id"] = r.drawframebuffer;
                 const GLuint fb_id = r.drawframebuffer;
                 const int fb_index = r.drawframebuffer_index;
@@ -2010,10 +2043,10 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceRetracing& input, int frame)
                         used_texture_targets_by_id.insert(c.textures[t].id);
                     }
                 }
-                if (textures_by_renderpass[r.index].size() > 0)
+                if (textures_by_renderpass[r.unique_index].size() > 0)
                 {
                     list = Json::arrayValue;
-                    for (auto& id : textures_by_renderpass[r.index])
+                    for (auto& id : textures_by_renderpass[r.unique_index])
                     {
                         assert(id != 0);
                         list.append(id);
@@ -2236,7 +2269,7 @@ int main(int argc, char **argv)
         else if (arg == "-v")
         {
             printVersion();
-            return 1;
+            return 0;
         }
         else if (arg == "-D")
         {
@@ -2308,6 +2341,7 @@ int main(int argc, char **argv)
     inputFile.setScreenshots(!no_screenshots);
     inputFile.setOutputName(dump_csv_filename);
     inputFile.setRenderpassJSON(renderpassjson);
+    inputFile.setDebug(debug);
     if (!inputFile.open(source_trace_filename))
     {
         std::cerr << "Failed to open for reading: " << source_trace_filename << std::endl;

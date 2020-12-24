@@ -330,7 +330,7 @@ int main(int argc, char **argv)
         else if (!strcmp(arg, "-v"))
         {
             printVersion();
-            return 1;
+            return 0;
         }
         else if (!strcmp(arg, "-l"))
         {
@@ -503,7 +503,11 @@ int main(int argc, char **argv)
     outputFile.mHeader.jsonLength = json_header.size();
     outputFile.WriteHeader(json_header.c_str(), json_header.size());
     // Reopen infile, easier than resetting... ugh.
-    inputFile.Open(source_trace_filename);
+    if (!inputFile.Open(source_trace_filename))
+    {
+        DBG_LOG("Failed to open for reading: %s\n", source_trace_filename);
+        return 1;
+    }
     _curFrameIndex = 0;
     _curCallIndexInFrame = 0;
     _curFrame = inputFile.mFrames[0];

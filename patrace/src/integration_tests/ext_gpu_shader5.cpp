@@ -1,9 +1,4 @@
 #include "pa_demo.h"
-#include "paframework_gl.h"
-
-#ifdef PAFRAMEWORK_OPENGL
-// Rename GLES extension functions to OpenGL functions
-#endif
 
 static GLuint gvPositionHandle;
 
@@ -89,44 +84,10 @@ static GLint g_constValue[8]
     1, 1, 1, 1
 };
 
-bool check_feature_availability()
+static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 {
-#ifndef PAFRAMEWORK_OPENGL
-    if (!PAFW_GL_Is_GLES_Extension_Supported("GL_EXT_gpu_shader5"))
-    {
-        PALOGE("The extention EXT_gpu_shader5 not found -- this may not work\n");
-    }
-    return true; // try anyway, works on Nvidia desktop EGL
-#else
-    GLint major_version;
-    GLint minor_version;
-    int version;
-
-    glGetIntegerv(GL_MAJOR_VERSION, &major_version);
-    glGetIntegerv(GL_MINOR_VERSION, &minor_version);
-    version = 100 * major_version + 10 * minor_version;
-
-    if (version >= 430)
-    {
-        return true;
-    }
-    PALOGE("The OpenGLversion (currently %d) must be 430 or higher\n", version);
-    return false;
-#endif
-}
-
-static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
-{
-    setup();
-
     width = w;
     height = h;
-
-    if (!check_feature_availability())
-    {
-        PALOGE("The extension EXT_gpu_shader5 is not available\n");
-        return 1;
-    }
 
     // setup space
     glViewport(0, 0, width, height);
@@ -164,30 +125,6 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-    //glActiveTexture(GL_TEXTURE2);
-    //glGenTextures(1, &g_textureId3);
-    //glBindTexture(GL_TEXTURE_2D, g_textureId3);
-    //glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels3);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-    //glActiveTexture(GL_TEXTURE3);
-    //glGenTextures(1, &g_textureId4);
-    //glBindTexture(GL_TEXTURE_2D, g_textureId4);
-    //glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels4);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    //glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-    //glBindImageTexture(2, g_textureId3, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA8);
-
-    //glBindImageTexture(1, g_textureId4, 0, GL_FALSE, 0, GL_READ_ONLY, GL_RGBA8);
-
     glActiveTexture(GL_TEXTURE2);
     glGenTextures(1, &g_textureId3);
     glBindTexture(GL_TEXTURE_2D, g_textureId3);
@@ -200,7 +137,7 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexStorage2D(GL_TEXTURE_2D, 2, GL_RGBA8, 2, 2);
-    
+
     glTexSubImage2D(
         GL_TEXTURE_2D,
         0,
@@ -249,36 +186,33 @@ static const int multisample_mask[triangle_num]
     0x1, 0x3, 0x7, 0xf
 };
 
-static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
+static void callback_draw(PADEMO *handle, void *user_data)
 {
-    PAGL(glClearColor(0.0f, 0.5f, 0.5f, 1.0f));
-    PAGL(glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT));
-    
+    glClearColor(0.0f, 0.5f, 0.5f, 1.0f);
+    glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
+
     for (int i = 0; i < triangle_num; i++)
     {
-        PAGL(glUseProgram(draw_program));
+        glUseProgram(draw_program);
         glUniform1i(glGetUniformLocation(draw_program, "samplerIndex"), i % 2);
 
-        PAGL(glVertexAttribPointer(gvPositionHandle, 3, GL_FLOAT, GL_FALSE, 0, gTriangleVertices[i]));
-        PAGL(glEnableVertexAttribArray(gvPositionHandle));
-
-        PAGL(glDrawArrays(GL_TRIANGLES, 0, 3));
+        glVertexAttribPointer(gvPositionHandle, 3, GL_FLOAT, GL_FALSE, 0, gTriangleVertices[i]);
+        glEnableVertexAttribArray(gvPositionHandle);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
     }
 
     glStateDump_ARM();
     assert_fb(width, height);
 }
 
-static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
+static void test_cleanup(PADEMO *handle, void *user_data)
 {
     glDeleteShader(vs);
     glDeleteShader(fs);
     glDeleteProgram(draw_program);
 }
 
-#include "paframework_android_glue.h"
-
-int PAFW_Entry_Point(PAFW_HANDLE pafw_handle)
+int main()
 {
-    return init("ext_gpu_shader5", pafw_handle, callback_draw, setupGraphics, test_cleanup);
+    return init("ext_gpu_shader5", callback_draw, setupGraphics, test_cleanup);
 }

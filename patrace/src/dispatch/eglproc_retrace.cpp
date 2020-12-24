@@ -106,7 +106,6 @@ namespace {
 
 void ResetGLFuncPtrs();
 
-extern "C"
 void SetGLESVersion(int ver)
 {
     if (gGLESVersion == ver)
@@ -118,6 +117,11 @@ void SetGLESVersion(int ver)
         DBG_LOG("Set GLES version to be: %d\n", ver);
     ResetGLFuncPtrs();
     gGLESVersion = ver;
+}
+
+int GetGLESVersion()
+{
+    return gGLESVersion;
 }
 
 enum DLLType {

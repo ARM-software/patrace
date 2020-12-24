@@ -21,9 +21,8 @@ const int size = 1024;
 static GLuint tex;
 static GLuint update_buf_cs, cs, result_buffer;
 
-static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
+static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 {
-	setup();
 	glGenTextures(1, &tex);
 	glBindTexture(GL_TEXTURE_2D, tex);
 	glTexStorage2D(GL_TEXTURE_2D, 1, GL_R32F, size, 1);
@@ -48,7 +47,7 @@ static int setupGraphics(PAFW_HANDLE pafw_handle, int w, int h, void *user_data)
 }
 
 // first frame render something, second frame verify it
-static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
+static void callback_draw(PADEMO *handle, void *user_data)
 {
 	GLint units;
 	glGetIntegerv(GL_MAX_IMAGE_UNITS, &units);
@@ -68,7 +67,7 @@ static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
 	GLfloat *ptr = (GLfloat *)glMapBufferRange(GL_UNIFORM_BUFFER, 0, sizeof(GLfloat) * size * 4, GL_MAP_READ_BIT);
 	for (int i = 0; i < size * 4; i++)
 	{
-		assert(ptr[i] == 1.0f);
+		if (!is_null_run()) assert(ptr[i] == 1.0f);
 	}
 	(void)ptr; // silence compiler warning if asserts are disabled
 	glUnmapBuffer(GL_UNIFORM_BUFFER);
@@ -77,15 +76,15 @@ static void callback_draw(PAFW_HANDLE pafw_handle, void *user_data)
 	glAssertBuffer_ARM(GL_UNIFORM_BUFFER, 0, sizeof(GLfloat) * size * 4, "0123456789abcdef");
 }
 
-static void test_cleanup(PAFW_HANDLE pafw_handle, void *user_data)
+static void test_cleanup(PADEMO *handle, void *user_data)
 {
 	glDeleteShader(cs);
 	glDeleteProgram(update_buf_cs);
 	glDeleteBuffers(1, &result_buffer);
 }
 
-int PAFW_Entry_Point(PAFW_HANDLE pafw_handle)
+int main()
 {
-	return init("imagetex_1", pafw_handle, callback_draw, setupGraphics, test_cleanup);
+	return init("imagetex_1", callback_draw, setupGraphics, test_cleanup);
 }
 

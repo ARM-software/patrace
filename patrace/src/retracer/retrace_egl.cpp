@@ -4,7 +4,6 @@
 #include <retracer/forceoffscreen/offscrmgr.h>
 #include <common/gl_extension_supported.hpp>
 #include <common/trace_limits.hpp>
-#include <common/os_thread.hpp>
 #include <helper/eglstring.hpp>
 #include "../dispatch/eglproc_auto.hpp"
 
@@ -15,7 +14,6 @@
 
 using namespace common;
 using namespace retracer;
-os::Mutex gEGLMutex;
 
 static void callback(unsigned int source, unsigned int type, unsigned int id, unsigned int severity, int length, const char* message, const void* userParam)
 {
@@ -62,7 +60,6 @@ void retrace_eglCreateWindowSurface(char* src)
 
     src = ReadFixed(src, ret);
 
-    gEGLMutex.lock();
     const RetraceOptions& opt = gRetracer.mOptions;
     GLESThread& thread = gRetracer.mState.mThreadArr[gRetracer.getCurTid()];
     //  ------------- retrace ---------------
@@ -85,7 +82,6 @@ void retrace_eglCreateWindowSurface(char* src)
 
     if (ret == 0) // ret == EGL_NO_SURFACE
     {
-        gEGLMutex.unlock();
         return;
     }
 
@@ -99,7 +95,6 @@ void retrace_eglCreateWindowSurface(char* src)
         {
             s.InsertDrawableMap(ret, s.mSingleSurface);
             DBG_LOG("INFO: Ignoring creation of surface %d: 'forceSingleWindow' is set to 'true' in the header of the trace file\n", ret);
-            gEGLMutex.unlock();
             return;
         }
         else DBG_LOG("'forceSingleWindow' is set to true but master window not yet created, not setting surface %d\n", ret); // very bad
@@ -111,7 +106,7 @@ void retrace_eglCreateWindowSurface(char* src)
 
     DBG_LOG("Creating drawable for surface %d: w=%d, h=%d...\n", ret, width, height);
     retracer::Drawable* d;
-    if (gRetracer.mOptions.mPbufferRendering)
+    if (gRetracer.mOptions.mPbufferRendering || (gRetracer.mOptions.mSingleSurface != -1 && gRetracer.mOptions.mSingleSurface != gRetracer.mSurfaceCount))
     {
         EGLint const attribs[] = { EGL_WIDTH, width, EGL_HEIGHT, height, EGL_NONE, EGL_NONE };
         d = GLWS::instance().CreatePbufferDrawable(attribs);
@@ -120,6 +115,7 @@ void retrace_eglCreateWindowSurface(char* src)
     {
         d = GLWS::instance().CreateDrawable(width, height, win, attrib_list);
     }
+    gRetracer.mSurfaceCount++;
     s.InsertDrawableMap(ret, d);
     s.InsertDrawableToWinMap(ret, win);
 
@@ -135,7 +131,6 @@ void retrace_eglCreateWindowSurface(char* src)
     {
         s.mSingleSurface = d;
     }
-    gEGLMutex.unlock();
 }
 
 static void retrace_eglCreateWindowSurface2(char* src)
@@ -168,7 +163,6 @@ static void retrace_eglCreateWindowSurface2(char* src)
 
     src = ReadFixed(src, ret);
 
-    gEGLMutex.lock();
     const RetraceOptions& opt = gRetracer.mOptions;
     GLESThread& thread = gRetracer.mState.mThreadArr[gRetracer.getCurTid()];
     //  ------------- retrace ---------------
@@ -191,7 +185,6 @@ static void retrace_eglCreateWindowSurface2(char* src)
 
     if (ret == 0) // ret == EGL_NO_SURFACE
     {
-        gEGLMutex.unlock();
         return;
     }
 
@@ -205,7 +198,6 @@ static void retrace_eglCreateWindowSurface2(char* src)
         {
             s.InsertDrawableMap(ret, s.mSingleSurface);
             DBG_LOG("INFO: Ignoring creation of surface %d: 'forceSingleWindow' is set to 'true' in the header of the trace file\n", ret);
-            gEGLMutex.unlock();
             return;
         }
         else DBG_LOG("'forceSingleWindow' is set to true but master window not yet created, not setting surface %d\n", ret); // very bad
@@ -218,7 +210,7 @@ static void retrace_eglCreateWindowSurface2(char* src)
 
     DBG_LOG("Creating drawable for surface %d: x=%d, y=%d, w=%d, h=%d...\n", ret, x, y, surfWidth, surfHeight);
     retracer::Drawable* d;
-    if (gRetracer.mOptions.mPbufferRendering)
+    if (gRetracer.mOptions.mPbufferRendering || (gRetracer.mOptions.mSingleSurface != -1 && gRetracer.mOptions.mSingleSurface != gRetracer.mSurfaceCount))
     {
         EGLint const attribs[] = { EGL_WIDTH, surfWidth, EGL_HEIGHT, surfHeight, EGL_NONE, EGL_NONE };
         d = GLWS::instance().CreatePbufferDrawable(attribs);
@@ -227,6 +219,7 @@ static void retrace_eglCreateWindowSurface2(char* src)
     {
         d = GLWS::instance().CreateDrawable(surfWidth, surfHeight, win, attrib_list);
     }
+    gRetracer.mSurfaceCount++;
     s.InsertDrawableMap(ret, d);
 
     d->winWidth  = winWidth;
@@ -241,7 +234,6 @@ static void retrace_eglCreateWindowSurface2(char* src)
     {
         s.mSingleSurface = d;
     }
-    gEGLMutex.unlock();
 }
 
 static void retrace_eglCreatePbufferSurface(char* src)
@@ -260,17 +252,14 @@ static void retrace_eglCreatePbufferSurface(char* src)
 
     //  ------------- retrace ---------------
     DBG_LOG("[%d] retrace_eglCreatePbufferSurface %d, %d\n", gRetracer.getCurTid(), config, ret);
-    gEGLMutex.lock();
 
     if (ret == 0) // ret == EGL_NO_SURFACE
     {
-        gEGLMutex.unlock();
         return;
     }
 
     retracer::Drawable* pbufferDrawable = GLWS::instance().CreatePbufferDrawable(attrib_list);
     gRetracer.mState.InsertDrawableMap(ret, pbufferDrawable);
-    gEGLMutex.unlock();
 }
 
 static void retrace_eglDestroySurface(char* src)
@@ -290,17 +279,7 @@ static void retrace_eglDestroySurface(char* src)
     //  ------------- retrace ---------------
     //DBG_LOG("CallNo[%d] retrace_eglDestroySurface()\n", gRetracer.GetCurCallId());
 
-    gEGLMutex.lock();
     StateMgr& s = gRetracer.mState;
-
-    if (s.mThreadArr[gRetracer.getCurTid()].getDrawable())
-    {
-        s.mThreadArr[gRetracer.getCurTid()].getDrawable()->swapBuffers();
-    }
-    else
-    {
-        glFlush();
-    }
 
     retracer::Drawable* toBeDel = 0;
 
@@ -322,7 +301,6 @@ static void retrace_eglDestroySurface(char* src)
         toBeDel = 0;
         s.mSingleSurface = 0;
     }
-    gEGLMutex.unlock();
 }
 
 static void retrace_eglBindAPI(char* src)
@@ -356,7 +334,6 @@ void retrace_eglCreateContext(char* src)
     src = ReadFixed(src, ret);
 
     //  ------------- retrace ---------------
-    gEGLMutex.lock();
     Context* pshare_context = gRetracer.mState.GetContext(share_context);
     Profile profile = PROFILE_ES1;
     int major = 1, minor = 0;
@@ -413,7 +390,6 @@ void retrace_eglCreateContext(char* src)
     }
 
     gRetracer.mState.InsertContextMap(ret, context);
-    gEGLMutex.unlock();
 }
 
 static void retrace_eglDestroyContext(char* src)
@@ -435,12 +411,10 @@ static void retrace_eglDestroyContext(char* src)
     }
 
     //  ------------- retrace ---------------
-    gEGLMutex.lock();
     Context* toBeDel = gRetracer.mState.GetContext(ctx);
     DBG_LOG("CallNo[%d] retrace_eglDestroyContext(0x%x)\n", gRetracer.GetCurCallId(), ctx);
     if (toBeDel != NULL) toBeDel->release();
     gRetracer.mState.RemoveContextMap(ctx);
-    gEGLMutex.unlock();
 }
 
 void retrace_eglMakeCurrent(char* src)
@@ -464,7 +438,6 @@ void retrace_eglMakeCurrent(char* src)
     //  ------------- retrace ---------------
     StateMgr& s = gRetracer.mState;
     retracer::Drawable* drawable = 0;
-    gEGLMutex.lock();
     if (draw)
     {
         if (gRetracer.mOptions.mForceSingleWindow && !gRetracer.mOptions.mMultiThread)
@@ -513,7 +486,6 @@ void retrace_eglMakeCurrent(char* src)
     if (drawable == gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getDrawable() &&
         context == gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getContext())
     {
-        gEGLMutex.unlock();
         return;
     }
 
@@ -526,7 +498,6 @@ void retrace_eglMakeCurrent(char* src)
     if (!ok)
     {
         DBG_LOG("Warning: retrace_eglMakeCurrent failed,(0x%x) \n", eglGetError());
-        gEGLMutex.unlock();
         return;
     }
 
@@ -618,7 +589,7 @@ void retrace_eglMakeCurrent(char* src)
                 o.mOffscreenConfig.msaa_samples,
                 context->_profile);
             context->_offscrMgr->Init();
-            context->_offscrMgr->BindOffscreenFBO();
+            context->_offscrMgr->BindOffscreenFBO(GL_FRAMEBUFFER);
         }
 
         if (!gRetracer.mpOffscrMgr || gRetracer.getCurTid() == gRetracer.mOptions.mRetraceTid)
@@ -627,8 +598,6 @@ void retrace_eglMakeCurrent(char* src)
 
     gRetracer.mState.mThreadArr[gRetracer.getCurTid()].setDrawable(drawable);
     gRetracer.mState.mThreadArr[gRetracer.getCurTid()].setContext(context);
-
-    gEGLMutex.unlock();
 }
 
 static void retrace_eglCreateImageKHR(char* src)
@@ -682,8 +651,6 @@ static void retrace_eglCreateImageKHR(char* src)
                 attrib_list2.push_back(attrib_list[i + 1]);
         }
     }
-
-    gEGLMutex.lock();
     uintptr_t buffer_new = 0;
     retracer::Context* context = gRetracer.mState.GetContext(ctx);
     if (tgt == EGL_GL_TEXTURE_2D_KHR)
@@ -763,7 +730,6 @@ retrace:
         DBG_LOG("eglCreateImageKHR failed to create EGLImage = 0x%x at call %u, (0x%x)\n", ret, gRetracer.GetCurCallId(), eglGetError());
     }
     gRetracer.mState.InsertEGLImageMap(ret, image);
-    gEGLMutex.unlock();
 }
 
 static void retrace_eglDestroyImageKHR(char* src)
@@ -779,9 +745,7 @@ static void retrace_eglDestroyImageKHR(char* src)
     src = ReadFixed(src, ret);
 
     //  ------------- retrace ---------------
-    gEGLMutex.lock();
     gRetracer.mState.RemoveEGLImageMap(image);
-    gEGLMutex.unlock();
 }
 
 static void retrace_glEGLImageTargetTexture2DOES(char* src)
@@ -795,7 +759,6 @@ static void retrace_glEGLImageTargetTexture2DOES(char* src)
     src = ReadFixed<int>(src, image);
 
     //  ------------- retrace ---------------
-    gEGLMutex.lock();
     bool found = false;
     EGLImageKHR imageNew = gRetracer.mState.GetEGLImage(image, found);
     if(imageNew == NULL)
@@ -822,7 +785,6 @@ static void retrace_glEGLImageTargetTexture2DOES(char* src)
     {
         _glEGLImageTargetTexture2DOES(tgt, imageNew);
     }
-    gEGLMutex.unlock();
 }
 
 static void retrace_glEGLImageTargetTexStorageEXT(char* src)
@@ -838,12 +800,9 @@ static void retrace_glEGLImageTargetTexStorageEXT(char* src)
     src = Read1DArray(src, attrib_list);
 
     //  ------------- retrace ---------------
-    gEGLMutex.lock();
     bool found = false;
     EGLImageKHR imageNew = gRetracer.mState.GetEGLImage(image, found);
     _glEGLImageTargetTexStorageEXT(tgt, imageNew, attrib_list);
-
-    gEGLMutex.unlock();
 }
 
 static void swapBuffersCommon(char* src, bool withDamage)
@@ -851,14 +810,12 @@ static void swapBuffersCommon(char* src, bool withDamage)
     int n_rects;
     common::Array<int> rect_list;
 
-    gEGLMutex.lock();
     gRetracer.OnFrameComplete();
 
     retracer::Drawable* pDrawable = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getDrawable();
     if (!pDrawable)
     {
         DBG_LOG("WARNING: pDrawable for tid=%u is 0 in swapBuffersCommon at call=%u\n", gRetracer.getCurTid(), gRetracer.GetCurCallId());
-        gEGLMutex.unlock();
         return;
     }
 
@@ -901,7 +858,7 @@ static void swapBuffersCommon(char* src, bool withDamage)
         if (gGlesFeatures.Support_GL_EXT_discard_framebuffer || gRetracer.mOptions.mApiVersion >= PROFILE_ES3)
         {
             // discard the depth and stencil buffer of the offscreen target
-            gRetracer.mpOffscrMgr->BindOffscreenFBO();
+            gRetracer.mpOffscrMgr->BindOffscreenFBO(GL_FRAMEBUFFER);
             const GLenum DISCARD_ATTACHMENTS[] = {GL_DEPTH_ATTACHMENT, GL_STENCIL_ATTACHMENT};
             if (gRetracer.mOptions.mApiVersion >= PROFILE_ES3)
             {
@@ -943,7 +900,7 @@ static void swapBuffersCommon(char* src, bool withDamage)
         else
         {
             // bind the offscreen target for the next frame
-            gRetracer.mpOffscrMgr->BindOffscreenFBO();
+            gRetracer.mpOffscrMgr->BindOffscreenFBO(GL_FRAMEBUFFER);
         }
     }
     else
@@ -958,7 +915,6 @@ static void swapBuffersCommon(char* src, bool withDamage)
         }
         gRetracer.OnNewFrame();
     }
-    gEGLMutex.unlock();
 }
 
 static void retrace_eglSwapBuffers(char* src)

@@ -1,5 +1,6 @@
 #include <string>
 #include <vector>
+#include <iostream>
 #include <EGL/egl.h>
 #include <set>
 #include <unordered_map>

@@ -144,7 +144,6 @@ int main(int argc, const char* argv[])
     int endFrame = inputFile.mFrames.size();
     int drawCallNum = 0;
 
-
     for (int fr = beginFrame; fr != endFrame; ++fr)
     {
         if (startDumpFrame >= 0 && lastDumpFrame >= 0 &&

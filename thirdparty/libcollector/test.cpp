@@ -216,6 +216,51 @@ static void test6()
 	}
 }
 
+static void test7()
+{
+	printf("Trying to initialize all functional collectors with summaries...\n");
+	Json::Value j;
+	Collection c(j);
+	std::vector<std::string> list = c.available();
+	printf("Supported collectors:\n");
+	for (const auto& s : list)
+	{
+		printf("\t%s\n", s.c_str());
+	}
+	std::vector<std::string> list_bad = c.unavailable();
+	printf("Non-supported collectors:\n");
+	for (const auto& s : list_bad)
+	{
+		printf("\t%s\n", s.c_str());
+	}
+	bool result = c.initialize(list);
+	assert(result);
+	c.collector("procfs")->useThreading(10);
+	printf("Starting...\n");
+	c.start({"result1", "result2", "result3"});
+	for (int j = 0; j < 10; j++)
+	{
+		c.collect({0, -1, 0});
+		for (int i = 1; i < 4; i++)
+		{
+			usleep(35000);
+			c.collect({i, -1, i});
+		}
+		c.collect({4, -1, 4});
+		c.collect({5, -1, 5});
+		usleep(10000);
+		c.summarize();
+	}
+	printf("Stopping...\n");
+	c.stop();
+	Json::Value results = c.results();
+	Json::StyledWriter writer;
+	std::string data = writer.write(results);
+	printf("Results:\n%s", data.c_str());
+	c.writeCSV_MTV("mtv.csv");
+	c.writeCSV("excel.csv");
+}
+
 int main()
 {
 	srandom(time(NULL));
@@ -226,6 +271,7 @@ int main()
 	test4();
 	test5();
 	test6();
+	test7(); // summarized results
 	printf("ALL DONE!\n");
 	return 0;
 }

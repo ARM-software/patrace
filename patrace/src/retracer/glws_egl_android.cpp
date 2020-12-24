@@ -133,10 +133,15 @@ void GlwsEglAndroid::resizeNativeWindow(int width, int height, int format, int t
     jEnv->CallStaticVoidMethod(gNativeCls, gResizeWindowID, width, height, format, textureViewId);
 }
 
+void GlwsEglAndroid::syncNativeWindow()
+{
+    eglWaitClient();
+    eglWaitNative(EGL_CORE_NATIVE_ENGINE);
+}
+
 Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint const* attribList)
 {
     Drawable* handler = NULL;
-    NativeWindowMutex.lock();
     WinNameToNativeWindowMap_t::iterator it = gWinNameToNativeWindowMap.find(win);
     std::unordered_map<int, int>::iterator it2 = winNameToTextureViewIdMap.find(win);
 
@@ -158,6 +163,7 @@ Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint 
     }
     else if (!gRetracer.mOptions.mPbufferRendering)
     {
+        syncNativeWindow();
         mEglNativeWindow = NULL;
         requestNativeWindow(width, height, mNativeVisualId);
         if (mEglNativeWindow == NULL)
@@ -173,7 +179,6 @@ Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint 
     }
 
     handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, window, attribList);
-    NativeWindowMutex.unlock();
 
     return handler;
 }
@@ -187,6 +192,7 @@ void GlwsEglAndroid::ReleaseDrawable(NativeWindow *window)
             gWinNameToNativeWindowMap.erase(it);
         }
     }
+    if (window) delete window;
 }
 
 void GlwsEglAndroid::setNativeWindow(EGLNativeWindowType window, int textureViewSize)

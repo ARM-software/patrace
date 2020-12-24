@@ -11,6 +11,7 @@
 #define _COMMON_TRACE_MODEL_H_
 
 #include <common/in_file_ra.hpp>
+#include <common/in_file_mt.hpp>
 
 #include <string>
 #include <vector>
@@ -57,9 +58,6 @@ enum Opaque_Type_TM {
 };
 
 struct OpaqueArg {
-
-    //Opaque_Type_TM mOpaqueType;
-
     union {
         unsigned int pointer_raw; // Type 1, memory offset
         unsigned int pointer_blob; // Type 2
@@ -260,7 +258,8 @@ public:
         mCallId = common::gApiInfo.NameToId(name);
     }
 
-    CallTM(InFileBase &infile, unsigned callNo, const BCall_vlen &call);
+    CallTM(InFileRA &infile, unsigned callNo, const BCall_vlen &call);
+    CallTM(InFile &infile, unsigned callNo, const BCall_vlen &call);
 
     ~CallTM() {
         ClearArguments();

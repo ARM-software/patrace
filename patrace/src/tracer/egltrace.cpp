@@ -10,7 +10,6 @@
 #include <helper/eglstring.hpp>
 
 #include <common/os_string.hpp>
-#include <common/os_thread.hpp>
 #include <common/os_time.hpp>
 #include <common/trace_model.hpp>
 #include <common/trace_limits.hpp>
@@ -58,8 +57,8 @@ struct MyEGLContext
 
 static std::map<EGLContext, TraceContext*> gCtxMap;
 static std::map<EGLSurface, TraceSurface*> gSurfMap;
-static unsigned int next_thread_id = 0;
-static os::thread_specific_ptr<unsigned int> thread_id_specific_ptr;
+static thread_local int thread_id = -1;
+static int threads = 0; // atomic protected by gcc/clang atomics, not c++11 atomics, since the latter cannot be default initialized
 static std::vector<std::unordered_map<int, int>> timesEGLConfigIdUsed;
 static std::unordered_map<int, MyEGLAttribs> configIdToConfigAttribsMap;
 std::vector<TraceThread> gTraceThread(PATRACE_THREAD_LIMIT);
@@ -285,8 +284,8 @@ void BinAndMeta::writeHeader(bool cleanExit)
 
 void BinAndMeta::updateWinSurfSize(EGLint width, EGLint height)
 {
-    winSurWidth = width;
-    winSurHeight = height;
+    winSurWidth = (EGLint)winSurWidth < width ? width : winSurWidth;
+    winSurHeight = (EGLint)winSurHeight < height ? height : winSurHeight;
     DBG_LOG("Width: %d, Height: %d\n", winSurWidth, winSurHeight);
 }
 
@@ -371,14 +370,11 @@ TraceOut::~TraceOut()
 
 unsigned char GetThreadId()
 {
-    unsigned int* thread_id_ptr = thread_id_specific_ptr.get(); //ptr = pthread_getspecific(key); is NULL the first time
-    if (thread_id_ptr == NULL) {
-        thread_id_ptr = new unsigned int;
-        *thread_id_ptr = next_thread_id++;
-        thread_id_specific_ptr.reset(thread_id_ptr); //pthread_setspecific(key, new_value);
+    if (thread_id == -1)
+    {
+        thread_id = __atomic_fetch_add(&threads, 1, __ATOMIC_SEQ_CST);
     }
-
-    return (unsigned char) *thread_id_ptr;
+    return __atomic_load_n(&thread_id, __ATOMIC_ACQUIRE);
 }
 
 // This function is called from each traced EGL/GL call, see trace.py and its output egltrace_auto.cpp
@@ -1186,6 +1182,21 @@ GLuint pre_eglCreateImageKHR(EGLImageKHR image, EGLenum target, EGLClientBuffer 
         int *ptr_int = (int *)ptr_char;
         w = ptr_int[0];
         h = ptr_int[1];
+    }
+    else
+    {
+        while(*attrib_list != EGL_NONE)
+        {
+            if(*(attrib_list) == EGL_WIDTH)
+            {
+                w = *(attrib_list + 1);
+            }
+            else if(*(attrib_list) == EGL_HEIGHT)
+            {
+                h = *(attrib_list + 1);
+            }
+            attrib_list += 2;
+        }
     }
     image_info* info = _EGLImageKHR_get_image_info(image, target, w, h);
     if (info)

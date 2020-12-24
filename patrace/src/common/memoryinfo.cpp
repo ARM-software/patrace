@@ -1,5 +1,24 @@
 #include <common/memoryinfo.hpp>
 
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <cstdio>
+#include <unistd.h>
+#include <limits>
+#include <stdio.h>
+#include <sstream>
+#include <common/os.hpp>
+
+#ifdef ANDROID
+#include <sys/sysinfo.h>
+#endif
+
+#ifdef __APPLE__
+#include <mach/mach.h>
+#include <mach/mach_host.h>
+#endif
+
 void MemoryInfo::reserveAndReleaseMemory(unsigned long reserve_mem)
 {
     long before = getFreeMemoryRaw();

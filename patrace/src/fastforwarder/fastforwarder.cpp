@@ -18,7 +18,6 @@
 
 #include "tool/utils.hpp"
 
-#include <retracer/cmd_options.hpp>
 #include <retracer/config.hpp>
 #include <retracer/glws.hpp>
 #include <retracer/retrace_api.hpp>
@@ -894,7 +893,7 @@ private:
 class BufferSaver
 {
 public:
-    static void run(retracer::Context& retracerContext, common::InFile& inFile, common::OutFile& outFile, int threadId)
+    static void run(retracer::Context& retracerContext, common::OutFile& outFile, int threadId)
     {
         const auto buffers = retracerContext.getBufferMap().GetCopy();
         const auto revBuffers = retracerContext.getBufferRevMap().GetCopy();
@@ -1002,7 +1001,7 @@ bool checkError(const std::string &msg)
 class TextureSaver
 {
 public:
-    TextureSaver(retracer::Context& retracerContext, common::InFile& inFile, common::OutFile& outFile, int threadId)
+    TextureSaver(retracer::Context& retracerContext, common::OutFile& outFile, int threadId)
         : mRetracerContext(retracerContext), mOutFile(outFile), mThreadId(threadId), mScratchBuff()
     {
         TexTypeInfo info2d("2D", GL_TEXTURE_2D, GL_TEXTURE_BINDING_2D, TraceCommandEmitter::Tex2D);
@@ -1787,7 +1786,7 @@ private:
 class DefaultFboSaver
 {
 public:
-    DefaultFboSaver(retracer::Context& retracerContext, common::InFile& inFile, common::OutFile& outFile, int threadId)
+    DefaultFboSaver(retracer::Context& retracerContext, common::OutFile& outFile, int threadId)
         : mRetracerContext(retracerContext),
           mOutFile(outFile),
           mThreadId(threadId),
@@ -2760,19 +2759,19 @@ static void saveData(common::OutFile &out, unsigned int flags, Json::Value& ffJs
 
     // Save buffers
     {
-    RetraceAndTrim::BufferSaver::run(retracer.getCurrentContext(), retracer.mFile, out, retracer.getCurTid());
+    RetraceAndTrim::BufferSaver::run(retracer.getCurrentContext(), out, retracer.getCurTid());
     }
 
     // Save texture
     if (flags & FASTFORWARD_RESTORE_TEXTURES)
     {
-        RetraceAndTrim::TextureSaver ts(retracer.getCurrentContext(), retracer.mFile, out, retracer.getCurTid());
+        RetraceAndTrim::TextureSaver ts(retracer.getCurrentContext(), out, retracer.getCurTid());
         ts.run();
     }
 
     if (flags & FASTFORWARD_RESTORE_DEFAUTL_FBO)
     {
-        RetraceAndTrim::DefaultFboSaver fbo0(retracer.getCurrentContext(), retracer.mFile, out, retracer.getCurTid());
+        RetraceAndTrim::DefaultFboSaver fbo0(retracer.getCurrentContext(), out, retracer.getCurTid());
         fbo0.run();
     }
     else
@@ -2783,30 +2782,9 @@ static void saveData(common::OutFile &out, unsigned int flags, Json::Value& ffJs
     RetraceAndTrim::checkError("RetraceAndTrim state-saving end");
 }
 
-class TrimWork : public Work
+static void replay_thread(common::OutFile &out, const int threadidx, const int our_tid, const FastForwardOptions& ffOptions, Json::Value& ffJson)
 {
-public:
-    TrimWork(int tid, unsigned frameId, unsigned callID, void* fptr, char* src, const char* name, common::UnCompressedChunk *chunk, common::OutFile &out, unsigned int flags, Json::Value& ffJson)
-        : Work(tid, frameId, callID, fptr, src, name, chunk), mOut(out), mFlags(flags), mFfJson(ffJson)
-    {
-    }
-
-    ~TrimWork()
-    {
-    }
-
-    void run()
-    {
-        saveData(mOut, mFlags, mFfJson);
-    }
-
-    common::OutFile& mOut;
-    unsigned int mFlags;
-    Json::Value& mFfJson;
-};
-
-static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOptions, Json::Value& ffJson)
-{
+    std::unique_lock<std::mutex> lk(gRetracer.mConditionMutex);
     RetraceAndTrim::ScratchBuffer buffer;
     retracer::Retracer& retracer = gRetracer;
 
@@ -2827,54 +2805,23 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
         os::abort();
     }
 
-    unsigned int dispatchFrameNo = 0;
-    unsigned int curCallNo = 0;
     unsigned int curDrawCallNo = 0;
-    bool shouldSaveData = false;
-    bool isFrameTarget = (0 != ffOptions.mTargetFrame);
+    const bool isFrameTarget = (0 != ffOptions.mTargetFrame);
     bool arriveTarget = false;
 
-    for ( ;; retracer.IncCurCallId())
+    for (;;)
     {
-        void *fptr = NULL;
-        char *src = NULL;
-        if (!retracer.mFile.GetNextCall(fptr, retracer.mCurCall, src) || retracer.mFinish)
-        {
-            // No more calls.
-            GLWS::instance().Cleanup();
-            retracer.CloseTraceFile();
-            return true;
-        }
-
         const char *funcName = retracer.mFile.ExIdToName(retracer.mCurCall.funcId);
         const bool isSwapBuffers = (retracer.mCurCall.funcId == retracer.mFile.NameToExId("eglSwapBuffers") ||
                                     retracer.mCurCall.funcId == retracer.mFile.NameToExId("eglSwapBuffersWithDamageKHR"));
         const bool isDrawCall = (common::FREQUENCY_RENDER == common::GetCallFlags(funcName));
 
-        shouldSaveData = isFrameTarget ? (dispatchFrameNo == ffOptions.mTargetFrame - 1) && isSwapBuffers : curDrawCallNo == ffOptions.mTargetDrawCallNo;
-
+        const bool shouldSaveData = isFrameTarget ? (retracer.GetCurFrameId() == ffOptions.mTargetFrame - 1) && isSwapBuffers : curDrawCallNo == ffOptions.mTargetDrawCallNo;
         if (retracer.mCurCall.tid == retracer.mOptions.mRetraceTid && shouldSaveData)
         {
             DBG_LOG("Started saving GL state\n");
-
-            if (!retracer.mOptions.mMultiThread)
-            {
-                saveData(out, ffOptions.mFlags, ffJson);
-            }
-            else
-            {
-                TrimWork* work = new TrimWork(retracer.mCurCall.tid, dispatchFrameNo, curCallNo, NULL, NULL, funcName, NULL, out, ffOptions.mFlags, ffJson);
-                retracer.DispatchWork(work);
-                WorkThread* wThread = retracer.findWorkThread(retracer.mCurCall.tid);
-                wThread->waitIdle();
-            }
-
+            saveData(out, ffOptions.mFlags, ffJson);
             DBG_LOG("Done saving GL state\n");
-        }
-
-        if (!retracer.mOptions.mMultiThread && retracer.mCurCall.tid != retracer.mOptions.mRetraceTid)
-        {
-            continue; // we're skipping calls from out file here, too; probably what user wants?
         }
 
         // Save calls.
@@ -2891,8 +2838,8 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
 
             if (isFrameTarget)
             {
-                arriveTarget = (dispatchFrameNo >= ffOptions.mTargetFrame);
-                if (strstr(funcName, "SwapBuffers") && (dispatchFrameNo+1 == ffOptions.mTargetFrame))
+                arriveTarget = (retracer.GetCurFrameId() >= ffOptions.mTargetFrame);
+                if (strstr(funcName, "SwapBuffers") && (retracer.GetCurFrameId() + 1 == ffOptions.mTargetFrame))
                 {
                     // We save the call before the call is executed, and GetCurFrameId() isn't
                     // updated until the call (SwapBuffers) is made. This handles the case where this
@@ -2926,7 +2873,7 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
                     memcpy(curScratch, &outBCall, sizeof(common::BCall));
                     curScratch += sizeof(common::BCall);
 
-                    memcpy(curScratch, src, common::gApiInfo.IdToLenArr[newId] - sizeof(common::BCall));
+                    memcpy(curScratch, retracer.src, common::gApiInfo.IdToLenArr[newId] - sizeof(common::BCall));
                     curScratch += common::gApiInfo.IdToLenArr[newId] - sizeof(common::BCall);
 
                     out.Write(buffer.bufferPtr(), curScratch - buffer.bufferPtr());
@@ -2940,7 +2887,7 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
                     memcpy(curScratch, &outBCall, sizeof(outBCall));
                     curScratch += sizeof(outBCall);
 
-                    memcpy(curScratch, src, outBCall.toNext - sizeof(outBCall));
+                    memcpy(curScratch, retracer.src, outBCall.toNext - sizeof(outBCall));
                     curScratch += outBCall.toNext - sizeof(outBCall);
 
                     out.Write(buffer.bufferPtr(), curScratch - buffer.bufferPtr());
@@ -2949,23 +2896,12 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
         }
 
         // Call function
-        if (fptr)
+        if (retracer.fptr)
         {
-            if (!retracer.mOptions.mMultiThread)
-            {
-                (*(RetraceFunc)fptr)(src); // increments src to point to end of parameter block
-            }
-            else
-            {
-                Work* work = new Work(retracer.mCurCall.tid, dispatchFrameNo, curCallNo, fptr, src, funcName);
-                retracer.DispatchWork(work);
-                WorkThread* wThread = retracer.findWorkThread(retracer.mCurCall.tid);
-                wThread->waitIdle();
-            }
-
+            (*(RetraceFunc)retracer.fptr)(retracer.src); // increments src to point to end of parameter block
             if (isSwapBuffers && retracer.mCurCall.tid == retracer.mOptions.mRetraceTid)
             {
-                dispatchFrameNo++;
+                retracer.IncCurFrameId();
             }
 
             if (isDrawCall)
@@ -2974,18 +2910,84 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
             }
         }
 
-        curCallNo++;
-
-        if (dispatchFrameNo > ffOptions.mEndFrame)
+        if (retracer.GetCurFrameId() > ffOptions.mEndFrame)
         {
             retracer.mFinish = true;
         }
+
+        // ---------------------------------------------------------------------------
+        // Get next packet
+skip_call:
+        retracer.curCallNo++;
+        if (!retracer.mFile.GetNextCall(retracer.fptr, retracer.mCurCall, retracer.src))
+        {
+            retracer.mFinish = true;
+            for (auto &cv : retracer.conditions) cv.notify_one(); // Wake up all other threads
+            break;
+        }
+        // Skip call because it is on an ignored thread?
+        if (!retracer.mOptions.mMultiThread && retracer.mCurCall.tid != retracer.mOptions.mRetraceTid)
+        {
+            goto skip_call;
+        }
+        // Need to switch active thread?
+        if (our_tid != retracer.mCurCall.tid)
+        {
+            retracer.latest_call_tid = retracer.mCurCall.tid; // need to use an atomic member copy of this here
+            // Do we need to make this thread?
+            if (retracer.thread_remapping.count(retracer.mCurCall.tid) == 0)
+            {
+                retracer.thread_remapping[retracer.mCurCall.tid] = retracer.threads.size();
+                int newthreadidx = retracer.threads.size();
+                retracer.conditions.emplace_back();
+                retracer.threads.emplace_back(replay_thread, std::ref(out), newthreadidx, (int)retracer.mCurCall.tid, std::ref(ffOptions), std::ref(ffJson));
+            }
+            else // Wake up existing thread
+            {
+                const int otheridx = retracer.thread_remapping.at(retracer.mCurCall.tid);
+                retracer.conditions.at(otheridx).notify_one();
+            }
+            // Now we go to sleep. However, there is a race condition, since the thread we woke up above might already have told us
+            // to wake up again, so keep waking up to check if that is indeed the case.
+            bool success = false;
+            do {
+                success = retracer.conditions.at(threadidx).wait_for(lk, std::chrono::milliseconds(50), [&]{ return our_tid == retracer.latest_call_tid || retracer.mFinish; });
+            } while (!success);
+        }
+    }
+}
+
+static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOptions, Json::Value& ffJson)
+{
+    retracer::Retracer& retracer = gRetracer;
+
+    if (retracer.getFileFormatVersion() <= common::HEADER_VERSION_3)
+    {
+        // Because they have different binary format for e.g. the pixel-array portion
+        // of glTexSubImage2D, and we don't want to write emitter-functions for both the old
+        // and new version.
+        DBG_LOG("ERROR: Can't retrace traces with header-version <= HEADER_VERSION_3\n");
+        os::abort();
     }
 
-    // Should never get here, as we return once there are no more calls.
-    DBG_LOG("Got to the end of %s somehow. Please report this as a bug.\n", __func__);
-    assert(0);
+    ff_glGetTexLevelParameteriv = (PFN_GLGETTEXLEVELPARAMETERIV) eglGetProcAddress("glGetTexLevelParameteriv");
 
+    if ((ffOptions.mFlags & FASTFORWARD_RESTORE_TEXTURES) && (ff_glGetTexLevelParameteriv == NULL))
+    {
+        DBG_LOG("ERROR: Couldn't fetch pointer to GLES31 function glGetTexLevelParameteriv, which is needed when creating a fastforward-trace doing texture-restoration.\n");
+        os::abort();
+    }
+
+    gRetracer.threads.resize(1);
+    gRetracer.conditions.resize(1);
+    retracer.mFile.GetNextCall(retracer.fptr, retracer.mCurCall, retracer.src);
+    replay_thread(out, 0, gRetracer.mCurCall.tid, ffOptions, ffJson);
+    for (std::thread &t : gRetracer.threads)
+    {
+        if (t.joinable()) t.join();
+    }
+    GLWS::instance().Cleanup();
+    gRetracer.CloseTraceFile();
     return true;
 }
 
@@ -3033,7 +3035,7 @@ static int readValidValue(const char* v)
     return val;
 }
 
-static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOptions, CmdOptions& cmdOpts )
+static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOptions, RetraceOptions& cmdOpts)
 {
     bool gotOutput = false;
     bool gotInput = false;
@@ -3047,19 +3049,19 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
 
         if (!strcmp(arg, "--offscreen"))
         {
-            cmdOpts.forceOffscreen = true;
+            cmdOpts.mForceOffscreen = true;
         }
         else if (!strcmp(arg, "--multithread"))
-        {   cmdOpts.multiThread = true;
+        {   cmdOpts.mMultiThread = true;
         }
         else if (!strcmp(arg, "--input"))
         {
-            cmdOpts.fileName = argv[++i];
+            cmdOpts.mFileName = argv[++i];
             gotInput = true;
         }
         else if (!strcmp(arg, "--noscreen"))
         {
-            cmdOpts.pbufferRendering = true;
+            cmdOpts.mPbufferRendering = true;
         }
         else if (!strcmp(arg, "--output"))
         {
@@ -3144,14 +3146,13 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
 extern "C"
 int main(int argc, char** argv)
 {
-    CmdOptions cmdOptions;
     FastForwardOptions ffOptions;
-    if (!ParseCommandLine(argc, argv, /*out*/ ffOptions, /*out*/ cmdOptions))
+    if (!ParseCommandLine(argc, argv, /*out*/ ffOptions, gRetracer.mOptions))
     {
         return 1;
     }
 
-    if (cmdOptions.fileName.empty())
+    if (gRetracer.mOptions.mFileName.empty())
     {
         std::cerr << "No trace file name specified.\n";
         usage(argv[0]);
@@ -3163,16 +3164,9 @@ int main(int argc, char** argv)
     common::gApiInfo.RegisterEntries(egl_callbacks);
 
     // 1. Load defaults from file
-    if (!gRetracer.OpenTraceFile(cmdOptions.fileName.c_str()))
+    if (!gRetracer.OpenTraceFile(gRetracer.mOptions.mFileName.c_str()))
     {
-        DBG_LOG("Failed to open %s\n", cmdOptions.fileName.c_str());
-        return 1;
-    }
-
-    // 2. Now that tracefile is opened and defaults loaded, override
-    if (!gRetracer.overrideWithCmdOptions(cmdOptions))
-    {
-        DBG_LOG("Failed to override Cmd Options\n");
+        DBG_LOG("Failed to open %s\n", gRetracer.mOptions.mFileName.c_str());
         return 1;
     }
 
@@ -3219,16 +3213,16 @@ int main(int argc, char** argv)
     // Open output file
     common::OutFile out(ffOptions.mOutputFileName.c_str());
 
-
+    // Get existing header
+    Json::Value jsonRoot = gRetracer.mFile.getJSONHeader();
+    gRetracer.mOptions.mMultiThread = jsonRoot.get("multiThread", gRetracer.mOptions.mMultiThread).asBool();
+    DBG_LOG("Multi-threading is %s\n", gRetracer.mOptions.mMultiThread ? "ON" : "OFF");
 
     // Do fastforwarding: pass ffJson in case we want to add anything
     retraceAndTrim(out, ffOptions, ffJson);
 
-    // Get existing header
-    Json::Value jsonRoot = gRetracer.mFile.getJSONHeader();
-
     // Add our conversion to the list
-    addConversionEntry(jsonRoot, "fastforward", cmdOptions.fileName, ffJson);
+    addConversionEntry(jsonRoot, "fastforward", gRetracer.mOptions.mFileName, ffJson);
 
     // Serialize header
     Json::FastWriter writer;

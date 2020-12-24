@@ -1,5 +1,29 @@
 #include "glsl_utils.h"
 
+static void replace_all(std::string& source, const std::string& from, const std::string& to)
+{
+    std::string newString;
+    newString.reserve(source.length());
+    std::string::size_type lastPos = 0;
+    std::string::size_type findPos;
+    while(std::string::npos != (findPos = source.find(from, lastPos)))
+    {
+        newString.append(source, lastPos, findPos - lastPos);
+        newString += to;
+        lastPos = findPos + from.length();
+    }
+    newString += source.substr(lastPos);
+    source.swap(newString);
+}
+
+std::string convert_to_tf(const std::string& s)
+{
+    std::string new_vs = s;
+    replace_all(new_vs, "gl_Position", "az_outValue");
+    replace_all(new_vs, "void main", "out vec4 az_outValue;\nvoid main");
+    return new_vs;
+}
+
 /// Locations are counted as full vec4 slots. Not sure if we are doing
 /// doubles correctly here, but they are hypothetical in GLES anyway.
 static int count_locations(Keyword type)

@@ -52,14 +52,17 @@ using namespace retracer;
 
 void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
 {
-    int threadId       = value.get("threadId", -1).asInt();
-
     retracer::RetraceOptions& options = gRetracer.mOptions;
 
     options.mDoOverrideResolution = value.get("overrideResolution", false).asBool();
     options.mOverrideResW = value.get("overrideWidth", -1).asInt();
     options.mOverrideResH = value.get("overrideHeight", -1).asInt();
     options.mFailOnShaderError = value.get("overrideFailOnShaderError", options.mFailOnShaderError).asBool();
+    options.mLoopTimes = value.get("loopTimes", options.mLoopTimes).asInt();
+    if (value.isMember("loopSeconds"))
+    {
+        options.mLoopSeconds = value["loopSeconds"].asInt();
+    }
     options.mCallStats = value.get("callStats", options.mCallStats).asBool();
     if (options.mCallStats)
     {
@@ -76,11 +79,6 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         options.mFlushWork = true;
     }
 
-    if (threadId < 0 && options.mRetraceTid < 0)
-    {
-        gRetracer.reportAndAbort("Missing thread ID. Must be in either trace header or JSON parameters.");
-    }
-
     if (options.mDoOverrideResolution && (options.mOverrideResW < 0 || options.mOverrideResH < 0))
     {
         gRetracer.reportAndAbort("Missing actual resolution when resolution override set");
@@ -91,10 +89,7 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         options.mOverrideResRatioH = options.mOverrideResH / (float) options.mWindowHeight;
     }
 
-    // Check that threadId for js is valid.
-    if (threadId >= 0) {
-        options.mRetraceTid = threadId;
-    }
+    options.mForceAnisotropicLevel = value.get("forceAnisotropicLevel", options.mForceAnisotropicLevel).asInt();
 
     int jsWidth = value.get("width", -1).asInt();
     int jsHeight = value.get("height", -1).asInt();
@@ -131,22 +126,14 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
 
     options.mForceSingleWindow = value.get("forceSingleWindow", options.mForceSingleWindow).asBool();
     options.mForceOffscreen = value.get("offscreen", options.mForceOffscreen).asBool();
+    options.mPbufferRendering = value.get("noscreen", options.mPbufferRendering).asBool();
+    options.mSingleSurface = value.get("singlesurface", options.mSingleSurface).asInt();
     if (value.isMember("skipWork"))
     {
         options.mSkipWork = value.get("skipWork", -1).asInt();
     }
 
-    if (options.mForceOffscreen)
-    {
-        DBG_LOG("Offscreen mode: Setting low onscreen FB configuration\n");
-        options.mOnscreenConfig.override(EglConfigInfo(5, 6, 5, 0, 0, 0, 0, 0));
-        options.mOffscreenConfig.override(eglConfig);
-    }
-    else
-    {
-        options.mOnscreenConfig.override(eglConfig);
-    }
-
+    options.mOverrideConfig = eglConfig;
     options.mMeasurePerFrame = value.get("measurePerFrame", false).asBool();
 
     if (value.isMember("frames")) {
@@ -291,7 +278,6 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
 void TraceExecutor::initFromJson(const std::string& json_data, const std::string& trace_dir, const std::string& result_file)
 {
     mResultFile = result_file;
-    gRetracer.ResetCurFrameId();
 
     /*
      * The order is important here:
@@ -304,34 +290,26 @@ void TraceExecutor::initFromJson(const std::string& json_data, const std::string
 
     Json::Value value;
     Json::Reader reader;
-    if (!reader.parse(json_data, value)){
+    if (!reader.parse(json_data, value))
+    {
         gRetracer.reportAndAbort("JSON parse error: %s\n", reader.getFormattedErrorMessages().c_str());
     }
-
-    if (!value.isMember("file"))
-    {
-        gRetracer.reportAndAbort("Missing file parameter");
-    }
-
-    /* entries must be registered before calling OpenTraceFile() as
-     * the sig book will be initialised there. */
-    common::gApiInfo.RegisterEntries(gles_callbacks);
-    common::gApiInfo.RegisterEntries(egl_callbacks);
 
     // A path is absolute if
     // -on Unix, it begins with a slash
     // -on Windows, it begins with (back)slash after chopping of potential drive letter
-    bool pathIsAbsolute = value.get("file", "").asString()[0] == '/';
-    std::string traceFilePath;
-    if (pathIsAbsolute) {
-        traceFilePath = value.get("file", "").asString();
-    } else {
-        traceFilePath = std::string(trace_dir) + "/" + value.get("file", "").asString();
-    }
 
-    // 1. Open Tracefile and Load Defaults
-    if (!gRetracer.OpenTraceFile(traceFilePath.c_str())) {
-        gRetracer.reportAndAbort("Could not open trace file");
+    if (value.isMember("file"))
+    {
+        bool pathIsAbsolute = value.get("file", "").asString()[0] == '/';
+        std::string traceFilePath;
+        if (pathIsAbsolute)
+        {
+            traceFilePath = value.get("file", "").asString();
+        } else {
+            traceFilePath = std::string(trace_dir) + "/" + value.get("file", "").asString();
+        }
+        gRetracer.mOptions.mFileName = traceFilePath;
     }
 
     // 2. now that defaults are loaded

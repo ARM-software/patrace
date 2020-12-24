@@ -262,11 +262,16 @@ public:
     }
 
     // Whether these two contiguous memory regions overlap
-    bool overlap(const void *p, ptrdiff_t size) const;
+    bool overlap(const void *p, ptrdiff_t s) const { return (PTR_DIFF(p, base_address) < size) && (PTR_DIFF(base_address, p) < s); }
+
     // Extend this memory region to contain another contiguous memory region, and return the new base address
     void * extend(const void *p, ptrdiff_t size);
 
-    const MD5Digest md5_digest() const;
+    const MD5Digest md5_digest() const
+    {
+        if (_dirty_md5_digest) calculate_md5_digest();
+        return _md5_digest;
+    }
 
     void * translate_address(ptrdiff_t offset) const
     {
@@ -305,7 +310,11 @@ private:
     // This is used by the glReadMapBufferRange, and glUnmapBuffer functiosn.
     void* _destinationAddress;
 
-    void calculate_md5_digest() const;
+    void calculate_md5_digest() const
+    {
+        _md5_digest = MD5Digest(base_address, size);
+        _dirty_md5_digest = false;
+    }
 };
 
 // Try to merge memory range of multiple vertex attributes for one draw call into a contiguous memory region
@@ -337,7 +346,7 @@ public:
         ClientSideBufferObjectName obj_name;
     };
 
-    VertexAttributeMemoryMerger();
+    VertexAttributeMemoryMerger() {}
     ~VertexAttributeMemoryMerger();
 
     unsigned int memory_range_count() const { return _memory_ranges.size(); }
@@ -357,7 +366,7 @@ class ClientSideBufferObjectSetPerThread
 public:
     ClientSideBufferObjectSetPerThread()
     {
-        _objects.insert(std::pair<unsigned int, ClientSideBufferObject*>(0, new ClientSideBufferObject));   // a sentinel for being compatible with old traces
+        _objects.emplace(0, new ClientSideBufferObject);   // a sentinel for being compatible with old traces
     }
 
     ~ClientSideBufferObjectSetPerThread()
@@ -371,12 +380,12 @@ public:
 #ifdef RETRACE
     void create_object(ClientSideBufferObjectName name)
     {
-        _objects.insert(std::pair<unsigned int, ClientSideBufferObject*>(name, new ClientSideBufferObject));
+        _objects.emplace(name, new ClientSideBufferObject);
     }
 #else
     ClientSideBufferObjectName create_object()
     {
-        _objects.insert(std::pair<unsigned int, ClientSideBufferObject*>(_objects.size() + 1, new ClientSideBufferObject));
+        _objects.emplace(_objects.size() + 1, new ClientSideBufferObject);
         return _objects.size();
     }
 #endif
@@ -399,9 +408,9 @@ public:
         ClientSideBufferObjectList::iterator iter = _objects.find(name);
         if (iter == _objects.end())
         {
-            _objects.insert(std::pair<unsigned int, ClientSideBufferObject*>(name, new ClientSideBufferObject));
+            _objects.emplace(name, new ClientSideBufferObject);
         }
-        _objects.at(name)->set_data(data, size, copy);
+        _objects[name]->set_data(data, size, copy);
     }
 
     void object_subdata(ClientSideBufferObjectName name, int offset, int size, const void* data)
@@ -411,7 +420,7 @@ public:
         {
             DBG_LOG("Invalid client-side buffer name to set sub-data : %d\n", name);
         }
-        _objects.at(name)->set_subdata(data, offset, size);
+        _objects[name]->set_subdata(data, offset, size);
     }
 
     ClientSideBufferObject *get_object(ClientSideBufferObjectName name) const

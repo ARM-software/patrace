@@ -113,7 +113,7 @@ public class RetraceActivity extends Activity
         if (force_single_window) {
             GLSurfaceView view = new GLSurfaceView(this, width, height);
             Log.i(TAG, "Create a new surface view:" + " width:" + width + " height:" + height);
-            setContentView(view, view.getLayout());
+            addContentView(view, view.getLayout());
         }
         else if (mViewContainer != null) {
             GLTextureView view = new GLTextureView(this, width, height);

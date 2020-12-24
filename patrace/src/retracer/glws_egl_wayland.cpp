@@ -151,26 +151,31 @@ void GlwsEglWayland::processStepEvent()
         /* Check the list first - key presses may have been added by a
          * processStepEvent() call on another window */
         struct key_press *key_press, *next;
-        wl_list_for_each_reverse_safe(key_press, next, &mKeysPressed, link) {
+        wl_list_for_each_reverse_safe(key_press, next, &mKeysPressed, link)
+        {
             uint32_t key = key_press->key;
 
             /* always remove key presses - we just ignore non F? keys */
             wl_list_remove(&key_press->link);
             free(key_press);
 
-            if (key >= KEY_F1 && key <= KEY_F4) {
+            if (key >= KEY_F1 && key <= KEY_F4)
+            {
                 const unsigned int forwardNum = static_cast<unsigned int>(std::pow(10, key - KEY_F1));
-                if (!gRetracer.RetraceForward(forwardNum, 0))
-                    return;
-            } else if (key >= KEY_F5 && key <= KEY_F8) {
+                gRetracer.frameBudget += forwardNum;
+                return;
+            }
+            else if (key >= KEY_F5 && key <= KEY_F8)
+            {
                 const unsigned int drawNum = static_cast<unsigned int>(std::pow(10, key - KEY_F5));
-                if (!gRetracer.RetraceForward(0, drawNum))
-                    return;
+                gRetracer.drawBudget += drawNum;
+                return;
             }
         }
 
         int events = wl_display_dispatch_queue((struct wl_display *)mEglNativeDisplay, mKBQueue);
-        if (events < 0) {
+        if (events < 0)
+        {
             DBG_LOG("An error occured while dispatching the keyboard Wayland queue\n");
             return;
         }
@@ -465,7 +470,6 @@ void GlwsEglWayland::releaseNativeDisplay(EGLNativeDisplayType display)
 Drawable* GlwsEglWayland::CreateDrawable(int width, int height, int win, EGLint const* attribList)
 {
     Drawable* handler = NULL;
-    NativeWindowMutex.lock();
     WinNameToNativeWindowMap_t::iterator it = gWinNameToNativeWindowMap.find(win);
 
     NativeWindow* window = 0;
@@ -505,7 +509,6 @@ Drawable* GlwsEglWayland::CreateDrawable(int width, int height, int win, EGLint 
     }
 
     handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, window, attribList);
-    NativeWindowMutex.unlock();
     return handler;
 }
 

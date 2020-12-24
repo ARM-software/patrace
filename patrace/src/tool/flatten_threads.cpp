@@ -28,6 +28,7 @@ static void printHelp()
         "Options:\n"
         "  -h            print help\n"
         "  -v            print version\n"
+        "  -n            do not reindex clientside buffers\n"
         "  -d            dump lots of debug information\n"
         "  -t THREADS    flatten only given comma separated list of threads (by default flatten all threads)\n"
         "  -w            add forceSingleWindow to trace header\n"
@@ -59,6 +60,7 @@ static common::FrameTM* _curFrame = NULL;
 static unsigned _curFrameIndex = 0;
 static unsigned _curCallIndexInFrame = 0;
 static bool debug = false;
+static bool no_reindex = false;
 
 static void writeout(common::OutFile &outputFile, common::CallTM *call)
 {
@@ -158,7 +160,12 @@ int main(int argc, char **argv)
         else if (!strcmp(arg, "-v"))
         {
             printVersion();
-            return 1;
+            return 0;
+        }
+        else if (!strcmp(arg, "-n"))
+        {
+            no_reindex = true;
+            printf("No longer reindexing clientside buffers!\n");
         }
         else if (!strcmp(arg, "-w"))
         {
@@ -502,6 +509,10 @@ int main(int argc, char **argv)
 
 void clientSideBufferRemap(unsigned int idx, common::CallTM * call)
 {
+    if (no_reindex)
+    {
+        return;
+    }
     if(idx > MAX_THREAD_IDX)
     {
         DBG_LOG("ERROR: The thread index is bigger than max number!\n");

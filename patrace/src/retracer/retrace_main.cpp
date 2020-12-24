@@ -9,10 +9,12 @@
 
 #include "libcollector/interface.hpp"
 
-#include "cmd_options.hpp"
 #include "helper/states.h"
 
 using namespace retracer;
+
+static bool printHeaderInfo = false;
+static bool printHeaderJson = false;
 
 static void
 usage(const char *argv0) {
@@ -23,11 +25,14 @@ usage(const char *argv0) {
         "\n"
         "  -tid THREADID the function calls invoked by thread <THREADID> will be retraced\n"
         "  -s CALL_SET take snapshot for the calls in the specific call set. Please try to post process the captured snapshot with imagemagick to turn off alpha value if it shows black.\n"
-        "  -step use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call (only supported on desktop linux)\n"
+        "  -snapshotprefix PREFIX Prepend this label to every snapshot. Useful for automation.\n"
+        "  -step use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call (not supported on all platforms)\n"
         "  -ores W H override the resolution of the final onscreen rendering (FBOs used in earlier renderpasses are not affected!)\n"
         "  -msaa SAMPLES enable multi sample anti alias\n"
         "  -preload START STOP preload the trace file frames from START to STOP. START must be greater than zero.\n"
-        "  -framerange FRAME_START FRAME_END, start fps timer at frame start (inclusive), stop timer and playback before frame end (exclusive).\n"
+        "  -framerange FRAME_START FRAME_END start fps timer at frame start (inclusive), stop timer and playback before frame end (exclusive).\n"
+        "  -loop TIMES repeat the preloaded frames at least the given number of times\n"
+        "  -looptime SECONDS repeat the preloaded frames at least the given number of seconds\n"
         "  -jsonParameters FILE RESULT_FILE TRACE_DIR path to a JSON file containing the parameters, the output result file and base trace path\n"
         "  -info Show default EGL Config for playback (stored in trace file header). Do not play trace.\n"
         "  -instr Output the supported instrumentation modes as a JSON file. Do not play trace.\n"
@@ -55,7 +60,9 @@ usage(const char *argv0) {
         "  -perffreq FREQ Set frequency for perf\n"
         "  -perfout FILENAME Set output filename for perf\n"
 #endif
+        "  -forceanisolevel LEVEL force all anisotropic filtering levels above 1 to this level\n"
         "  -noscreen Render without visual output (using pbuffer render target)\n"
+        "  -singlesurface SURFACE Render all surfaces except the given one to pbuffer render targets instead\n"
         "  -flushonswap Call explicit flush before every call to swap the backbuffer\n"
         "  -cpumask Set explicit CPU mask (written as a string of ones and zeroes)\n"
         "  -libEGL_path=<path.to.libEGL.so>\n"
@@ -86,9 +93,9 @@ int readValidValue(char* v)
     return val;
 }
 
-static bool printInstr(Json::Value input)
+static bool printInstr()
 {
-    /* TODO: read configuration from somewhere. */
+    Json::Value input;
     Collection c(input);
     Json::Value value;
     std::vector<std::string> instrumentations = c.available();
@@ -100,117 +107,163 @@ static bool printInstr(Json::Value input)
     return true;
 }
 
-bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
+bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
 {
+    bool streamline_collector = false;
+
     // Parse all except first (executable name)
-    for (int i = 1; i < argc; ++i) {
+    for (int i = 1; i < argc; ++i)
+    {
         const char *arg = argv[i];
 
         // Assume last arg is filename
         if (i==argc-1 && arg[0] != '-') {
-            cmdOpts.fileName = arg;
+            mOptions.mFileName = arg;
             break;
         }
 
         if (!strcmp(arg, "-tid")) {
-            cmdOpts.tid = readValidValue(argv[++i]);
+            const int tid = readValidValue(argv[++i]);
+            if (tid >= PATRACE_THREAD_LIMIT)
+            {
+                DBG_LOG("Error: thread IDs only up to %d supported (configured thread ID %d).\n", PATRACE_THREAD_LIMIT, tid);
+                return false;
+            }
+            DBG_LOG("Overriding default tid with: %d (warning: this is for testing purposes only!)\n", tid);
+            mOptions.mRetraceTid = tid;
         } else if (!strcmp(arg, "-winsize")) {
-            cmdOpts.winW = readValidValue(argv[++i]);
-            cmdOpts.winH = readValidValue(argv[++i]);
+            DBG_LOG("WARNING: This option is only useful for very old trace files!");
+            mOptions.mWindowWidth = readValidValue(argv[++i]);
+            mOptions.mWindowHeight = readValidValue(argv[++i]);
+            DBG_LOG("Overriding default winsize with %dx%d\n", mOptions.mWindowWidth, mOptions.mWindowHeight);
         } else if (!strcmp(arg, "-ores")) {
-            cmdOpts.oresW = readValidValue(argv[++i]);
-            cmdOpts.oresH = readValidValue(argv[++i]);
+            mOptions.mDoOverrideResolution = true;
+            mOptions.mOverrideResW = readValidValue(argv[++i]);
+            mOptions.mOverrideResH = readValidValue(argv[++i]);
+            mOptions.mOverrideResRatioW = mOptions.mOverrideResW / (float) mOptions.mWindowWidth;
+            mOptions.mOverrideResRatioH = mOptions.mOverrideResH / (float) mOptions.mWindowHeight;
+            DBG_LOG("Override resolution enabled: %dx%d\n",
+                    mOptions.mOverrideResW, mOptions.mOverrideResH);
+            DBG_LOG("Override resolution ratio: %.2f x %.2f\n",
+                    mOptions.mOverrideResRatioW, mOptions.mOverrideResRatioH);
             DBG_LOG("WARNING: Please think twice before using -ores - it is usually a mistake!\n");
         } else if (!strcmp(arg, "-msaa")) {
-            cmdOpts.eglConfig.msaa_samples = readValidValue(argv[++i]);
+            mOptions.mOverrideConfig.msaa_samples = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-skipwork")) {
-            cmdOpts.skipWork = readValidValue(argv[++i]);
-        } else if (!strcmp(arg, "-dumpstatic")) {
-            cmdOpts.dumpStatic = true;
+            mOptions.mSkipWork = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-callstats")) {
-            cmdOpts.callStats = true;
+            mOptions.mCallStats = true;
         } else if (!strcmp(arg, "-perf")) {
-            cmdOpts.perfStart = readValidValue(argv[++i]);
-            cmdOpts.perfStop = readValidValue(argv[++i]);
+            mOptions.mPerfStart = readValidValue(argv[++i]);
+            mOptions.mPerfStop = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-perfpath")) {
-            cmdOpts.perfPath = argv[++i];
+            mOptions.mPerfPath = argv[++i];
         } else if (!strcmp(arg, "-perfout")) {
-            cmdOpts.perfOut = argv[++i];
+            mOptions.mPerfOut = argv[++i];
         } else if (!strcmp(arg, "-perffreq")) {
-            cmdOpts.perfFreq = readValidValue(argv[++i]);
+            mOptions.mPerfFreq = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-s")) {
-            cmdOpts.snapshotCallSet = new common::CallSet(argv[++i]);
+            mOptions.mSnapshotCallSet = new common::CallSet(argv[++i]);
         } else if (!strcmp(arg, "-framenamesnaps")) {
-            cmdOpts.snapshotFrameNames = true;
+            mOptions.mSnapshotFrameNames = true;
+        } else if (!strcmp(arg, "-snapshotprefix")) {
+            mOptions.mSnapshotPrefix = argv[++i];
+        } else if (!strcmp(arg, "-forceanisolevel")) {
+            mOptions.mForceAnisotropicLevel = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-step")) {
-            cmdOpts.stepMode = true;
+            mOptions.mStepMode = true;
         } else if (!strcmp(arg, "--help") || !strcmp(arg, "-h")) {
             usage(argv[0]);
             return false;
         } else if (!strcmp(arg, "-cpumask")) {
-            cmdOpts.cpuMask = argv[++i];
+            mOptions.mCpuMask = argv[++i];
+        } else if (!strcmp(arg, "-loop")) {
+            mOptions.mLoopTimes = readValidValue(argv[++i]);
+        } else if (!strcmp(arg, "-looptime")) {
+            mOptions.mLoopSeconds = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-framerange")) {
-            cmdOpts.beginMeasureFrame = readValidValue(argv[++i]);
-            cmdOpts.endMeasureFrame = readValidValue(argv[++i]);
+            mOptions.mBeginMeasureFrame = readValidValue(argv[++i]);
+            mOptions.mEndMeasureFrame = readValidValue(argv[++i]);
+            if (mOptions.mBeginMeasureFrame >= mOptions.mEndMeasureFrame)
+            {
+                DBG_LOG("Start frame must be lower than end frame. (End frame is never played.)\n");
+                return false;
+            }
         } else if (!strcmp(arg, "-preload")) {
-            cmdOpts.preload = true;
-            cmdOpts.beginMeasureFrame = readValidValue(argv[++i]);
-            cmdOpts.endMeasureFrame = readValidValue(argv[++i]);
+            mOptions.mPreload = true;
+            mOptions.mBeginMeasureFrame = readValidValue(argv[++i]);
+            mOptions.mEndMeasureFrame = readValidValue(argv[++i]);
+            if (mOptions.mBeginMeasureFrame >= mOptions.mEndMeasureFrame)
+            {
+                DBG_LOG("Start frame must be lower than end frame. (End frame is never played.)\n");
+                return false;
+            }
         } else if (!strcmp(arg, "-jsonParameters")) {
-            // ignore here
+            const char *jsonParameters = argv[++i];
+            const char *resultFile = argv[++i];
+            const char *traceDir = argv[++i];
+            std::ifstream t(jsonParameters);
+            std::string str((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
+            TraceExecutor::initFromJson(str, traceDir, resultFile);
         } else if (!strcmp(arg, "-info")) {
-            cmdOpts.printHeaderInfo = true;
+            printHeaderInfo = true;
         } else if (!strcmp(arg, "-debug")) {
-            cmdOpts.debug = 1;
+            mOptions.mDebug = 1;
         } else if (!strcmp(arg, "-debugfull")) {
-            cmdOpts.debug = 2;
+            mOptions.mDebug = 2;
         } else if (!strcmp(arg, "-statelog")) {
-            cmdOpts.stateLogging = true;
+            mOptions.mStateLogging = true;
         } else if (!strcmp(arg, "-noscreen")) {
-            cmdOpts.pbufferRendering = true;
+            mOptions.mPbufferRendering = true;
+        } else if (!strcmp(arg, "-singlesurface")) {
+            mOptions.mSingleSurface = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-perfmon")) {
-            cmdOpts.perfmon = true;
+            mOptions.mPerfmon = true;
         } else if (!strcmp(arg, "-collect")) {
-            cmdOpts.collectors = true;
+            if (!gRetracer.mCollectors) gRetracer.mCollectors = new Collection(Json::Value());
         } else if (!strcmp(arg, "-collect_streamline")) {
-            cmdOpts.collectors_streamline = true;
+            if (!gRetracer.mCollectors) gRetracer.mCollectors = new Collection(Json::Value());
+            streamline_collector = true;
         } else if (!strcmp(arg, "-flushonswap")) {
-            cmdOpts.finishBeforeSwap = true;
+            mOptions.mFinishBeforeSwap = true;
         } else if (!strcmp(arg, "-flush")) {
-            cmdOpts.flushWork = true;
-        } else if (!strcmp(arg, "-drawlog")) {
-            cmdOpts.drawLogging = true;
-            stateLoggingEnabled = true;
+            mOptions.mFlushWork = true;
         } else if (!strcmp(arg, "-infojson")) {
-            cmdOpts.printHeaderInfo = true;
-            cmdOpts.printHeaderJson = true;
+            printHeaderInfo = true;
+            printHeaderJson = true;
         } else if (!strcmp(arg, "-offscreen")) {
-            cmdOpts.forceOffscreen = true;
+            mOptions.mForceOffscreen = true;
+            // When running offscreen, force onscreen EGL to most compatible mode known: 5650 00
+            mOptions.mOnscreenConfig = EglConfigInfo(5, 6, 5, 0, 0, 0, 0, 0);
         } else if (!strcmp(arg, "-singlewindow")) {
-            cmdOpts.forceSingleWindow = true;
+            mOptions.mForceSingleWindow = true;
         } else if (!strcmp(arg, "-multithread")) {
-            cmdOpts.multiThread = true;
+            mOptions.mMultiThread = true;
         } else if (!strcmp(arg, "-shadercache")) {
-            cmdOpts.shaderCacheFile = argv[++i];
+            mOptions.mShaderCacheFile = argv[++i];
         } else if(!strcmp(arg, "-strictshadercache")) {
-            cmdOpts.shaderCacheRequired = true;
+            mOptions.mShaderCacheRequired = true;
         } else if (!strcmp(arg, "-insequence")) {
             // nothing, this is always the case now
         } else if (!strcmp(arg, "-singleframe")) {
-            cmdOpts.singleFrameOffscreen = true;
+            // Draw offscreen using 1 big tile
+            mOptions.mOnscrSampleH *= 10;
+            mOptions.mOnscrSampleW *= 10;
+            mOptions.mOnscrSampleNumX = 1;
+            mOptions.mOnscrSampleNumY = 1;
         } else if (!strcmp(arg, "-overrideEGL")) {
-            cmdOpts.eglConfig.red = readValidValue(argv[++i]);
-            cmdOpts.eglConfig.green = readValidValue(argv[++i]);
-            cmdOpts.eglConfig.blue = readValidValue(argv[++i]);
-            cmdOpts.eglConfig.alpha = readValidValue(argv[++i]);
-            cmdOpts.eglConfig.depth = readValidValue(argv[++i]);
-            cmdOpts.eglConfig.stencil = readValidValue(argv[++i]);
+            mOptions.mOverrideConfig.red = readValidValue(argv[++i]);
+            mOptions.mOverrideConfig.green = readValidValue(argv[++i]);
+            mOptions.mOverrideConfig.blue = readValidValue(argv[++i]);
+            mOptions.mOverrideConfig.alpha = readValidValue(argv[++i]);
+            mOptions.mOverrideConfig.depth = readValidValue(argv[++i]);
+            mOptions.mOverrideConfig.stencil = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-strict")) {
-            cmdOpts.strictEGLMode = true;
+            mOptions.mStrictEGLMode = true;
         } else if (!strcmp(arg, "-strictcolor")) {
-            cmdOpts.strictColorMode = true;
+            mOptions.mStrictColorMode = true;
         } else if (!strcmp(arg, "-skip")) {
-            cmdOpts.skipCallSet = new common::CallSet(argv[++i]);
+            mOptions.mSkipCallSet = new common::CallSet(argv[++i]);
         } else if (strstr(arg, "-lib")) {
             const char* strEGL = "-libEGL_path=";
             const char* strGLES1 = "-libGLESv1_path=";
@@ -231,13 +284,13 @@ bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
                 return false;
             }
         } else if(!strcmp(arg, "-instr")) {
-            bool succ = printInstr(Json::Value()); // TBD, pass in JSON from --jsonParameters
+            bool succ = printInstr();
             exit(succ ? 0 : 1);
         } else if (!strcmp(arg, "-version")) {
             std::cout << "Version: " PATRACE_VERSION << std::endl;
             exit(0);
         } else if (!strcmp(arg, "-dmasharedmem")) {
-            cmdOpts.dmaSharedMemory = true;
+            mOptions.dmaSharedMemory = true;
         } else {
             DBG_LOG("error: unknown option %s\n", arg);
             usage(argv[0]);
@@ -245,119 +298,103 @@ bool ParseCommandLine(int argc, char** argv, CmdOptions& cmdOpts)
         }
     }
 
-    return true;
-}
-
-bool useJsonParameters(int argc, char** argv, const char** jsonParameters, const char** resultFile, const char** traceDir)
-{
-    for (int i = 1; i < argc; ++i) {
-        if (!strcmp(argv[i], "-jsonParameters")) {
-            *jsonParameters = argv[++i];
-            *resultFile = argv[++i];
-            *traceDir = argv[++i];
-            DBG_LOG("JSON: %s - result file: %s - trace dir: %s\n", *jsonParameters, *resultFile, *traceDir);
-            return true;
-        }
+    if (mOptions.mSingleSurface != -1 && mOptions.mForceSingleWindow)
+    {
+        DBG_LOG("Single surface and single window options cannot be combined!\n");
+        return false;
+    }
+    if (mOptions.mLoopTimes && !mOptions.mPreload)
+    {
+        DBG_LOG("Loop option requires preload\n");
+        return false;
     }
 
-    return false;
+    if (gRetracer.mCollectors)
+    {
+        std::vector<std::string> collectors = gRetracer.mCollectors->available();
+        std::vector<std::string> filtered;
+        for (const std::string& s : collectors)
+        {
+            if (s == "rusage" || s == "gpufreq" || s == "procfs" || s == "cpufreq" || s == "perf")
+            {
+                filtered.push_back(s);
+            }
+            else if (s == "streamline" && streamline_collector)
+            {
+                filtered.push_back(s);
+                DBG_LOG("Streamline integration support enabled\n");
+            }
+        }
+        if (!gRetracer.mCollectors->initialize(filtered))
+        {
+            fprintf(stderr, "Failed to initialize collectors\n");
+        }
+        else DBG_LOG("libcollector instrumentation enabled through cmd line.\n");
+    }
+    return true;
 }
 
 extern "C"
 int main(int argc, char** argv)
 {
-    const char* jsonParameters = NULL;
-    const char* resultFile = NULL;
-    const char* traceDir = NULL;
-    bool useJson = useJsonParameters(argc, argv, &jsonParameters, &resultFile, &traceDir);
-
-    if (useJson)
+    if (!ParseCommandLine(argc, argv, gRetracer.mOptions))
     {
-        /* if JSON file specified, no need to read other command line parameters as
-         * only parameters from JSON will be used */
-        std::ifstream t(jsonParameters);
-        std::string str((std::istreambuf_iterator<char>(t)), std::istreambuf_iterator<char>());
-        TraceExecutor::initFromJson(str, std::string(traceDir), std::string(resultFile));
-        GLWS::instance().Init();
-        gRetracer.Retrace();
-        return 0;
-    } else {
-        CmdOptions cmdOptions;
-        if(!ParseCommandLine(argc, argv, cmdOptions)) {
-            return 1;
-        }
+        return 1;
+    }
 
-        if (cmdOptions.dumpStatic)
+    if (gRetracer.mOptions.mFileName.empty())
+    {
+        std::cerr << "No trace file name specified.\n";
+        usage(argv[0]);
+        return 1;
+    }
+
+    if (printHeaderInfo)
+    {
+        common::InFile file;
+
+        if (!file.Open(gRetracer.mOptions.mFileName.c_str(), true))
         {
-            remove("static.json"); // cannot risk making corrupt data
-        }
-
-        if(cmdOptions.fileName.empty()) {
-            std::cerr << "No trace file name specified.\n";
-            usage(argv[0]);
             return 1;
         }
 
-        if(cmdOptions.printHeaderInfo) {
-            common::InFile file;
-            if ( !file.Open( cmdOptions.fileName.c_str(), true )){
-                return 1;
-            }
-            if ( cmdOptions.printHeaderJson ) {
-                std::string js = file.getJSONHeaderAsString(true);
-                std::cout << js << std::endl;
-            } else {
-                file.printHeaderInfo();
-            }
-
-            return 0;
-        }
-
-        // Register Entries before opening tracefile as sigbook is read there
-        common::gApiInfo.RegisterEntries(gles_callbacks);
-        common::gApiInfo.RegisterEntries(egl_callbacks);
-
-        // 1. Load defaults from file
-        if ( !gRetracer.OpenTraceFile( cmdOptions.fileName.c_str() )) {
-            DBG_LOG("Failed to open %s\n", cmdOptions.fileName.c_str() );
-            return 1;
-        }
-
-        // 2. Now that tracefile is opened and defaults loaded, override
-        if ( !gRetracer.overrideWithCmdOptions( cmdOptions ) ) {
-            DBG_LOG("Failed to override Cmd Options\n");
-            return -1;
-        }
-
-        // 3. init egl and gles, using final combination of settings (header + override)
-        GLWS::instance().Init(gRetracer.mOptions.mApiVersion);
-
-        if (cmdOptions.stepMode)
+        if (printHeaderJson)
         {
-            // Keep forward until EGL context & drawable have been created
-            retracer::Drawable *cd = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getDrawable();
-            while (cd == NULL)
-            {
-                bool success = gRetracer.RetraceForward(1, 0);
-                if (!success)
-                {
-                    DBG_LOG("Nothing found to render!\n");
-                    return -2;
-                }
-                cd = gRetracer.mState.mThreadArr[gRetracer.getCurTid()].getDrawable();
-            }
-
-            if (cd)
-            {
-                GLWS::instance().processStepEvent();
-            }
+            std::string js = file.getJSONHeaderAsString(true);
+            std::cout << js << std::endl;
         }
         else
         {
-            gRetracer.Retrace();
+            file.printHeaderInfo();
         }
 
+        return 0;
     }
+
+    // Register Entries before opening tracefile as sigbook is read there
+    common::gApiInfo.RegisterEntries(gles_callbacks);
+    common::gApiInfo.RegisterEntries(egl_callbacks);
+
+    if (!gRetracer.OpenTraceFile(gRetracer.mOptions.mFileName.c_str()))
+    {
+        DBG_LOG("Failed to open %s\n", gRetracer.mOptions.mFileName.c_str() );
+        return -1;
+    }
+
+    // 3. init egl and gles, using final combination of settings (header + override)
+    GLWS::instance().Init(gRetracer.mOptions.mApiVersion);
+
+    if (gRetracer.mOptions.mStepMode)
+    {
+        if (!GLWS::instance().steppable())
+        {
+            DBG_LOG("Step mode not supported on this platform!\n");
+            return -1;
+        }
+        gRetracer.frameBudget = 0;
+        gRetracer.drawBudget = 1; // we need at least one draw to get things started
+    }
+    gRetracer.Retrace();
     GLWS::instance().Cleanup();
     return 0;
 }
