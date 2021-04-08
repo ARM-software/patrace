@@ -16,6 +16,7 @@ static const std::vector<std::string> options =
     "/sys/devices/soc.0/1c00000.qcom,kgsl-3d0/devfreq/1c00000.qcom,kgsl-3d0/cur_freq", // Adreno 510
     "/sys/devices/platform/soc/5000000.qcom,kgsl-3d0/kgsl/kgsl-3d0/gpuclk", // Adreno 630
     "/sys/module/mali/parameters/mali_gpu_clk", // utgard
+    "/sys/class/misc/mali0/device/clock", // Samsung Galaxy S6 - Exynos
     "/sys/kernel/gpu/gpu_clock", // standardized path in Android
     "/sys/kernel/debug/clk/clk-g3d/clk_rate", // hikey960
 };
