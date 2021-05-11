@@ -1,11 +1,11 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 import argparse
 import json
 
 try:
     from patrace import InputFile, OutputFile
 except ImportError:
-    print 'patrace (Python interface of PATrace SDK) is required.'
+    print('patrace (Python interface of PATrace SDK) is required.')
 
 
 def main():

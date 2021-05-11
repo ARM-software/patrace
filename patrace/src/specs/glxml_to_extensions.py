@@ -1,10 +1,9 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
+from __future__ import print_function
 import os
 import re
 import xml.etree.ElementTree as ET
-import gltypes
-import sys
 import collections
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
@@ -21,11 +20,11 @@ funcs_to_versions = collections.OrderedDict()
 funcs_to_extension = collections.defaultdict(list)
 
 all_commands = collections.OrderedDict()
-for version in gles_versions.keys():
+for version in list(gles_versions.keys()):
     for command in root.findall("feature[@name='{v}']/require/command".format(v=version)):
         command_name = command.get('name')
         if command_name in funcs_to_versions:
-            print '%s already in %s -- cannot add for %s!' % (command_name, funcs_to_versions[command_name], version)
+            print('%s already in %s -- cannot add for %s!' % (command_name, funcs_to_versions[command_name], version))
             continue
         funcs_to_versions[command_name] = gles_versions[version]
 
@@ -48,24 +47,24 @@ for extension in root.findall('extensions/extension'):
 
 file_path = os.path.join(script_dir, 'pa_func_to_version.h')
 with open(file_path, 'w') as f:
-    print >> f, '#pragma once'
-    print >> f
-    print >> f, '#include <string>'
-    print >> f, '#include <unordered_map>'
-    print >> f
-    print >> f, 'extern std::unordered_map<std::string, int> map_func_to_version;'
-    print >> f, 'extern std::unordered_multimap<std::string, std::string> map_func_to_extension;'
+    print('#pragma once', file=f)
+    print(file=f)
+    print('#include <string>', file=f)
+    print('#include <unordered_map>', file=f)
+    print(file=f)
+    print('extern std::unordered_map<std::string, int> map_func_to_version;', file=f)
+    print('extern std::unordered_multimap<std::string, std::string> map_func_to_extension;', file=f)
 file_path = os.path.join(script_dir, 'pa_func_to_version.cpp')
 with open(file_path, 'w') as f:
-    print >> f, '#include "pa_func_to_version.h"'
-    print >> f
-    print >> f, 'std::unordered_map<std::string, int> map_func_to_version = {'
-    for k,v in funcs_to_versions.iteritems():
-        print >> f, '\t{"%s", %.1f},' % (k, v)
-    print >> f, '};'
-    print >> f
-    print >> f, 'std::unordered_multimap<std::string, std::string> map_func_to_extension = {'
-    for k,v in funcs_to_extension.iteritems():
+    print('#include "pa_func_to_version.h"', file=f)
+    print(file=f)
+    print('std::unordered_map<std::string, int> map_func_to_version = {', file=f)
+    for k,v in funcs_to_versions.items():
+        print('\t{"%s", %.1f},' % (k, v), file=f)
+    print('};', file=f)
+    print(file=f)
+    print('std::unordered_multimap<std::string, std::string> map_func_to_extension = {', file=f)
+    for k,v in funcs_to_extension.items():
         for i in v:
-            print >> f, '\t{"%s", "%s"},' % (k, i)
-    print >> f, '};'
+            print('\t{"%s", "%s"},' % (k, i), file=f)
+    print('};', file=f)

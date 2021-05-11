@@ -28,7 +28,6 @@ struct RetraceOptions
     ~RetraceOptions()
     {
         delete mSnapshotCallSet;
-        delete mSkipCallSet;
     }
 
     std::string         mFileName;
@@ -56,7 +55,6 @@ struct RetraceOptions
     bool                mFailOnShaderError = false;
     int                 mDebug = 0;
     bool                mStateLogging = false;
-    common::CallSet*    mSkipCallSet = nullptr;
 
     EglConfigInfo mOnscreenConfig;
     EglConfigInfo mOffscreenConfig;
@@ -79,7 +77,6 @@ struct RetraceOptions
 
     bool                mForceSingleWindow = false;
     bool                mMultiThread = false;
-    int                 mSkipWork = -1;
     bool                mCallStats = false;
 
     bool                mPbufferRendering = false;
@@ -96,7 +93,7 @@ struct RetraceOptions
 
     std::vector<unsigned int> mLinkErrorWhiteListCallNum;
 #if __ANDROID__
-    std::string         mPerfPath = "/system/bin/perf";
+    std::string         mPerfPath = "/system/bin/simpleperf";
     std::string         mPerfOut = "/sdcard/perf.data";
 #else
     std::string         mPerfPath = "/usr/bin/perf";
@@ -106,6 +103,7 @@ struct RetraceOptions
     std::string         mCpuMask;
 
     bool                dmaSharedMemory = false;
+
     std::string         mShaderCacheFile;
     bool                mShaderCacheRequired = false;
 private:

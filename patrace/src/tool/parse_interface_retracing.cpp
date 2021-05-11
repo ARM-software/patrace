@@ -4,7 +4,9 @@
 #include "common/memory.hpp"
 #include "helper/eglsize.hpp"
 #include "tool/utils.hpp"
+#include "tool/glsl_parser.h"
 #include "helper/eglstring.hpp"
+#include "tool/glsl_utils.h"
 
 #include <sys/stat.h>
 #include <assert.h>
@@ -28,6 +30,32 @@ using namespace retracer;
 const int cache_size = 512;
 static int mPerfFD = -1;
 static bool perf_initialized = false;
+
+void validate_value(Json::Value &val)
+{
+    if (val.isDouble())
+    {
+        if (std::isinf(val.asDouble()))
+        {
+            gRetracer.reportAndAbort("Inf value detected in renderpass json file.");
+        }
+        else if (std::isnan(val.asDouble()))
+        {
+            gRetracer.reportAndAbort("NaN value detected in renderpass json file.");
+        }
+    }
+}
+
+void validate_json(Json::Value &root)
+{
+    if (root.size() > 0) {
+        for (auto it = root.begin(); it != root.end(); ++it) {
+            validate_json(*it);
+        }
+    } else {
+        validate_value(root);
+    }
+}
 
 static std::string write_or_reuse(const std::string& dirname, const std::string& filename, const std::string& blob, cache_type& cache)
 {
@@ -400,6 +428,192 @@ common::CallTM* ParseInterfaceRetracing::next_call()
     }
     // Interpret function
     interpret_call(mCall);
+
+    // Perform transform feedback
+    if (!mQuickMode && mCall->mCallName.compare(0, 6, "glDraw") == 0 && mCall->mCallName != "glDrawBuffers" && contexts[context_index].transform_feedback_binding == 0
+        && (contexts[context_index].program_index != UNBOUND || contexts[context_index].program_pipeline_index != UNBOUND))
+    {
+        if (mDebug) DBG_LOG("Capturing geometry for %s\n", mCall->mCallName.c_str());
+        StateTracker::VertexArrayObject& vao = contexts[context_index].vaos.at(contexts[context_index].vao_index);
+        int program_index = 0;
+        if (contexts[context_index].program_index != UNBOUND)
+        {
+            program_index = contexts[context_index].program_index;
+        }
+        else
+        {
+            program_index = contexts[context_index].program_pipelines.at(contexts[context_index].program_pipeline_index).program_stages.at(GL_VERTEX_SHADER);
+            gRetracer.reportAndAbort("draw call TF from separate program\n");
+        }
+
+        const DrawParams params = getDrawCallCount(mCall);
+        const StateTracker::Program& program = contexts[context_index].programs.at(program_index);
+        const StateTracker::Shader& vshader = contexts[context_index].shaders.at(program.shaders.at(GL_VERTEX_SHADER));
+
+        std::unordered_map<std::string, int> varying_sizes_bytes;
+        std::unordered_map<std::string, int> varying_offsets_bytes;
+        int vertex_size_in_bytes = 0;
+        int offset = 0;
+
+        std::map<std::string, StateTracker::GLSLVarying> varyings;
+        for (auto& var : vshader.varyings) {
+            varyings[var.first] = var.second;
+        }
+
+        for (auto& var : varyings) {
+            GLenum elem_type;
+            GLint num_elems;
+            _gl_uniform_size(var.second.type, elem_type, num_elems);
+            int var_size = num_elems * _gl_type_size(elem_type);
+            varying_sizes_bytes[var.first] = var_size;
+            varying_offsets_bytes[var.first] = offset;
+
+            offset += var_size;
+            vertex_size_in_bytes += var_size;
+
+            if (mDebug) DBG_LOG("feedback for varying binding=%s, size=%d\n", var.first.c_str(), var_size);
+        }
+
+        // Transform feedback draw
+        int vertex_size_in_floats = vertex_size_in_bytes / sizeof(GLfloat);
+        int out_data_num_floats = vertex_size_in_floats * params.num_vertices_out;
+        std::vector<GLfloat> feedback(out_data_num_floats);
+
+        GLint oldCopyBufferId = 0;
+        _glGetIntegerv(GL_COPY_READ_BUFFER_BINDING, &oldCopyBufferId);
+
+        GLuint tbo;
+        _glGenBuffers(1, &tbo);
+        _glBindBuffer(GL_COPY_READ_BUFFER, tbo);
+        _glBufferData(GL_COPY_READ_BUFFER, feedback.size() * sizeof(GLfloat), feedback.data(), GL_STATIC_READ);
+        _glBindBuffer(GL_COPY_READ_BUFFER, oldCopyBufferId);
+        _glEnable(GL_RASTERIZER_DISCARD);
+        _glBindBuffer(GL_TRANSFORM_FEEDBACK_BUFFER, tbo);
+        _glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, tbo);
+
+        const GLenum orig_mode = mCall->mArgs[0]->GetAsUInt();
+        GLenum primitive_mode = GL_TRIANGLES; // default
+        switch (orig_mode)
+        {
+        case GL_POINTS:
+            primitive_mode = GL_POINTS;
+            break;
+        case GL_LINE_STRIP:
+        case GL_LINE_LOOP:
+        case GL_LINES:
+            primitive_mode = GL_LINES;
+            break;
+        default:
+            break;
+        }
+
+        _glBeginTransformFeedback(primitive_mode);
+        char *src = gRetracer.src; // to avoid incrementing original pointer
+        (*(RetraceFunc)gRetracer.fptr)(src);
+        _glEndTransformFeedback();
+        _glFinish();
+
+        void* tf_mem = _glMapBufferRange(GL_TRANSFORM_FEEDBACK_BUFFER, 0, feedback.size() * sizeof(GLfloat), GL_MAP_READ_BIT);
+        if (tf_mem) {
+            memcpy(feedback.data(), tf_mem, feedback.size() * sizeof(GLfloat));
+            _glUnmapBuffer(GL_TRANSFORM_FEEDBACK_BUFFER);
+        } else {
+            gRetracer.reportAndAbort("Failed to map transform feedback buffer.");
+        }
+
+        if (mRenderpassJSON) // save it to file?
+        {
+            StateTracker::RenderPass &rp = contexts[context_index].render_passes.back();
+            for (auto& var : varyings) {
+                GLenum elem_type;
+                GLint num_elems;
+                _gl_uniform_size(var.second.type, elem_type, num_elems);
+
+                Json::Value output;
+                output["stride"] = varying_sizes_bytes[var.first];
+                output["num_instances"] = 1;
+                output["components"] = num_elems;
+                output["type"] = "float";
+                output["abstract_type"] = var.second.abstract_type;
+                output["binding"] = var.first;
+                output["precision"] = "mediump";
+                if (var.second.precision == StateTracker::HIGHP) {
+                    output["precision"] = "highp";
+                } else if (var.second.precision == StateTracker::LOWP) {
+                    output["precision"] = "lowp";
+                }
+                output["num_vertices"] = params.num_vertices_out;
+                output["filenames"] = Json::Value(Json::arrayValue);
+
+                int var_size_floats = varying_sizes_bytes[var.first] / sizeof(GLfloat);
+                int var_offset_in_floats = varying_offsets_bytes[var.first] / sizeof(GLfloat);
+
+                std::vector<GLfloat> varying_data(var_size_floats * params.num_vertices_out);
+
+                for (int i = 0; i < params.num_vertices_out; ++i) {
+                    for (int y = 0; y < var_size_floats; ++y) {
+                        varying_data[i * var_size_floats + y] = feedback[i * vertex_size_in_floats + var_offset_in_floats + y];
+                    }
+                }
+
+                int geometry_index = mRenderpass.data["resources"]["geometry"].size() - 1;
+                std::string filename = "vertex_output_dc" + std::to_string(geometry_index) + "_g" + std::to_string(geometry_index) + "_" + var.first + ".bin";
+                output["filenames"].append(filename);
+                std::string filepath = mRenderpass.dirname + "/" + filename;
+                FILE *fp = fopen(filepath.c_str(), "w");
+                if (fp)
+                {
+                    size_t written = fwrite(static_cast<void*>(varying_data.data()), varying_data.size() * sizeof(GLfloat), 1, fp);
+                    if (written != 1)
+                    {
+                        gRetracer.reportAndAbort("Failed to write out feedback data! wrote = %d\n", (int)written);
+                    }
+                    fclose(fp);
+                } else {
+                    perror("Failed to open file");
+                    gRetracer.reportAndAbort("Failed to open file");
+                }
+
+                mRenderpass.data["resources"]["geometry"][geometry_index]["outputs"].append(output);
+            }
+        }
+
+        // Restore state
+        _glDisable(GL_RASTERIZER_DISCARD);
+        _glDeleteBuffers(1, &tbo);
+    }
+
+    // Enable transform feedback in the shader
+    if (mCall->mCallName == "glLinkProgram" && mRenderpassJSON)
+    {
+        const GLuint id = mCall->mArgs[0]->GetAsUInt();
+        const int target_program_index = contexts[context_index].programs.remap(id);
+        StateTracker::Program& p = contexts[context_index].programs[target_program_index];
+        if (p.shaders.count(GL_COMPUTE_SHADER) == 0)
+        {
+            const StateTracker::Shader& vshader = contexts[context_index].shaders.at(p.shaders.at(GL_VERTEX_SHADER));
+            const StateTracker::Shader& fshader = contexts[context_index].shaders.at(p.shaders.at(GL_FRAGMENT_SHADER));
+
+            // Need to read this before we start to mess with it
+            _glGetProgramInterfaceiv(id, GL_TRANSFORM_FEEDBACK_VARYING, GL_ACTIVE_RESOURCES, &p.activeTransformFeedbackVaryings);
+
+            std::map<std::string, StateTracker::GLSLVarying> varyings;
+            for (auto& var : vshader.varyings)
+            {
+                varyings[var.first] = var.second;
+            }
+
+            std::vector<GLchar*> feedbackVaryings;
+            for (auto& var : varyings)
+            {
+                feedbackVaryings.push_back((GLchar*)(var.first.c_str()));
+                if (mDebug) DBG_LOG("Enabling varying: %s\n", (GLchar*)(var.first.c_str()));
+            }
+
+            _glTransformFeedbackVaryings(id, feedbackVaryings.size(), feedbackVaryings.data(), GL_INTERLEAVED_ATTRIBS);
+        }
+    }
+
     // Call function
     mCpuCycles = 0;
     if (gRetracer.fptr)
@@ -408,6 +622,7 @@ common::CallTM* ParseInterfaceRetracing::next_call()
         (*(RetraceFunc)gRetracer.fptr)(gRetracer.src); // increments src to point to end of parameter block
         mCpuCycles = perf_stop();
     }
+
     // Additional special handling
     if (mCall->mCallName == "glCompileShader")
     {
@@ -456,7 +671,6 @@ common::CallTM* ParseInterfaceRetracing::next_call()
         _glGetProgramInterfaceiv(id, GL_PROGRAM_INPUT, GL_ACTIVE_RESOURCES, &p.activeInputs);
         _glGetProgramInterfaceiv(id, GL_PROGRAM_OUTPUT, GL_ACTIVE_RESOURCES, &p.activeOutputs);
         _glGetProgramInterfaceiv(id, GL_TRANSFORM_FEEDBACK_BUFFER, GL_ACTIVE_RESOURCES, &p.activeTransformFeedbackBuffers);
-        _glGetProgramInterfaceiv(id, GL_TRANSFORM_FEEDBACK_VARYING, GL_ACTIVE_RESOURCES, &p.activeTransformFeedbackVaryings);
         _glGetProgramInterfaceiv(id, GL_SHADER_STORAGE_BLOCK, GL_ACTIVE_RESOURCES, &p.activeSSBOs);
         for (int i = 0; i < p.activeUniforms; ++i)
         {
@@ -516,6 +730,9 @@ void ParseInterfaceRetracing::completed_renderpass(const StateTracker::RenderPas
         mRenderpass.data["renderpass"]["config"].append(v);
     }
     if (mScreenshots) mRenderpass.data["renderpass"]["snapshot"] = rp.snapshot_filename;
+
+    // Check for nan or inf values
+    validate_json(mRenderpass.data);
 
     std::fstream fs;
     fs.open(mRenderpass.filename, std::fstream::out |  std::fstream::trunc);
@@ -983,6 +1200,9 @@ void ParseInterfaceRetracing::completed_drawcall(int frame, const DrawParams& pa
         Json::Value v = get_vertex_attributes(program_id, mRenderpass.dirname, vfilename, geomidx, params, index, mRenderpass.vertex_cache);
         geometry["vertex_buffers"].append(v);
     }
+
+    geometry["outputs"] = Json::Value(Json::arrayValue);
+
     mRenderpass.data["resources"]["geometry"].append(geometry);
 
     command["indexed"] = (params.value_type != GL_NONE);

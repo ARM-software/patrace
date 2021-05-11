@@ -54,7 +54,7 @@ static void test1()
 
 static void test2()
 {
-	printf("Trying to initialize misnamed collector through API (should not work)...\n");
+	printf("Trying to initialize misnamed collector through API (should be ignored)...\n");
 	Json::Value j;
 	Collection c(j);
 	bool result = c.initialize({"bad_collector"});
@@ -77,7 +77,7 @@ static void test2()
 
 static void test3()
 {
-	printf("Trying to initialize misnamed collector through JSON (should not work)...\n");
+	printf("Trying to initialize misnamed collector through JSON with required (should not work)...\n");
 	Json::Value j;
 	Json::Value v;
 	v["required"] = true;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from __future__ import print_function
+
 import argparse
 import sys
 import struct
@@ -64,7 +64,7 @@ def main():
             print("Expanding header section with {size} bytes".format(size=diff))
 
             # Move the data section
-            padding = '\0' * diff
+            padding = b'\0' * diff
             f.seek(header.jsonFileEnd)
             chunk0 = padding
 

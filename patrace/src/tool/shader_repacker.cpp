@@ -4,6 +4,7 @@
 #include <GLES3/gl31.h>
 #include <GLES3/gl32.h>
 #include <limits.h>
+#include <assert.h>
 
 #include "tool/parse_interface.h"
 
@@ -73,6 +74,7 @@ void pack_shaders(ParseInterface& input, common::OutFile& outputFile, const std:
             if (!fp)
             {
                 fprintf(stderr, "%s not found!\n", filename.c_str());
+                abort();
             }
             fseek(fp, 0, SEEK_END);
             std::string data;
@@ -82,12 +84,17 @@ void pack_shaders(ParseInterface& input, common::OutFile& outputFile, const std:
             if (r != 1)
             {
                 fprintf(stderr, "Failed to read \"%s\"!\n", filename.c_str());
+                abort();
             }
             fclose(fp);
+            assert(data.size() > 0);
             call->mArgs[1]->SetAsUInt(1);
             call->mArgs[2]->mArrayLen = 1;
             call->mArgs[2]->mArray[0].SetAsString(data);
-            call->mArgs[3]->mArray->mArrayLen = 0;
+            if (call->mArgs[3]->mArray)
+            {
+                call->mArgs[3]->mArray[0].mInt = data.size();
+            }
         }
 
         if (repack)
@@ -107,6 +114,7 @@ void pack_shaders(ParseInterface& input, common::OutFile& outputFile, const std:
         {
             std::string filename = keyword + shader_filename(shader, context.index, 0);
             FILE *fp = fopen(filename.c_str(), "w");
+            assert(fp);
             fwrite(shader.source_code.c_str(), shader.source_code.size(), 1, fp);
             fclose(fp);
         }

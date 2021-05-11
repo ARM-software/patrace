@@ -307,13 +307,13 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
 {
     struct wl_display *display = wl_display_connect(NULL);
     if (!display) {
-        gRetracer.reportAndAbort("Unable to open Wayland display\n");
+        gRetracer.reportAndAbort("Unable to open Wayland display");
         return 0;
     }
 
     struct wl_registry *registry = wl_display_get_registry(display);
     if (!registry) {
-        gRetracer.reportAndAbort("Unable to get Wayland display registry\n");
+        gRetracer.reportAndAbort("Unable to get Wayland display registry");
         wl_display_disconnect(display);
         return 0;
     }
@@ -332,7 +332,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
 
     int res = wl_registry_add_listener(registry, &listener, &interface_ptrs);
     if (0 > res) {
-        gRetracer.reportAndAbort("Unable to add registry listener\n");
+        gRetracer.reportAndAbort("Unable to add registry listener");
         wl_registry_destroy(registry);
         wl_display_disconnect(display);
         return 0;
@@ -341,7 +341,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
     res = wl_display_roundtrip(display);
 
     if (0 > res) {
-        gRetracer.reportAndAbort("Unable to perform display roundtrip to get interfaces\n");
+        gRetracer.reportAndAbort("Unable to perform display roundtrip to get interfaces");
         wl_registry_destroy(registry);
         wl_display_disconnect(display);
         return 0;
@@ -350,7 +350,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
     wl_registry_destroy(registry);
 
     if (!mCompositor || !mOutputProps.output || !mShell ) {
-        gRetracer.reportAndAbort("Failed to obtain the shell, compositor and/or output interface\n");
+        gRetracer.reportAndAbort("Failed to obtain the shell, compositor and/or output interface");
         if (mCompositor)
             wl_compositor_destroy(mCompositor);
         if (mOutputProps.output)
@@ -378,7 +378,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
 
     res = wl_output_add_listener(mOutputProps.output, &output_listener, &mOutputProps);
     if (res) {
-        gRetracer.reportAndAbort("Unable to add output listener\n");
+        gRetracer.reportAndAbort("Unable to add output listener");
         wl_compositor_destroy(mCompositor);
         wl_output_destroy(mOutputProps.output);
         wl_shell_destroy(mShell);
@@ -390,7 +390,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
 
     res = wl_display_roundtrip(display);
     if (0 > res) {
-        gRetracer.reportAndAbort("Unable to roundtrip to the compositor after adding the output listener\n");
+        gRetracer.reportAndAbort("Unable to roundtrip to the compositor after adding the output listener");
         wl_compositor_destroy(mCompositor);
         wl_output_destroy(mOutputProps.output);
         wl_shell_destroy(mShell);
@@ -402,7 +402,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
 
     mKBQueue = wl_display_create_queue(display);
     if (!mKBQueue) {
-        gRetracer.reportAndAbort("Unable to create a queue for keyboard events\n");
+        gRetracer.reportAndAbort("Unable to create a queue for keyboard events");
         wl_compositor_destroy(mCompositor);
         wl_output_destroy(mOutputProps.output);
         wl_shell_destroy(mShell);
@@ -424,7 +424,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
     if (mSeat) {
         mKeyboard = wl_seat_get_keyboard(mSeat);
         if (!mKeyboard) {
-            gRetracer.reportAndAbort("Unable to get keyboard from seat\n");
+            gRetracer.reportAndAbort("Unable to get keyboard from seat");
             wl_event_queue_destroy(mKBQueue);
             wl_compositor_destroy(mCompositor);
             wl_output_destroy(mOutputProps.output);
@@ -438,7 +438,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
 
         res = wl_keyboard_add_listener(mKeyboard, &kb_listener, &mKeyboardState);
         if (res) {
-            gRetracer.reportAndAbort("Unable to set keyboard listener\n");
+            gRetracer.reportAndAbort("Unable to set keyboard listener");
             releaseNativeDisplay((EGLNativeDisplayType)display);
             return 0;
         }

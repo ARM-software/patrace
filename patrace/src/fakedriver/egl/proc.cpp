@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include "EGL/egl.h"
+#include "dispatch/gleslayer_helper.h"
 
 #ifndef ANDROID
 #include <cstdlib>
@@ -11,6 +12,9 @@ namespace wrapper
 {
     void* CWrapper::GetProcAddress(const char* procName)
     {
+#ifdef GLESLAYER
+        void *retval = dispatch_intercept_func(PATRACE_LAYER_NAME, procName);
+#else
         static void *sInterceptorHandler = 0;
         pid_t myPid = getpid();
         static pid_t previousPid = 0;
@@ -36,6 +40,7 @@ namespace wrapper
         {
             retval = (void *)eglGetProcAddress(procName);
         }
+#endif // GLESLAYER
         return retval;
     }
 }

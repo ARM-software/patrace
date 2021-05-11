@@ -26,6 +26,10 @@
 
 #include "eglproc_auto.hpp"
 #include "os.hpp"
+#include "gleslayer_helper.h"
+
+#ifndef GLESLAYER
+
 #include "common/library.hpp"
 #include "os_string.hpp"
 
@@ -125,8 +129,10 @@ namespace {
     DLL_HANDLE gEGLHandle = 0;
     DLL_HANDLE gGLES2Handle = 0;
     DLL_HANDLE gGLES1Handle = 0;
-    int gGLESVersion = 0;
 };
+#endif  // !GLESLAYER
+
+int gGLESVersion = 0;
 
 void ResetGLFuncPtrs();
 
@@ -140,6 +146,8 @@ int GetGLESVersion()
 {
     return gGLESVersion;
 }
+
+#ifndef GLESLAYER
 
 enum DLLType {
     LibEGL,
@@ -267,3 +275,16 @@ void* _getProcAddress(const char* procName)
     }
     return retValue;
 }
+#else
+
+/* FIXME! EGL LAYER only support GLESv2. If gGLESVersion==1, patrace layer also retrive */
+/* the system driver proc pointer from GLESv2 hook. */
+/* If using API that only exists in GLESv1, it would not find out from layer.*/
+
+void* _getProcAddress(const char* procName)
+{
+    LAYER_DATA *layer = gLayerCollector[std::string(PATRACE_LAYER_NAME)];
+    EGLFuncPointer proc = layer->nextLayerFuncMap[std::string(procName)];
+    return reinterpret_cast<void *>(proc);
+}
+#endif

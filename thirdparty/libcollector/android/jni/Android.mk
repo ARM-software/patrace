@@ -25,7 +25,6 @@ LOCAL_SRC_FILES 	:=  \
                     ../../interface.cpp \
                     ../../collectors/collector_utility.cpp \
                     ../../collectors/cputemp.cpp \
-                    ../../collectors/debug.cpp \
                     ../../collectors/ferret.cpp \
                     ../../collectors/rusage.cpp \
                     ../../collectors/streamline.cpp \

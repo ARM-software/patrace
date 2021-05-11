@@ -13,6 +13,8 @@
 
 using namespace std;
 
+#ifndef GLESLAYER
+
 #ifdef __LP64__
     #define SYSTEM_VENDOR_LIB_PREFIX "/system/vendor/lib64/egl/"
     #define SYSTEM_LIB_PREFIX "/system/lib64/egl/"
@@ -67,31 +69,31 @@ const char* interceptor_cfg_search_paths[] = {
 
 #undef SYSTEM_VENDOR_LIB_PREFIX
 #undef SYSTEM_LIB_PREFIX
+#endif // !GLESLAYER
+
+#ifdef GLESLAYER
+#ifdef PLATFORM_64BIT
+#define TAG "gleslayer64"
+#else
+#define TAG "gleslayer32"
+#endif
+#else
+#ifdef PLATFORM_64BIT
+#define TAG "fakedriver64"
+#else
+#define TAG "fakedriver32"
+#endif
+#endif
 
 namespace wrapper
 {
+    bool CWrapper::sShowFPS= false;
+
+#ifndef GLESLAYER
 
     // Initialization of static variables
     bool CWrapper::sDoIntercept = false;
     string CWrapper::sInterceptorPath;
-
-    bool CWrapper::sShowFPS= false;
-
-    void CWrapper::log(const char *format, ...)
-    {
-        va_list ap;
-        va_start(ap, format);
-#ifdef ANDROID
-#ifdef PLATFORM_64BIT
-        __android_log_vprint(ANDROID_LOG_INFO, "fakedriver64", format, ap);
-#else
-        __android_log_vprint(ANDROID_LOG_INFO, "fakedriver32", format, ap);
-#endif
-#else
-        vprintf(format, ap);
-#endif
-        va_end(ap);
-    }
 
     void CWrapper::LoadConfigFiles()
     {
@@ -194,6 +196,19 @@ namespace wrapper
             last = i;
         }
         return last; // for informative error message and avoid crashing
+    }
+#endif  // ! GLESLAYER
+
+    void CWrapper::log(const char *format, ...)
+    {
+        va_list ap;
+        va_start(ap, format);
+#ifdef ANDROID
+        __android_log_vprint(ANDROID_LOG_INFO, TAG, format, ap);
+#else
+        vprintf(format, ap);
+#endif
+        va_end(ap);
     }
 
 }

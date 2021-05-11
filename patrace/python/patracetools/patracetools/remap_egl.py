@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 import argparse
 import json
 import os
@@ -50,7 +50,7 @@ class Remapper:
         default_tid = header['defaultTid']
         output.jsonHeader = json.dumps(header)
 
-        print 'Searching for relevant calls...'
+        print('Searching for relevant calls...')
         call_lists = {
             'eglMakeCurrent': [],
             'eglCreateContext': [],
@@ -62,7 +62,7 @@ class Remapper:
         for call in input.Calls():
             highest_thread_id = max(call.thread_id, highest_thread_id)
             # call_list = call_lists.get(call.name, None)
-            if call.name in call_lists.keys():
+            if call.name in list(call_lists.keys()):
                 context_calls.append({
                     'name': call.name,
                     'tid': call.thread_id,
@@ -80,7 +80,7 @@ class Remapper:
             #     })
         num_threads = highest_thread_id + 1
 
-        print "Renumbering context ids..."
+        print("Renumbering context ids...")
         # Sometimes, contexts can get the same pointer values
         # Hence, the contexts pointers will not be unique. Therefor,
         # we create an unique, sequential id.
@@ -101,7 +101,7 @@ class Remapper:
                 # Change ctx parameter to our new sequential id
                 call['params']['ctx'] = contexts_idmap[call['params']['ctx']]
 
-        print "Finding relevant context and surfaces..."
+        print("Finding relevant context and surfaces...")
         make_current_args = [
             (call['params']['draw'], call['params']['ctx'])
             for call in context_calls
@@ -141,8 +141,8 @@ class Remapper:
 
         contexts = set(contexts)
         surfaces = set(surfaces)
-        print "Surfaces {}".format(surfaces)
-        print "Contexts: {}".format(contexts)
+        print("Surfaces {}".format(surfaces))
+        print("Contexts: {}".format(contexts))
 
         class Thread:
             def __init__(self):
@@ -153,7 +153,7 @@ class Remapper:
         threads = [Thread() for i in range(num_threads)]
         # Used to indicate if inside a relevant "eglMakeCurrent-block"
 
-        print "Remap calls..."
+        print("Remap calls...")
 
         contextid_to_use = None
 
@@ -172,7 +172,7 @@ class Remapper:
                 contexts_idmap[oldid] = context_sequential_id
                 if context_sequential_id in contexts:
                     contextid_to_use = oldid
-                    print "We will map all calls of the context:", contextid_to_use
+                    print("We will map all calls of the context:", contextid_to_use)
                     self.remap(call, default_tid)
                 context_sequential_id += 1
             elif call.name == 'eglDestroyContext':

@@ -1,0 +1,63 @@
+apply plugin: 'com.android.library'
+
+android {
+    compileSdkVersion 28
+
+    defaultConfig {
+        minSdkVersion 15
+        targetSdkVersion 28
+        versionCode 1
+        versionName "1.0"
+        externalNativeBuild {
+            cmake {
+                cppFlags "-std=c++11 -frtti -fexceptions -Wno-cast-calling-convention"
+                cFlags "-O3 -frtti -D__arm__ -D__gnu_linux__"
+                arguments '-DANDROID_STL=c++_static'
+            }
+        }
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86"
+        }
+    }
+
+    buildTypes {
+        debug {
+            externalNativeBuild {
+                cmake {
+                    arguments "-DANDROID_TOOLCHAIN=clang",
+                            "-DANDROID_PLATFORM=android-28",
+                            "-DCMAKE_BUILD_TYPE=Debug"
+                }
+            }
+            jniDebuggable true
+        }
+        release {
+            externalNativeBuild {
+                cmake {
+                    arguments "-DANDROID_TOOLCHAIN=clang",
+                            "-DANDROID_PLATFORM=android-28",
+                            "-DCMAKE_BUILD_TYPE=Release"
+                }
+            }
+            debuggable true
+            signingConfig signingConfigs.debug
+            jniDebuggable true
+        }
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'android_assets/AndroidManifest.xml'
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt"
+        }
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+}

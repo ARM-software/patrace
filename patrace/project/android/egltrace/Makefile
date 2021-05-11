@@ -1,7 +1,4 @@
-# Please specify NDK.
-
-default_target: callNdkBuild
-.PHONY : default_target
+# Generate trace code
 
 autoGenTrace:
 	@echo 'Remove the existing auto-generated source files...'
@@ -18,9 +15,3 @@ autoGenTrace:
 	cd ../../../src/tracer && python trace.py
 	cd ../../../src/specs/ && python glxml_header.py
 .PHONY : autoGenTrace
-
-callNdkBuild:autoGenTrace
-	@echo 'Build egltrace with Android-NDK...'
-	+$(NDK)/ndk-build clean
-	+$(NDK)/ndk-build
-.PHONY : callNdkBuild

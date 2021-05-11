@@ -61,6 +61,7 @@ EglDrawable::~EglDrawable()
 
     GLWS::instance().ReleaseDrawable(mNativeWindow);
     eglWaitNative(EGL_CORE_NATIVE_ENGINE);
+    close();
 }
 
 
@@ -91,6 +92,19 @@ void EglDrawable::show(void)
 
     Drawable::show();
 }
+
+void EglDrawable::close(void)
+{
+    if (!visible)
+    {
+        return;
+    }
+
+    if (mNativeWindow)
+        mNativeWindow->close();
+    Drawable::close();
+}
+
 
 void EglDrawable::resize(int w, int h)
 {
@@ -178,6 +192,11 @@ NativeWindow::NativeWindow(int width, int height, const std::string& title)
 void NativeWindow::show()
 {
     mVisible = true;
+}
+
+void NativeWindow::close()
+{
+    mVisible = false;
 }
 
 bool NativeWindow::resize(int w, int h)

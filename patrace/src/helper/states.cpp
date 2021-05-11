@@ -693,7 +693,7 @@ struct TransformFeedbackInfo
      , name()
     {
         GLchar cname[256];
-        glGetTransformFeedbackVarying(program, index, sizeof(cname), NULL, &size, &type, cname);
+        _glGetTransformFeedbackVarying(program, index, sizeof(cname), NULL, &size, &type, cname);
         name = cname;
     }
 
@@ -868,6 +868,7 @@ VertexArrayInfo::VertexArrayInfo()
     , enabled(GL_FALSE)
     , active(false)
     , location(-1)
+    , bindingindex(-1)
     , size(0)
     , type(0)
     , name()
@@ -1328,10 +1329,10 @@ void StateLogger::_logState(std::stringstream& ss, unsigned char tid, GLsizei in
     GLint elementarray;
     GLint readFramebuffer;
     GLint renderbuffer;
-    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
-    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &elementarray);
-    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFramebuffer);
-    glGetIntegerv(GL_RENDERBUFFER_BINDING, &renderbuffer);
+    _glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &framebuffer);
+    _glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &elementarray);
+    _glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFramebuffer);
+    _glGetIntegerv(GL_RENDERBUFFER_BINDING, &renderbuffer);
     if (PRINT_TITLES)
     {
         line(ss, "T", tid) << "Framebuffer ElementArray ReadFramebuffer Rendbuffer" << std::endl;
@@ -1351,7 +1352,7 @@ void StateLogger::_logState(std::stringstream& ss, unsigned char tid, GLsizei in
         GLint value;
         for (unsigned i = 0; i < sizeof(params) / sizeof(*params); i++)
         {
-            glGetRenderbufferParameteriv(GL_RENDERBUFFER, params[i], &value);
+            _glGetRenderbufferParameteriv(GL_RENDERBUFFER, params[i], &value);
             tmpss << value << ' ';
         }
         line(ss, "RB", tid) << tmpss.str();
@@ -1902,24 +1903,31 @@ void State::storeVertexArrays()
         }
     }
 
-    GLuint i = 0;
-    for (VertexArray_t::iterator it = mVertexArrays.begin(); it != mVertexArrays.end(); ++it, ++i)
+    for (auto it = mVertexArrays.begin(); it != mVertexArrays.end(); ++it)
     {
-        if (it->location >= getMaxVertexAttribs() || it->location < 0)
+        GLint location = it->location;
+        if (location >= getMaxVertexAttribs() || location < 0)
         {
             continue;
         }
 
         it->updateEnabled();
-        _glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &it->binding);
-        _glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_SIZE, &it->elemSz);
-        _glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &it->stride);
-        _glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_TYPE, &it->typeV);
-        _glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, &it->normalized);
-        _glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_INTEGER, &it->integer);
-        _glGetVertexAttribiv(i, GL_VERTEX_ATTRIB_ARRAY_DIVISOR, &it->divisor);
+        _glGetVertexAttribiv(location, GL_VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, &it->binding);
+        _glGetVertexAttribiv(location, GL_VERTEX_ATTRIB_BINDING, &it->bindingindex);
+        _glGetVertexAttribiv(location, GL_VERTEX_ATTRIB_RELATIVE_OFFSET, &it->relativeOffset);
+        _glGetIntegeri_v(GL_VERTEX_BINDING_STRIDE, it->bindingindex, &it->vbstride);
+        _glGetIntegeri_v(GL_VERTEX_BINDING_OFFSET, it->bindingindex, &it->vboffset);
 
-        _glGetVertexAttribPointerv(i, GL_VERTEX_ATTRIB_ARRAY_POINTER, &it->bufOffsetPtr);
+        mArraysMap[it->bindingindex].push_back(*it);
+
+        _glGetVertexAttribiv(location, GL_VERTEX_ATTRIB_ARRAY_SIZE, &it->elemSz);
+        _glGetVertexAttribiv(location, GL_VERTEX_ATTRIB_ARRAY_STRIDE, &it->stride);
+        _glGetVertexAttribiv(location, GL_VERTEX_ATTRIB_ARRAY_TYPE, &it->typeV);
+        _glGetVertexAttribiv(location, GL_VERTEX_ATTRIB_ARRAY_NORMALIZED, &it->normalized);
+        _glGetVertexAttribiv(location, GL_VERTEX_ATTRIB_ARRAY_INTEGER, &it->integer);
+        _glGetVertexAttribiv(location, GL_VERTEX_ATTRIB_ARRAY_DIVISOR, &it->divisor);
+
+        _glGetVertexAttribPointerv(location, GL_VERTEX_ATTRIB_ARRAY_POINTER, &it->bufOffsetPtr);
         it->bufOffset = reinterpret_cast<intptr_t>(it->bufOffsetPtr);
     }
 }
@@ -1935,23 +1943,26 @@ void State::restoreVertexArrays()
     mProgramInfo.restore();
     GLint arrayBufferId;
     _glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &arrayBufferId);
-    for (auto it = mVertexArrays.cbegin(); it != mVertexArrays.cend(); ++it)
+
+    for (auto it =  mArraysMap.cbegin(); it != mArraysMap.cend(); it++)
     {
-        if (it->location >= getMaxVertexAttribs() || it->location < 0)
-        {
-            continue;
-        }
-        _glBindBuffer(GL_ARRAY_BUFFER, it->binding);
-        _glVertexAttribPointer(it->location, it->elemSz, it->typeV, it->normalized, it->stride, it->bufOffsetPtr);
-        if (it->enabled)
-        {
-            _glEnableVertexAttribArray(it->location);
-        }
-        else
-        {
-            _glDisableVertexAttribArray(it->location);
+        GLint bindingindex = it->first;
+        VertexArray_t vais = it->second;
+        _glBindVertexBuffer(bindingindex, vais[0].binding, vais[0].vboffset, vais[0].vbstride );
+        for(auto vai = vais.cbegin(); vai!=vais.cend(); vai++){
+            _glVertexAttribFormat(vai->location, vai->elemSz, vai->typeV, vai->normalized, vai->relativeOffset);
+            _glVertexAttribBinding(vai->location, vai->bindingindex);
+            if (vai->enabled)
+            {
+                _glEnableVertexAttribArray(vai->location);
+            }
+            else
+            {
+                _glDisableVertexAttribArray(vai->location);
+            }
         }
     }
+
     _glBindBuffer(GL_ARRAY_BUFFER, arrayBufferId);
 }
 

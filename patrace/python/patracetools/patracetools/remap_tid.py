@@ -1,11 +1,11 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 import argparse
 import json
 
 try:
     from patrace import InputFile, OutputFile
 except ImportError:
-    print 'patrace (Python interface of PATrace SDK) is required.'
+    print('patrace (Python interface of PATrace SDK) is required.')
 
 
 class Remapper:
@@ -18,7 +18,7 @@ class Remapper:
         # Modify header, if we are remaping the default tid
         header = json.loads(input.jsonHeader)
         if self.args.oldtid in [-1, header['defaultTid']]:
-            print "Setting new default tid: {0}".format(self.args.newtid)
+            print("Setting new default tid: {0}".format(self.args.newtid))
             header['defaultTid'] = self.args.newtid
         output.jsonHeader = json.dumps(header)
 

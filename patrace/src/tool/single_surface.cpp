@@ -71,12 +71,12 @@ static unsigned _curCallIndexInFrame = 0;
 static bool debug = false;
 static bool no_reindex = false;
 
-static void writeout(common::OutFile &outputFile, common::CallTM *call)
+static void writeout(common::OutFile &outputFile, common::CallTM *call, bool injected)
 {
     const unsigned int WRITE_BUF_LEN = 150*1024*1024;
     static char buffer[WRITE_BUF_LEN];
     char *dest = buffer;
-    dest = call->Serialize(dest);
+    dest = call->Serialize(dest, -1, injected);
     outputFile.Write(buffer, dest-buffer);
 }
 
@@ -446,7 +446,7 @@ int main(int argc, char **argv)
         if (call->mCallName == "eglInitialize") // need this first
         {
             call->mTid = 0;
-            writeout(outputFile, call);
+            writeout(outputFile, call, false);
             newCallNo++;
         }
         else if (call->mCallName == "eglMakeCurrent") // find contexts that are used
@@ -476,7 +476,7 @@ int main(int argc, char **argv)
                 surface_id = mret;
                 DBG_LOG("=== Picking surface idx %d, id %d ===\n", surface, surface_id);
                 call->mTid = 0;
-                writeout(outputFile, call);
+                writeout(outputFile, call, false);
                 newCallNo++;
             }
             else
@@ -613,14 +613,14 @@ int main(int argc, char **argv)
             surface_remapping[mret] = surface_tracking.size(); // generate id<->idx table
             surface_tracking.push_back(mret); // generate index list
         }
-        else if (call->mCallName.compare(0, 14, "eglSwapBuffers") == 0 || call->mCallName == "eglSurfaceAttrib" || call->mCallName == "eglQuerySurface")
+        else if (call->mCallName.compare(0, 14, "eglSwapBuffers") == 0 || call->mCallName == "eglSurfaceAttrib" || call->mCallName == "eglQuerySurface" || call->mCallName == "eglSetDamageRegionKHR")
         {
             // these calls all have surface as their second argument, but since it could be recycled, we need to double check against idx
             int s = call->mArgs[1]->GetAsInt();
             if (surface_remapping[s] != surface)
             {
                 skip = true;
-                if (debug) DBG_LOG("  skipping swap at call %u since it is in surface %d, and we want only %d\n", call->mCallNo, surface_remapping[s], surface);
+                if (debug) DBG_LOG("  skipping surface-related call at %u since it is in surface %d, and we want only %d\n", call->mCallNo, surface_remapping[s], surface);
             }
         }
         else if (call->mCallName == "eglCopyBuffers" || call->mCallName == "eglBindTexImage" || call->mCallName == "eglReleaseTexImage")
@@ -719,13 +719,13 @@ int main(int argc, char **argv)
                         // Special case. The app supplied eglMakeCurrent takes priority.
                         injected = true;
                     }
-                    else if (out->mCallName[0] != 'e' && !injected)
+                    else if (callNeedsContext(out->mCallName) && !injected)
                     {
                         dumpstream << "INSERTED [f" << _curFrameIndex << "t0:c" << ((context.context_index != UNBOUND) ? std::to_string(context.context_index) : std::string("-"))
                                    << ":s" << ((context.surface_index != UNBOUND) ? std::to_string(context.surface_index) : std::string("-")) << "] "
                                    << "{}->" << newCallNo << ": " << makeCurrent.ToStr(false) << std::endl;
                         newCallNo++;
-                        writeout(outputFile, &makeCurrent);
+                        writeout(outputFile, &makeCurrent, true);
                         injected = true;
                         any_injected = true;
                         total_injected++;
@@ -739,7 +739,7 @@ int main(int argc, char **argv)
                     {
                         current_output_context = out->mArgs[3]->GetAsInt();
                     }
-                    writeout(outputFile, out);
+                    writeout(outputFile, out, false);
                 }
                 thread.clear();
             }
@@ -773,7 +773,7 @@ int main(int argc, char **argv)
     common::CallTM eglTerminate("eglTerminate");
     eglTerminate.mArgs.push_back(new common::ValueTM(display));
     eglTerminate.mRet = common::ValueTM((int)EGL_TRUE);
-    writeout(outputFile, &eglTerminate);
+    writeout(outputFile, &eglTerminate, false);
 
     inputFile.Close();
     outputFile.Close();

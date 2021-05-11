@@ -63,6 +63,7 @@ public:
 
     void resize(int w, int h);
     void show();
+    void close();
     void swapBuffers();
     void swapBuffersWithDamage(int *rects, int n_rects);
 

@@ -16,7 +16,7 @@ script_dir = os.path.dirname(os.path.realpath(__file__))
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Build content capturing projects',
-        usage="Usage: %(prog)s [options]\nExample: %(prog)s --build-dir /work/mybuild/debug --install-dir /work/mybuild/bin patrace fbdev_arm debug",
+        usage="Usage: %(prog)s [options]\nExample: %(prog)s --build-dir /work/mybuild/debug --install-dir /work/mybuild/bin patrace fbdev_arm debug --static true",
         epilog="see build_all.py for building every target including Android"
     )
     parser.add_argument('project',
@@ -31,20 +31,28 @@ if __name__ == '__main__':
             platforms=', '.join(all_platforms)
         )
     )
-
     parser.add_argument('type', default='debug',
                         help='the build type. Possible values: debug, release, sanitizer')
+
+    parser.add_argument('--static', type=bool, default=False,
+                        help='build patrace statically. Defaults to \'false\'')
+
     args = parser.parse_args()
 
+    exclude = ['android', 'fbdev_x32', 'fbdev_x64', 'rhe6_x32', 'rhe6_x64']
     if not args.build_dir:
         args.build_dir = os.path.abspath(os.path.join(
             script_dir, '..', 'builds', args.project, args.platform, args.type
         ))
+        if args.static and args.platform not in exclude:
+            args.build_dir += '_static'
 
     if not args.install_dir:
         args.install_dir = os.path.abspath(os.path.join(
             script_dir, '..', 'install', args.project, args.platform, args.type
         ))
+        if args.static and args.platform not in exclude:
+            args.install_dir += '_static'
 
     if args.platform == 'android':
         # Run CMake first to create generated files
@@ -68,7 +76,8 @@ if __name__ == '__main__':
             build_dir=args.build_dir,
             install_dir=args.install_dir,
             project_path=os.path.abspath(os.path.join(script_dir, '..', 'patrace', 'project', 'cmake')),
-            cmake_defines=[]
+            cmake_defines=[],
+            static=args.static
         )
 
     sys.exit(returncode)

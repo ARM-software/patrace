@@ -24,12 +24,6 @@ using namespace os;
 JavaVM* gJavaVM;
 jint    gJavaVersion; // used in retracer.cpp
 
-bool RenderFrame()
-{
-    gRetracer.Retrace();
-    return true;
-}
-
 JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_initFromJson(JNIEnv *env, jclass, jstring jstrJsonData, jstring jstrTraceDir, jstring jstrResultFile)
 {
     std::string resultFile;
@@ -55,8 +49,7 @@ JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_initFromJson(JNIE
     return true;
 }
 
-JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_init
-    (JNIEnv * env, jclass, jboolean registerEntries)
+JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_init(JNIEnv * env, jclass, jboolean registerEntries)
 {
     prctl(PR_SET_DUMPABLE, 1); // enable debugging
 
@@ -71,34 +64,43 @@ JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_init
     g->setupJAVAEnv(env);
 }
 
-JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_step
-    (JNIEnv *env, jclass)
+JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_step(JNIEnv *env, jclass)
 {
-    bool hasNext = RenderFrame();
-    return hasNext ? JNI_TRUE : JNI_FALSE;
+    gRetracer.Retrace();
+    return JNI_TRUE;
 }
 
-JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_stop
-  (JNIEnv *env, jclass)
+JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_stop(JNIEnv *env, jclass, jstring js)
 {
-    DBG_LOG("Java_com_arm_pa_paretrace_NativeAPI_stop");
-    gRetracer.CloseTraceFile();
+    DBG_LOG("Java_com_arm_pa_paretrace_NativeAPI_stop\n");
     gRetracer.mFinish = true;
+    std::string cjs;
+    if (js != nullptr)
+    {
+        const char* cstr = env->GetStringUTFChars(js, 0);
+        cjs = cstr;
+        env->ReleaseStringUTFChars(js, cstr);
+    }
+    Json::Value results;
+    Json::Reader reader;
+    if (!reader.parse(cjs, results))
+    {
+        gRetracer.reportAndAbort("JSON parse error: %s\n", reader.getFormattedErrorMessages().c_str());
+    }
+    gRetracer.saveResult(results);
 }
 
-JNIEXPORT jint JNICALL Java_com_arm_pa_paretrace_NativeAPI_opt_1getAPIVersion
-  (JNIEnv *env, jclass)
+JNIEXPORT jint JNICALL Java_com_arm_pa_paretrace_NativeAPI_opt_1getAPIVersion(JNIEnv *env, jclass)
 {
     return gRetracer.mOptions.mApiVersion;
 }
 
-JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_opt_1getIsPortraitMode
-  (JNIEnv *, jclass)
+JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_opt_1getIsPortraitMode(JNIEnv *, jclass)
 {
     return gRetracer.mOptions.mWindowHeight > gRetracer.mOptions.mWindowWidth;
 }
 
-JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_setSurface(JNIEnv* env, jclass obj, jobject surface, jint textureViewSize)
+JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_setSurface(JNIEnv* env, jclass obj, jobject surface, jint viewSize)
 {
     DBG_LOG("nativeSetSurface\n");
     static ANativeWindow* sWindow = 0;
@@ -106,13 +108,13 @@ JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_setSurface(JNIEnv* en
     if (surface)
     {
         sWindow = ANativeWindow_fromSurface(env, surface);
-        DBG_LOG("Got window %p", sWindow);
+        DBG_LOG("Got window %p\n", sWindow);
         GlwsEglAndroid* g = dynamic_cast<GlwsEglAndroid*>(&GLWS::instance());
-        g->setNativeWindow(sWindow, textureViewSize);
+        g->setNativeWindow(sWindow, viewSize);
     }
     else
     {
-        DBG_LOG("Releasing window");
+        DBG_LOG("Releasing window\n");
         ANativeWindow_release(sWindow);
     }
 }

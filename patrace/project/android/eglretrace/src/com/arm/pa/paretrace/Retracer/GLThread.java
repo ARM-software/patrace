@@ -21,28 +21,66 @@ import com.arm.pa.paretrace.NativeAPI;
 import com.arm.pa.paretrace.R;
 import com.arm.pa.paretrace.Util.Util;
 
+import android.content.IntentFilter;
+import android.content.BroadcastReceiver;
+import android.os.BatteryManager;
+import android.os.SystemClock;
 
 public class GLThread extends Thread {
 
+    private static final String TAG = "paretrace GLThread";
+    private JSONArray voltageinfo;
+    private Intent powerintent;
+    private Activity mRetraceActivity;
+
+    class CheckBatteryStatusReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (intent != null){
+                BatteryManager mBatteryManager = (BatteryManager)mRetraceActivity.getSystemService(Context.BATTERY_SERVICE);
+                double level = intent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1);
+                double timestamp = (double)SystemClock.elapsedRealtime() / 1000.0;
+                double current_now = mBatteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW);
+                double current_avg = mBatteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE);
+                try {
+                    JSONArray pair = new JSONArray();
+                    pair.put(timestamp);
+                    pair.put(level);
+                    pair.put(current_now);
+                    pair.put(current_avg);
+                    voltageinfo.put(pair);
+                } catch (JSONException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
     public static boolean isRunning;
     // properties
-    private Activity mRetraceActivity;
     private NativeAPI NativeAPI;
 
     // states
     private boolean mShouldExit;
     private boolean mExited;
 
-    private int mTextureViewSize = 0;
+    private int mViewSize = 0;
     private HashMap<SurfaceTexture, Surface> surfaceTexToSurfaceMap = new HashMap<SurfaceTexture, Surface>();
 
-    private static final String TAG = "paretrace GLThread";
+    private CheckBatteryStatusReceiver batteryStatusReceiver;
 
     public GLThread(Context ctx, Handler handler) {
         super();
+        voltageinfo = new JSONArray();
         mRetraceActivity = (Activity) ctx;
         NativeAPI.setMsgHandler(handler);
+        IntentFilter powerfilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+        powerintent = mRetraceActivity.registerReceiver(null, powerfilter);
+
+        batteryStatusReceiver = new CheckBatteryStatusReceiver();
+        mRetraceActivity.registerReceiver(batteryStatusReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
     }
+
 
     public void requestExitAndWait() {
         Log.i(TAG, "requestExitAndWait");
@@ -56,11 +94,12 @@ public class GLThread extends Thread {
                     Thread.currentThread().interrupt();
                 }
             }
+            mRetraceActivity.unregisterReceiver(batteryStatusReceiver);
         }
     }
 
-    public void setTextureViewSize(int size) {
-        mTextureViewSize = size;
+    public void setViewSize(int size) {
+        mViewSize = size;
     }
 
     ////////////////////////////////////////////////////////////
@@ -76,7 +115,7 @@ public class GLThread extends Thread {
                 result = new Surface(surface);
                 surfaceTexToSurfaceMap.put(surface, result);
             }
-            NativeAPI.onSurfaceChanged(result, w, h, mTextureViewSize);
+            NativeAPI.onSurfaceChanged(result, w, h, mViewSize);
             notifyAll();
         }
     }
@@ -84,7 +123,7 @@ public class GLThread extends Thread {
     public void onWindowResize(Surface surface, int w, int h) {
         synchronized(this) {
             Log.i(TAG, "onWindowResize " + surface + " " + w + " " + h);
-            NativeAPI.onSurfaceChanged(surface, w, h, 0);
+            NativeAPI.onSurfaceChanged(surface, w, h, mViewSize);
             notifyAll();
         }
     }
@@ -100,7 +139,7 @@ public class GLThread extends Thread {
                 result = new Surface(surface);
                 surfaceTexToSurfaceMap.put(surface, result);
             }
-            NativeAPI.onSurfaceDestroyed(result, mTextureViewSize);
+            NativeAPI.onSurfaceDestroyed(result, mViewSize);
             notifyAll();
         }
     }
@@ -111,6 +150,52 @@ public class GLThread extends Thread {
             NativeAPI.onSurfaceDestroyed(surface, 0);
             notifyAll();
         }
+    }
+
+    private JSONObject getdata() {
+        JSONObject js = new JSONObject();
+        try {
+            js.put("phone_manufacturer", android.os.Build.MANUFACTURER);
+            js.put("phone_model", android.os.Build.MODEL);
+            js.put("android_version", android.os.Build.VERSION.SDK_INT);
+            js.put("android_release", android.os.Build.VERSION.RELEASE);
+        }
+        catch (Exception e)
+        {
+            Log.i(TAG, "Failed to generate JSON data!");
+            e.printStackTrace();
+        }
+        return js;
+    }
+
+    private JSONObject batterydata() {
+        JSONObject js = new JSONObject();
+        int battery_voltage = powerintent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, -1);
+        int battery_plugged = powerintent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1);
+        int battery_temp = powerintent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1);
+        BatteryManager mBatteryManager = (BatteryManager)mRetraceActivity.getSystemService(Context.BATTERY_SERVICE);
+        long energy = mBatteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_ENERGY_COUNTER); // Remaining energy in nanowatt-hours
+        long current_now = mBatteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW); // Instantaneous battery current in microamperes
+        long current_avg = mBatteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_AVERAGE); // Average battery current in microamperes
+        long capacity = mBatteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY); // Remaining battery capacity as an integer percentage
+        long charge = mBatteryManager.getLongProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER); // Remaining battery capacity in microampere-hours
+        if (battery_voltage < 1000) battery_voltage *= 1000;
+        try {
+            js.put("battery_remaining", capacity);
+            js.put("battery_plugged", battery_plugged);
+            js.put("battery_temperature", battery_temp);
+            js.put("current_average", current_avg);
+            js.put("current_now", current_now);
+            js.put("voltage_now", battery_voltage);
+            js.put("battery_charge", charge);
+            js.put("battery_capacity", capacity);
+        }
+        catch (Exception e)
+        {
+            Log.i(TAG, "Failed to generate JSON data!");
+            e.printStackTrace();
+        }
+        return js;
     }
 
     ////////////////////////////////////////////////////////////
@@ -132,7 +217,6 @@ public class GLThread extends Thread {
 
                 mExited = true;
                 notifyAll();
-
             }
         }
 
@@ -158,6 +242,8 @@ public class GLThread extends Thread {
 
         String json_data = new String();
         String trace_file_path = new String();
+
+        JSONObject battery_before = batterydata();
 
         if (parentIntent.hasExtra("jsonData")) { // JSON format
             trace_file_path = Util.getTraceFilePath();
@@ -227,6 +313,22 @@ public class GLThread extends Thread {
 
                 if (parentIntent.hasExtra("snapshotCallset")) {
                     js.put("snapshotCallset", parentIntent.getStringExtra("snapshotCallset") ); // default off
+                }
+
+                if (parentIntent.hasExtra("perfstart") && parentIntent.hasExtra("perfend")) {
+                    int perf_start = parentIntent.getIntExtra("perfstart", -1);
+                    int perf_end = parentIntent.getIntExtra("perfend", -1);
+                    String perfrange = ""+perf_start+"-"+perf_end;
+                    js.put("perfrange",perfrange);
+                }
+                if(parentIntent.hasExtra("perfpath")){
+                    js.put("perfpath", parentIntent.getStringExtra("perfpath"));
+                }
+                if(parentIntent.hasExtra("perffreq")){
+                    js.put("perffreq", parentIntent.getIntExtra("perffreq", 1000));
+                }
+                if(parentIntent.hasExtra("perfout")){
+                    js.put("perfout", parentIntent.getStringExtra("perfout"));
                 }
 
                 js.put("preload", parentIntent.getBooleanExtra("preload", false));
@@ -310,7 +412,18 @@ public class GLThread extends Thread {
         catch (Exception e) {}
 
         NativeAPI.setSurface(null, 0);
-        NativeAPI.stop();
+
+        JSONObject battery_after = batterydata();
+        JSONObject js = getdata();
+        try {
+            js.put("battery_changes", voltageinfo);
+            js.put("battery_before", battery_before);
+            js.put("battery_after", battery_after);
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+        Log.i(TAG, "Generated JSON: " + js.toString());
+        NativeAPI.stop(js.toString());
         Log.i(TAG, "Restore the orientation mode: " + oldScreenOrientation);
         mRetraceActivity.setRequestedOrientation(oldScreenOrientation);
     }

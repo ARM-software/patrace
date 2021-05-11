@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+# Get script directory
+DIR=$(dirname "$(readlink -f "$0")")
+PYTHONPATH=${DIR}/..:${PYTHONPATH} python3 "${DIR}/glxml_to_funcs.py" "$@"

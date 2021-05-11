@@ -1,0 +1,75 @@
+import java.lang.annotation.Target
+
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 23
+
+    defaultConfig {
+        applicationId "com.arm.pa.paretrace"
+        minSdkVersion 23
+        targetSdkVersion 23
+        versionCode 1
+        versionName "2.6"
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("../pat.jks")
+            storePassword "paretrace"
+            keyAlias "paretrace"
+            keyPassword "paretrace"
+        }
+        debug {
+            storeFile file("../pat.jks")
+            storePassword "paretrace"
+            keyAlias "paretrace"
+            keyPassword "paretrace"
+        }
+    }
+
+    buildTypes {
+        debug {
+            jniDebuggable true
+            debuggable true
+            signingConfig signingConfigs.debug
+        }
+        release {
+            jniDebuggable true
+            debuggable true
+            signingConfig signingConfigs.release
+        }
+    }
+
+    task autoGenRetrace(type:Exec) {
+        workingDir "."
+        commandLine "make", "TARGET=${defaultConfig.targetSdkVersion.mApiLevel}"
+    }
+    preBuild.dependsOn autoGenRetrace
+
+    lintOptions {
+        abortOnError false
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src']
+            res.srcDirs = ['res']
+        }
+    }
+
+    externalNativeBuild {
+        ndkBuild {
+            path 'jni/Android.mk'
+        }
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    testImplementation 'junit:junit:4.13.1'
+}

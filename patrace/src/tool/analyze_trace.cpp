@@ -15,6 +15,8 @@
 #include <limits.h>
 #include <iomanip>
 #include <sstream>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "tool/parse_interface_retracing.hpp"
 
@@ -45,6 +47,8 @@ static bool bareLog = false;
 static bool report_unused_shaders = false;
 static bool write_used_shaders = false;
 static std::map<int, double> heavinesses;
+static std::string iname;
+static int ipriority = -1;
 
 /// Helper to prune empty lists from a JSON object
 static void prune(Json::Value& v)
@@ -182,7 +186,17 @@ static int sum_map(std::map<int, int> &map)
 
 static std::string shader_filename(const StateTracker::Shader &shader, int context_index, int program_index)
 {
-    return "shader_" + std::to_string(shader.id) + "_p" + std::to_string(program_index) + "_c" + std::to_string(context_index) + shader_extension(shader.shader_type);
+    std::string base;
+    if (dump_csv_filename.empty())
+    {
+        base = "shader_";
+    }
+    else
+    {
+        mkdir(dump_csv_filename.c_str(), 0755);
+        base = dump_csv_filename + "/shader_";
+    }
+    return base + std::to_string(shader.id) + "_p" + std::to_string(program_index) + "_c" + std::to_string(context_index) + shader_extension(shader.shader_type);
 }
 
 static void printHelp()
@@ -203,6 +217,8 @@ static void printHelp()
         "  -n            Do not save screenshots\n"
         "  -z            Show CPU cycles\n"
         "  -b            Bare call logging - useful for making diffs between traces\n"
+        "  -iname <name> Pass this name to the result JSON\n"
+        "  -iprio <p>    Pass this priority value to the result JSON\n"
         "Options for per frame output:\n"
         "  -Z            Write out used shaders to disk\n"
         "  -j            Write out renderpass JSON data for selected frames\n"
@@ -405,15 +421,15 @@ enum { FEATURE_VA, FEATURE_VBO, FEATURE_INDIRECT, FEATURE_SSBO, FEATURE_UBO, FEA
        FEATURE_VERTEX_BUFFER_BINDING, FEATURE_DISCARD_FBO, FEATURE_INVALIDATE_FBO, FEATURE_BINARY_SHADERS, FEATURE_TESSELLATION,
        FEATURE_GEOMETRY_SHADER, FEATURE_COMPUTE_SHADER, FEATURE_EGLCREATEIMAGE, FEATURE_POLYGON_OFFSET_FILL, FEATURE_VAO,
        FEATURE_FBO_REUSE, FEATURE_INDIRECT_COMPUTE, FEATURE_CONTEXT_SHARING, FEATURE_ANISOTROPY,
-       FEATURE_OCCLUSION_QUERIES, FEATURE_OCCLUSION_QUERIES_CONSERVATIVE,
+       FEATURE_OCCLUSION_QUERIES, FEATURE_OCCLUSION_QUERIES_CONSERVATIVE, FEATURE_MID_FRAME_FLUSH, FEATURE_MID_FRAME_FLUSH_CONDITIONAL,
        FEATURE_MAX };
 static std::vector<const char*> featurenames = { "VA", "VBO", "DrawIndirect", "SSBO", "UBO", "TransformFeedback", "PrimitiveRestart",
                                    "Instancing", "EGLImage", "SeparateShaderObjects", "VertexAttribBinding", "VertexBufferBinding",
                                    "DiscardFBO", "InvalidateFBO", "BinaryShaders", "Tessellation", "GeometryShader", "ComputeShader",
                                    "EglCreateImage", "PolygonOffsetFill", "VAO", "FramebufferReuse", "IndirectCompute", "ContextSharing",
-                                   "AnisotropicFiltering", "OcclusionQueries", "ConservativeOcclusionQueries" };
+                                   "AnisotropicFiltering", "OcclusionQueries", "ConservativeOcclusionQueries", "MidFrameFlush", "MidFrameFlushConditional" };
 static std::vector<double> complexity_feature_value = { 0.02, 0.04, 0.2, 0.07, 0.06, 0.1, 0.2, 0.08, 0.08, 0.5, 0.15, 0.15, 0.05, 0.05, 0.3,
-                                                        0.4, 0.3, 0.2, 0.2, 0.2, 0.15, 0.5, 0.6, 0.2, 0.3, 0.4, 0.6 };
+                                                        0.4, 0.3, 0.2, 0.2, 0.2, 0.15, 0.5, 0.6, 0.2, 0.3, 0.4, 0.6, 0.0, 0.0 };
 
 class AnalyzeTrace
 {
@@ -908,8 +924,12 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *cust
     }
     else if ((call->mCallName == "glFinish" || call->mCallName == "glFlush") && relevant(input.frames))
     {
-       az->perframe["flushes"].values.back()++;
-       az->flushes++;
+        az->perframe["flushes"].values.back()++;
+        az->flushes++;
+        if (call->mCallName == "glFinish" && input.contexts[context_index].render_passes.back().active && input.contexts[context_index].readframebuffer == 0)
+        {
+            az->features[FEATURE_MID_FRAME_FLUSH]++;
+        }
     }
     else if (call->mCallName == "glGenFramebuffers")
     {
@@ -1116,6 +1136,58 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *cust
             }
             dumpstream << std::endl;
             az->features[FEATURE_INDIRECT_COMPUTE]++;
+        }
+    }
+    else if (call->mCallName == "glReadPixels" && relevant(input.frames))
+    {
+        if (input.contexts[context_index].render_passes.back().active && input.contexts[context_index].readframebuffer == 0)
+        {
+            az->features[FEATURE_MID_FRAME_FLUSH]++;
+        }
+    }
+    else if (call->mCallName == "glClientWaitSync" && relevant(input.frames))
+    {
+        if (input.contexts[context_index].render_passes.back().active && input.contexts[context_index].readframebuffer == 0)
+        {
+            az->features[FEATURE_MID_FRAME_FLUSH_CONDITIONAL]++;
+        }
+    }
+    else if (call->mCallName == "glBlitFramebuffer" && relevant(input.frames))
+    {
+        if (input.contexts[context_index].render_passes.back().active && input.contexts[context_index].readframebuffer == 0)
+        {
+            az->features[FEATURE_MID_FRAME_FLUSH]++;
+        }
+    }
+    else if (call->mCallName == "glCopyTexImage2D" && relevant(input.frames))
+    {
+        GLenum target = call->mArgs[0]->GetAsUInt();
+        GLint level = call->mArgs[1]->GetAsInt();
+        GLenum internalformat = call->mArgs[2]->GetAsUInt();
+        GLint x = call->mArgs[3]->GetAsInt();
+        GLint y = call->mArgs[4]->GetAsInt();
+        GLsizei width = call->mArgs[5]->GetAsInt();
+        GLsizei height = call->mArgs[6]->GetAsInt();
+        GLint border = call->mArgs[7]->GetAsInt();
+        assert(border == 0);
+        if (input.contexts[context_index].render_passes.back().active)
+        {
+            az->features[FEATURE_MID_FRAME_FLUSH]++;
+        }
+    }
+    else if (call->mCallName == "glCopyTexSubImage2D" && relevant(input.frames))
+    {
+        GLenum target = call->mArgs[0]->GetAsUInt();
+        GLint level = call->mArgs[1]->GetAsInt();
+        GLint xoffset = call->mArgs[2]->GetAsInt();
+        GLint yoffset = call->mArgs[3]->GetAsInt();
+        GLint x = call->mArgs[4]->GetAsInt();
+        GLint y = call->mArgs[5]->GetAsInt();
+        GLsizei width = call->mArgs[6]->GetAsInt();
+        GLsizei height = call->mArgs[7]->GetAsInt();
+        if (input.contexts[context_index].render_passes.back().active)
+        {
+            az->features[FEATURE_MID_FRAME_FLUSH]++;
         }
     }
     else if (call->mCallName == "glDrawTexiOES")
@@ -1654,6 +1726,8 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceBase& input)
 {
     Json::Value result;
     result["source"] = input.filename;
+    if (ipriority != -1) result["priority"] = ipriority;
+    if (!iname.empty()) result["name"] = iname;
     result["contexts"] = Json::arrayValue;
     result["complexity"] = calculate_complexity(input);
     result["extensions"] = Json::arrayValue;
@@ -1857,6 +1931,8 @@ Json::Value AnalyzeTrace::trace_json(ParseInterfaceBase& input)
     }
     result["threads"] = input.numThreads;
     result["frames"] = input.frames;
+    result["selected_frames"] = Json::arrayValue;;
+    for (int f : renderpassframes) result["selected_frames"].append(f);
     result["framerange"] = Json::Value();
     result["framerange"]["client_side_buffers"] = Json::Value();
     result["framerange"]["client_side_buffers"]["count"] = clientsidebuffers;
@@ -1973,6 +2049,8 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceBase& input, int frame)
     int frame_dupes = 0;
     result["contexts"] = Json::arrayValue;
     result["source"] = input.filename;
+    if (ipriority != -1) result["priority"] = ipriority;
+    if (!iname.empty()) result["name"] = iname;
     result["frame"] = frame;
     result["dump_heaviness"] = heavinesses.at(frame);
     result["frame_heaviness"] = calculate_heaviness(input, frame);
@@ -2159,11 +2237,11 @@ Json::Value AnalyzeTrace::frame_json(ParseInterfaceBase& input, int frame)
             for (auto& s : r.shaders) // type : index pairs
             {
                 const StateTracker::Shader& shader = c.shaders[s.second];
-                std::string filename = shader_filename(shader, c.index, r.index);
                 if (!write_used_shaders)
                 {
                     continue;
                 }
+                std::string filename = shader_filename(shader, c.index, r.index);
                 switch (s.first)
                 {
                 case GL_FRAGMENT_SHADER: program["frag"] = filename; break;
@@ -2314,6 +2392,16 @@ int main(int argc, char **argv)
         else if (arg == "-d")
         {
             dump_to_text = true;
+        }
+        else if (arg == "-iname")
+        {
+            argIndex++;
+            iname = argv[argIndex];
+        }
+        else if (arg == "-iprio")
+        {
+            argIndex++;
+            ipriority = atoi(argv[argIndex]);
         }
         else if (arg == "-o" && argIndex + 1 < argc)
         {

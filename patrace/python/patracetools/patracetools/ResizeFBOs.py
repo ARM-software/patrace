@@ -3,7 +3,7 @@ import os, sys, json
 try:
     from patrace import InputFile, OutputFile, Call
 except ImportError:
-    print 'patrace (Python interface of PATrace SDK) is required.'
+    print('patrace (Python interface of PATrace SDK) is required.')
 
 # This script converts an input trace into another trace ('output.pat') in which all FBOs are used with size 16x16.
 
@@ -16,7 +16,7 @@ def OutputCall(output, call):
     if call.name == 'glViewport':
         # fail if x or y are set to other than 0
         if call.args[0].asUInt != 0 or call.args[1].asUInt != 0:
-            print 'Note, had x,y:', call.args[0].asUInt, call.args[1].asUInt
+            print('Note, had x,y:', call.args[0].asUInt, call.args[1].asUInt)
         c = Call('glViewport')
         c.thread_id = call.thread_id
         c.argCount = 4

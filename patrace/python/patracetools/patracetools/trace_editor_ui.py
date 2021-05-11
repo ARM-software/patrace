@@ -1,4 +1,4 @@
-import json, os, sys, ctypes, cPickle
+import json, os, sys, ctypes, pickle
 from PyQt4.QtGui import *
 from PyQt4.QtCore import *
 

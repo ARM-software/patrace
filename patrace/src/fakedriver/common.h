@@ -6,6 +6,8 @@
 #include <string.h>
 #include <dlfcn.h>
 
+#ifndef GLESLAYER
+
 // Fakedriver search paths
 extern const char* gles2_search_paths[];
 extern const char* gles1_search_paths[];
@@ -16,6 +18,7 @@ extern const char* single_driver_search_paths[];
 extern const char* applist_cfg_search_paths[];
 extern const char* interceptor_cfg_search_paths[];
 extern const char* fpsApplist_cfg_search_paths[];
+#endif // !GLESLAYER
 
 // Wrapper interface
 namespace wrapper
@@ -29,15 +32,19 @@ namespace wrapper
 
         static bool sShowFPS;
 
+#ifndef GLESLAYER
     private:
         static void LoadConfigFiles();
         static std::string getProcessName();
 
         static bool sDoIntercept;
         static std::string sInterceptorPath;
+#endif
     };
 
+#ifndef GLESLAYER
     const char* findFirst(const char** paths);
+#endif
 }
 
 // Helper macros

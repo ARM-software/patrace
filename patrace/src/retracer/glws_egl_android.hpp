@@ -16,18 +16,20 @@ public:
     void setupJAVAEnv(JNIEnv *env);
     virtual Drawable* CreateDrawable(int width, int height, int win, EGLint const* attribList) override;
     virtual void ReleaseDrawable(NativeWindow *window) override;
-    void setNativeWindow(EGLNativeWindowType window, int textureViewSize);
+    void setNativeWindow(EGLNativeWindowType window, int viewSize);
 
 private:
     JavaVM *jvm;
     jclass gNativeCls;
     jmethodID gRequestWindowID;
     jmethodID gResizeWindowID;
-    int mTextureViewSize;
-    std::unordered_map<int, int> winNameToTextureViewIdMap;
+    jmethodID gDestroyWindowID;
+    int mViewSize;
+    std::unordered_map<int, int> winNameToViewIdMap;
 
     void requestNativeWindow(int width, int height, int format);
     void resizeNativeWindow(int width, int height, int format, int textureViewId);
+    void destroyNativeWindow(int viewId);
     void syncNativeWindow();
 };
 

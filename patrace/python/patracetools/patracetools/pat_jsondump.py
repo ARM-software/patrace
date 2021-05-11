@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-from __future__ import print_function
+
 import argparse
 import sys
-import headerparser
+from patracetools import headerparser
 
 
 def main():

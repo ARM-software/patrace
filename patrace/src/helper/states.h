@@ -96,8 +96,16 @@ struct VertexArrayInfo
     GLint enabled;
     // If it is used in the shader
     bool active;
-    // The slot in the available array buffer list
+    // The index of attribute list
     GLint location;
+    // The slot in the available array buffer list
+    GLint bindingindex;
+    // The offset of the first element relative to the start of the vertex buffer binding this attribute fetches from.
+    GLint relativeOffset;
+    // The distance between elements within the buffer.
+    GLint vbstride;
+    // The offset of the first element of the buffer.
+    GLint vboffset;
     // The number of elements of array types. E.g. 4 for float[4]
     GLsizei size;
     // The type as defined in shader, e.g. GL_FLOAT_VEC4
@@ -358,6 +366,7 @@ private:
     std::map<GLenum, std::vector<GLint> > mIntMap;
     std::map<GLenum, std::vector<GLfloat> > mFloatMap;
     bool mSaveVertexArrays;
+    std::map<GLint, VertexArray_t > mArraysMap;
 };
 
 

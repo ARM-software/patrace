@@ -1,15 +1,18 @@
 #include "pa_demo.h"
+#include <EGL/eglext.h>
 
 #include <vector>
-
-static bool null_run = false;
-static bool inject_asserts = false;
 
 struct fbdev_window
 {
 	unsigned short width;
 	unsigned short height;
 };
+
+static bool null_run = false;
+static bool inject_asserts = false;
+static std::vector<fbdev_window> windows;
+static PFNGLINSERTEVENTMARKEREXTPROC my_glInsertEventMarkerEXT = nullptr;
 
 static void dummy_glStateDump_ARM()
 {
@@ -81,7 +84,12 @@ bool is_null_run()
 	return null_run;
 }
 
-int init(const char *name, PADEMO_CALLBACK_SWAP swap, PADEMO_CALLBACK_INIT setup, PADEMO_CALLBACK_FREE cleanup, void *user_data, EGLint *attribs)
+void annotate(const char *annotation)
+{
+	if (my_glInsertEventMarkerEXT) my_glInsertEventMarkerEXT(0, annotation);
+}
+
+int init(const char *name, PADEMO_CALLBACK_SWAP swap, PADEMO_CALLBACK_INIT setup, PADEMO_CALLBACK_FREE cleanup, void *user_data, EGLint *attribs, int surfaces)
 {
 	PADEMO handle;
 	handle.name = name;
@@ -94,19 +102,50 @@ int init(const char *name, PADEMO_CALLBACK_SWAP swap, PADEMO_CALLBACK_INIT setup
 
 	inject_asserts = (bool)get_env_int("PADEMO_SANITY", 0);
 	null_run = (bool)get_env_int("PADEMO_NULL_RUN", 0);
+	bool pbuffers = (bool)get_env_int("PADEMO_PBUFFERS", 0);
 	if (null_run)
 	{
 		PALOGI("Doing a null run - not checking results!\n");
 	}
 
-	EGLint contextAttribs[] = {
-		EGL_CONTEXT_MAJOR_VERSION, 3,
-		EGL_CONTEXT_MINOR_VERSION, 2,
-		EGL_NONE, EGL_NONE,
-	};
+	handle.display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+
+	PFNEGLQUERYDEVICESEXTPROC eglQueryDevicesEXT = (PFNEGLQUERYDEVICESEXTPROC)eglGetProcAddress("eglQueryDevicesEXT");
+	PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT = (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
+	if (eglQueryDevicesEXT && eglGetPlatformDisplayEXT)
+	{
+		EGLint numDevices = 0;
+		if (eglQueryDevicesEXT(0, nullptr, &numDevices) == EGL_FALSE)
+		{
+			PALOGE("Failed to poll EGL devices\n");
+			return EGL_FALSE;
+		}
+		std::vector<EGLDeviceEXT> devices(numDevices);
+		if (eglQueryDevicesEXT(devices.size(), devices.data(), &numDevices) == EGL_FALSE)
+		{
+			PALOGE("Failed to fetch EGL devices\n");
+			return EGL_FALSE;
+		}
+		for (unsigned i = 0; i < devices.size(); i++)
+		{
+			if (handle.display == EGL_NO_DISPLAY)
+			{
+				handle.display = eglGetPlatformDisplayEXT(EGL_PLATFORM_DEVICE_EXT, devices[i], 0);
+				PALOGI("Using EGL device %u for our display!\n", i);
+			}
+			else PALOGI("EGL device found and ignored: %u\n", i);
+		}
+	}
+
+	if (handle.display == EGL_NO_DISPLAY)
+	{
+		PALOGE("No display found\n");
+		return EGL_FALSE;
+	}
+
 	EGLint surfaceAttribs[] = {
+		EGL_SURFACE_TYPE, pbuffers == 0 ? EGL_WINDOW_BIT : EGL_PBUFFER_BIT,
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
 		EGL_ALPHA_SIZE, EGL_DONT_CARE,
 		EGL_STENCIL_SIZE, EGL_DONT_CARE,
 		EGL_RED_SIZE, 8,
@@ -115,12 +154,13 @@ int init(const char *name, PADEMO_CALLBACK_SWAP swap, PADEMO_CALLBACK_INIT setup
 		EGL_DEPTH_SIZE, 24,
 		EGL_NONE, EGL_NONE,
 	};
-	handle.display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-	if (handle.display == EGL_NO_DISPLAY)
-	{
-		PALOGE("eglGetDisplay() failed\n");
-		return EGL_FALSE;
-	}
+	EGLint contextAttribs[] = {
+		EGL_CONTEXT_MAJOR_VERSION, 3,
+		EGL_CONTEXT_MINOR_VERSION, 2,
+		EGL_NONE, EGL_NONE,
+	};
+	if (attribs == nullptr) attribs = surfaceAttribs; // use defaults
+
 	EGLint majorVersion;
 	EGLint minorVersion;
 	if (!eglInitialize(handle.display, &majorVersion, &minorVersion))
@@ -138,7 +178,6 @@ int init(const char *name, PADEMO_CALLBACK_SWAP swap, PADEMO_CALLBACK_INIT setup
 		return EGL_FALSE;
 	}
 	std::vector<EGLConfig> configs(numConfigs);
-	if (attribs == nullptr) attribs = surfaceAttribs; // use defaults
 	if (!eglChooseConfig(handle.display, attribs, configs.data(), configs.size(), &numConfigs))
 	{
 		PALOGE("eglChooseConfig() failed\n");
@@ -146,7 +185,6 @@ int init(const char *name, PADEMO_CALLBACK_SWAP swap, PADEMO_CALLBACK_INIT setup
 		return EGL_FALSE;
 	}
 
-	fbdev_window window = { 1024, 640 };
 	EGLint selected = -1;
 	for (EGLint i = 0; i < (EGLint)configs.size(); i++)
 	{
@@ -161,30 +199,56 @@ int init(const char *name, PADEMO_CALLBACK_SWAP swap, PADEMO_CALLBACK_INIT setup
 	}
 	PALOGI("Found %d EGL configs, selected %d\n", (int)configs.size(), selected);
 	assert(selected != -1);
-	handle.surface = eglCreateWindowSurface(handle.display, configs[selected], (intptr_t)(&window), NULL);
-	if (handle.surface == EGL_NO_SURFACE)
+
+	handle.surface.resize(surfaces);
+	handle.context.resize(surfaces);
+	windows.resize(surfaces);
+	for (int j = 0; j < surfaces; j++)
 	{
-		PALOGE("eglCreateWindowSurface() failed\n");
-		return EGL_FALSE;
+		windows[j] = { 1024, 640 };
+
+		if (!pbuffers)
+		{
+			handle.surface[j] = eglCreateWindowSurface(handle.display, configs[selected], (intptr_t)(&windows[j]), NULL);
+		}
+		else
+		{
+			EGLint pAttribs[] = {
+				EGL_HEIGHT, (EGLint)windows[j].height,
+				EGL_WIDTH, (EGLint)windows[j].width,
+				EGL_NONE, EGL_NONE,
+			};
+			handle.surface[j] = eglCreatePbufferSurface(handle.display, configs[selected], pAttribs);
+		}
+		if (handle.surface[j] == EGL_NO_SURFACE)
+		{
+			PALOGE("eglCreateWindowSurface() failed: 0x%04x\n", (unsigned)eglGetError());
+			return EGL_FALSE;
+		}
+		handle.context[j] = eglCreateContext(handle.display, configs[0], (j == 0) ? EGL_NO_CONTEXT : handle.context[0], contextAttribs);
+		if (handle.context[j] == EGL_NO_CONTEXT)
+		{
+			PALOGE("eglCreateContext() failed: 0x%04x\n", (unsigned)eglGetError());
+			return EGL_FALSE;
+		}
 	}
-	handle.context = eglCreateContext(handle.display, configs[0], EGL_NO_CONTEXT, contextAttribs);
-	if (handle.context == EGL_NO_CONTEXT)
-	{
-		PALOGE("eglCreateContext() failed\n");
-		return EGL_FALSE;
-	}
-	if (!eglMakeCurrent(handle.display, handle.surface, handle.surface, handle.context))
+
+	if (!eglMakeCurrent(handle.display, handle.surface[0], handle.surface[0], handle.context[0]))
  	{
 		PALOGE("eglMakeCurrent() failed\n");
 		return EGL_FALSE;
 	}
 
 	EGLint egl_context_client_version;
-	eglQueryContext(handle.display, handle.context, EGL_CONTEXT_CLIENT_VERSION, &egl_context_client_version);
+	eglQueryContext(handle.display, handle.context[0], EGL_CONTEXT_CLIENT_VERSION, &egl_context_client_version);
 	PALOGI("EGL client version %d\n", egl_context_client_version);
-	eglQuerySurface(handle.display, handle.surface, EGL_WIDTH, &handle.width);
-	eglQuerySurface(handle.display, handle.surface, EGL_HEIGHT, &handle.height);
-	PALOGI("Surface resolution (%d, %d)\n", handle.width, handle.height);
+	eglQuerySurface(handle.display, handle.surface[0], EGL_WIDTH, &handle.width);
+	eglQuerySurface(handle.display, handle.surface[0], EGL_HEIGHT, &handle.height);
+	PALOGI("Surface resolution %p(%d, %d)\n", handle.surface[0], handle.width, handle.height);
+
+	my_glInsertEventMarkerEXT = (PFNGLINSERTEVENTMARKEREXTPROC)eglGetProcAddress("glInsertEventMarkerEXT");
+	if (!my_glInsertEventMarkerEXT) PALOGE("No glInsertEventMarkerEXT implementation found!\n");
+	else PALOGI("Marker annotation initialized\n");
 
 	// if our tracer / retracer implements these functions, replace our dummies with their real implementation
 	void* ptr = (void*)eglGetProcAddress("glAssertBuffer_ARM");
@@ -211,14 +275,19 @@ int init(const char *name, PADEMO_CALLBACK_SWAP swap, PADEMO_CALLBACK_INIT setup
 	for (int i = 0; i < handle.frames; i++)
 	{
 		handle.current_frame = i;
+		std::string annotation = std::string(name) + " frame " + std::to_string(handle.current_frame);
+		annotate(annotation.c_str());
 		swap(&handle, handle.user_data);
-		eglSwapBuffers(handle.display, handle.surface);
+		eglSwapBuffers(handle.display, handle.surface[0]);
 	}
 	cleanup(&handle, handle.user_data);
 
 	eglMakeCurrent(handle.display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-	eglDestroyContext(handle.display, handle.context);
-	eglDestroySurface(handle.display, handle.surface);
+
+	for (unsigned j = 0; j < handle.context.size(); j++) eglDestroyContext(handle.display, handle.context[j]);
+	for (unsigned j = 0; j < handle.surface.size(); j++) eglDestroySurface(handle.display, handle.surface[j]);
+	handle.context.clear();
+	handle.surface.clear();
 	eglTerminate(handle.display);
 
 	return 0;

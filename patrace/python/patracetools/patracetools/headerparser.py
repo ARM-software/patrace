@@ -27,7 +27,7 @@ HeaderV3.make = make
 
 
 def read_json_header(filename):
-    with open(filename) as f:
+    with open(filename, 'rb') as f:
         hh = HeaderHead.make(f)
 
         if hh.version < 5:
@@ -51,7 +51,7 @@ def read_json_header_as_string(trace_file):
 def write_json_header(filename, header):
     jsonstr = json.dumps(header, separators=(',', ':'))
 
-    with open(filename, 'r+') as f:
+    with open(filename, 'rb+') as f:
         hh = HeaderHead.make(f)
 
         if hh.version < 5:
@@ -66,7 +66,7 @@ def write_json_header(filename, header):
             raise Exception("JSON data to be written exceeds the resereved area for JSON data.")
 
         f.seek(0)
-        f.write(struct.pack(header.fmt, *headerdict.values()))
+        f.write(struct.pack(header.fmt, *list(headerdict.values())))
         f.seek(header.jsonFileBegin)
-        f.write(jsonstr)
-        f.write('\x00' * (header.jsonFileEnd - f.tell()))
+        f.write(jsonstr.encode())
+        f.write(bytes([0] * (header.jsonFileEnd - f.tell())))

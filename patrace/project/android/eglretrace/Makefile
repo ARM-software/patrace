@@ -1,4 +1,4 @@
-# Please specify NDK.
+# Generate retrace code and C header
 
 default_target: callNdkBuild
 .PHONY : default_target
@@ -20,12 +20,8 @@ autoGenRetrace:
 
 
 callNdkBuild:autoGenRetrace
-	@echo 'Build eglretrace with Android-NDK...'
-	# Generate C header for NativeAPI.java
-	ANDROID_JAR=$(shell dirname `which android`)/../platforms/$(shell grep target= project.properties | cut -d= -f2)/android.jar; \
+	@echo 'Generate C header for NativeAPI.java'
+	ANDROID_JAR=$(shell dirname `which android`)/../platforms/android-${TARGET}/android.jar; \
 	    javac -classpath $$ANDROID_JAR ./src/com/arm/pa/paretrace/NativeAPI.java; \
 	    javah -d jni -classpath $$ANDROID_JAR:src com.arm.pa.paretrace.NativeAPI
-	+$(NDK)/ndk-build -B
-	ant clean
-	ant release
 .PHONY : callNdkBuild

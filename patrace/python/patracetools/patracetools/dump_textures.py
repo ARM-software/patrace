@@ -1,6 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # Author: Joakim Simonsson
-from __future__ import print_function
+
 import argparse
 import os
 import OpenGL.GL as GL
@@ -45,7 +45,7 @@ class Function:
 
 
 class Buffer:
-    def __init__(self, name, data=''):
+    def __init__(self, name, data=b''):
         self.name = name
         self.data = data
 
@@ -61,7 +61,7 @@ class Thread:
 class Context:
     def __init__(self):
         # currently bound buffers, target as key, and value as name
-        none_buffer = Buffer(0, [])
+        none_buffer = Buffer(0, b'')
 
         self.bound_buffers = {
             GL.GL_ARRAY_BUFFER: none_buffer,
@@ -139,13 +139,15 @@ class TextureExtractor:
         self.contexts = {}
 
     def write_image(self, mode, width, height, data, filename):
+        if len(data) == 0:
+            print("Empty data. Not writing", filename)
         print("Writing {}...\r".format(filename))
         img = Image.frombytes(mode, (width, height), data)
         img.save(filename, 'PNG')
 
     def call_to_string(self, call):
         d = call.GetArgumentsDict()
-        for k, v in d.iteritems():
+        for k, v in d.items():
             if k in self.glenums:
                 d[k] = self.int_to_gl[v]
 
@@ -153,7 +155,7 @@ class TextureExtractor:
             if dp in d:
                 d[dp] = '{BLOB}'
 
-        args = ', '.join(['{}={}'.format(arg, val) for arg, val in d.iteritems()])
+        args = ', '.join(['{}={}'.format(arg, val) for arg, val in d.items()])
         return "@{num}: {funcname}({args})".format(
             num=call.number,
             funcname=call.name,
@@ -171,7 +173,7 @@ class TextureExtractor:
             return
 
         if d['type'] == GL.GL_UNSIGNED_BYTE:
-            if d['format'] not in self.glformat_to_imagemode.keys():
+            if d['format'] not in list(self.glformat_to_imagemode.keys()):
                 print("Unhandled format: " + self.call_to_string(call))
 
             self.write_image(imgmode, d['width'], d['height'], d['pixels'], image_path)
@@ -193,7 +195,7 @@ class TextureExtractor:
 
         if d['type'] == GL.GL_UNSIGNED_BYTE:
             data = ctx.bound_buffers[GL.GL_PIXEL_UNPACK_BUFFER].data
-            subdata = ''
+            subdata = b''
             for row_i in range(d['height']):
                 rowoffset = row_i * rowsize
                 subdata += data[offset + rowoffset:offset + d['width'] * texelsize + rowoffset]

@@ -1,7 +1,4 @@
-# Please specify NDK.
-
-default_target: callNdkBuild
-.PHONY : default_target
+# Generate code for fakedriver
 
 autoGenCode:
 	@echo 'Remove the existing auto-generated source files...'
@@ -12,9 +9,3 @@ autoGenCode:
 	@echo 'Auto-generate the source code for fake driver...'
 	cd ../../../src/fakedriver && python autogencode.py
 .PHONY : autoGenCode
-
-callNdkBuild: autoGenCode
-	@echo 'Build the driver interfaces with Android-NDK...'
-	+$(NDK)/ndk-build -B
-.PHONY : callNdkBuild
-

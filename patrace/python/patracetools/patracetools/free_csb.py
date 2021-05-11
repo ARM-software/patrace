@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import os
 import json
@@ -36,7 +36,7 @@ class Injector(object):
         self.csbs = {}
 
     def _find_csbs(self, input):
-        print 'Finding ClientSideBuffer objects...'
+        print('Finding ClientSideBuffer objects...')
 
         csb_usage_calls = [
             'glClientSideBufferData',
@@ -57,7 +57,7 @@ class Injector(object):
 
         return {
             csb.last_used: csb
-            for csb in self.csbs.values()
+            for csb in list(self.csbs.values())
         }
 
     def run(self, input, output):
@@ -107,7 +107,7 @@ def main():
 
     args = parser.parse_args()
     num_calls_injected = inject(args.oldfile, args.newfile)
-    print "Injected {} glDeleteClientSideBuffer calls".format(num_calls_injected)
+    print("Injected {} glDeleteClientSideBuffer calls".format(num_calls_injected))
 
 
 if __name__ == '__main__':

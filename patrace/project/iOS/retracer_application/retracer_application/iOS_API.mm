@@ -100,7 +100,7 @@ int iOSRetracer_setAndCheckSelectedConfig(SelectedConfig config)
         if(config.surfaceHeight < gRetracer.mOptions.mWindowHeight || config.surfaceWidth < gRetracer.mOptions.mWindowWidth)
         {
             // Surface too small
-            TraceExecutor::writeError(TraceExecutorErrorCode::TRACE_ERROR_OUT_OF_MEMORY, "Invalid configuration selected: surface too small. ");
+            TraceExecutor::writeError("Invalid configuration selected: surface too small.");
             err = 1;
         }
     }

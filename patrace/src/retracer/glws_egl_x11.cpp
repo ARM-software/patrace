@@ -77,6 +77,23 @@ public:
         NativeWindow::show();
     }
 
+    virtual void close()
+    {
+        if (!mVisible)
+        {
+            return;
+        }
+
+        eglWaitClient();
+
+        XUnmapWindow(mDisplay, mHandle);
+        waitForEvent(UnmapNotify);
+
+        eglWaitNative(EGL_CORE_NATIVE_ENGINE);
+
+        NativeWindow::close();
+    }
+
     bool resize(int w, int h)
     {
         if (NativeWindow::resize(w, h))

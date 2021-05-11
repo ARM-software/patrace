@@ -1028,6 +1028,7 @@ CallTM::CallTM(InFileRA &infile, unsigned callNo, const BCall_vlen &call)
     mCallErrNo = static_cast<CALL_ERROR_NO>(call.errNo);
     mReadPos = infile.GetReadPos();
     char *src = infile.dataPointer();
+    mInjected = (call.source > 0);
     (*(ParseFunc)fptr)(src, *this, infile);
 }
 
@@ -1040,6 +1041,7 @@ CallTM::CallTM(InFile &infile, unsigned callNo, const BCall_vlen &call)
     mCallErrNo = static_cast<CALL_ERROR_NO>(call.errNo);
     mReadPos = 0;
     char *src = infile.dataPointer();
+    mInjected = (call.source > 0);
     (*(ParseFunc)fptr)(src, *this, infile);
 }
 
@@ -1055,6 +1057,7 @@ bool CallTM::Load(InFileRA *infile)
         return false;
     }
     mTid = curCall.tid;
+    mInjected = (curCall.source > 0);
     mCallErrNo = static_cast<CALL_ERROR_NO>(curCall.errNo);
 
     if (fptr)
@@ -1106,7 +1109,7 @@ std::string CallTM::ToStr(bool isAbbreviate)
     return mRet.ToStr(this, isAbbreviate ? 32 : 0) + " " + mCallName + "(" + strArgs + ")" + strErr;
 }
 
-char* CallTM::Serialize(char* dest, int overrideID)
+char* CallTM::Serialize(char* dest, int overrideID, bool injected)
 {
     if (mCallId == 0) // This call is not supported by ApiInfo
     {
@@ -1123,6 +1126,7 @@ char* CallTM::Serialize(char* dest, int overrideID)
         else
             pCall->funcId = overrideID;
         pCall->tid = mTid;
+        pCall->source = injected ? 1 : 0;
         pCall->reserved = 0;
         dest += sizeof(BCall);
     } else {
@@ -1131,6 +1135,7 @@ char* CallTM::Serialize(char* dest, int overrideID)
         else
             pCallVlen->funcId = overrideID;
         pCallVlen->tid = mTid;
+        pCallVlen->source = injected ? 1 : 0;
         pCallVlen->reserved = 0;
         dest += sizeof(BCall_vlen);
     }

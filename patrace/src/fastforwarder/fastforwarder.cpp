@@ -24,11 +24,6 @@
 #include <retracer/retracer.hpp>
 #include <retracer/state.hpp>
 
-#define FASTFORWARDER_VERSION_MAJOR 0
-#define FASTFORWARDER_VERSION_MINOR 0
-#define FASTFORWARDER_VERSION_COMMIT_HASH PATRACE_REVISION
-#define FASTFORWARDER_VERSION_TYPE PATRACE_VERSION_TYPE
-
 // Enable this to print enum strings in debug messages
 #define FF_ENUMSTRING 0
 #if FF_ENUMSTRING
@@ -47,13 +42,6 @@
 typedef void (GLES_CALLCONVENTION * PFN_GLGETTEXLEVELPARAMETERIV)(GLenum target, GLint level, GLenum pname, GLint *params);
 static PFN_GLGETTEXLEVELPARAMETERIV ff_glGetTexLevelParameteriv;
 
-static std::string fastforwarderVersionString()
-{
-    std::stringstream ss;
-    ss << "r" << FASTFORWARDER_VERSION_MAJOR << "p" << FASTFORWARDER_VERSION_MINOR  << " " << FASTFORWARDER_VERSION_COMMIT_HASH << " " << FASTFORWARDER_VERSION_TYPE;
-    return ss.str();
-}
-
 enum FastForwardOptionFlags
 {
     FASTFORWARD_RESTORE_TEXTURES  = 1 << 0,
@@ -68,6 +56,7 @@ struct FastForwardOptions
     unsigned int mTargetDrawCallNo;
     unsigned int mEndFrame;
     unsigned int mFlags;
+    unsigned int mFbo0Repeat;
 
     FastForwardOptions()
         : mOutputFileName("fastforward.pat")
@@ -76,6 +65,7 @@ struct FastForwardOptions
         , mTargetDrawCallNo(0)
         , mEndFrame(UINT32_MAX)
         , mFlags(FASTFORWARD_RESTORE_TEXTURES)
+        , mFbo0Repeat(0)
     {}
 };
 
@@ -161,6 +151,7 @@ public:
         , mGlColorMaskId(getId("glColorMask"))
         , mGlDrawElements(getId("glDrawElements"))
         , mGlFrontFace(getId("glFrontFace"))
+        , mEglSwapBuffers(getId("eglSwapBuffers"))
     {}
 
     void emitDisable(GLenum cap)
@@ -804,6 +795,21 @@ public:
         mOutFile.Write(bufStart, dest - bufStart);
     }
 
+    void emitSwapBuffers(GLint dpy, GLint surface)
+    {
+        mScratchBuff.resizeToFit(sizeof(common::BCall) + sizeof(GLint) * 3 + 4);
+
+        char *const bufStart = mScratchBuff.bufferPtr();
+        char *dest = bufStart;
+
+        dest = writeBCall(dest, mEglSwapBuffers);
+        dest = common::WriteFixed<GLint>(dest, dpy);  // dpy
+        dest = common::WriteFixed<GLint>(dest, surface);   // eglSurface
+        dest = common::WriteFixed<int>(dest, 1); //result
+
+        mOutFile.Write(bufStart, dest - bufStart);
+    }
+
 private:
     ScratchBuffer mScratchBuff;
     common::OutFile& mOutFile;
@@ -846,6 +852,7 @@ private:
     int mGlColorMaskId;
     int mGlDrawElements;
     int mGlFrontFace;
+    int mEglSwapBuffers;
 
     int getId(const char* name)
     {
@@ -867,6 +874,7 @@ private:
         bcall.tid = mThreadId;
         bcall.reserved = 0;
         bcall.errNo = 0;
+        bcall.source = 0;
 
         unsigned int bcallSize = sizeof(bcall);
         memcpy(dest, &bcall, bcallSize);
@@ -882,6 +890,7 @@ private:
         bcv.reserved = 0;
         bcv.errNo = 0;
         bcv.toNext = toNext;
+        bcv.source = 0;
 
         unsigned int bcallSize = sizeof(bcv);
         memcpy(dest, &bcv, bcallSize);
@@ -1786,10 +1795,13 @@ private:
 class DefaultFboSaver
 {
 public:
-    DefaultFboSaver(retracer::Context& retracerContext, common::OutFile& outFile, int threadId)
+    DefaultFboSaver(retracer::Context& retracerContext, common::OutFile& outFile, int threadId, unsigned int repeat, int dpy, int surface)
         : mRetracerContext(retracerContext),
           mOutFile(outFile),
           mThreadId(threadId),
+          mDisplay(dpy),
+          mSurface(surface),
+          mRepeat(repeat),
           mScratchBuff(),
           mCmdEmitter(outFile, threadId)
     {
@@ -2052,7 +2064,7 @@ private:
                                    &mColorBufInfo.Surf.colorSpace);
         if (success != EGL_TRUE)
         {
-            DBG_LOG("Failed to get color space error 0x%x, force color space to EGL_GL_COLORSPACE_LINEAR!", success);
+            DBG_LOG("Failed to get color space error 0x%x, force color space to EGL_GL_COLORSPACE_LINEAR!\n", success);
             mColorBufInfo.Surf.colorSpace = EGL_GL_COLORSPACE_LINEAR;
         }
         success = _eglQuerySurface(CurDisplay,
@@ -2500,8 +2512,11 @@ private:
         mCmdEmitter.emitFrontFace(GL_CCW);
         mCmdEmitter.emitBindSampler(0, 0);
         mCmdEmitter.emitClearColor(1.0f, 0.0f, 0.0f, 1.0f);
-        mCmdEmitter.emitClear(GL_COLOR_BUFFER_BIT);
-        mCmdEmitter.emitDrawElements(GL_TRIANGLES, 2 * 3, GL_UNSIGNED_INT, 0);
+    }
+
+    void emitSwap()
+    {
+        mCmdEmitter.emitSwapBuffers(mDisplay, mSurface);
     }
 
     void emitBooleanbState(GLenum state, GLboolean value)
@@ -2578,6 +2593,18 @@ private:
         emitTexture();
         emitVBO();
         emitDraw();
+
+        // repeat to inject draw and swap. minus 1 because the last injected swap was the one in trace file
+        for (unsigned int i = 0; i < mRepeat-1; i++)
+        {
+            mCmdEmitter.emitClear(GL_COLOR_BUFFER_BIT);
+            mCmdEmitter.emitDrawElements(GL_TRIANGLES, 2 * 3, GL_UNSIGNED_INT, 0);
+            mCmdEmitter.emitSwapBuffers(mDisplay, mSurface);
+        }
+
+        mCmdEmitter.emitClear(GL_COLOR_BUFFER_BIT);
+        mCmdEmitter.emitDrawElements(GL_TRIANGLES, 2 * 3, GL_UNSIGNED_INT, 0);
+
         emitCleanUp();
     }
 private:
@@ -2682,6 +2709,9 @@ private:
     retracer::Context &mRetracerContext;
     common::OutFile &mOutFile;
     int mThreadId;
+    int mDisplay;
+    int mSurface;
+    unsigned int mRepeat;
     ScratchBuffer mScratchBuff;
     TraceCommandEmitter mCmdEmitter;
 };
@@ -2741,7 +2771,7 @@ static void injectClear(retracer::Context& retracerContext, common::OutFile& out
 
 using namespace retracer;
 
-static void saveData(common::OutFile &out, unsigned int flags, Json::Value& ffJson)
+static void saveData(common::OutFile &out, unsigned int flags, unsigned int repeat, Json::Value& ffJson, GLint dpy, GLint surface)
 {
     retracer::Retracer& retracer = gRetracer;
 
@@ -2771,7 +2801,7 @@ static void saveData(common::OutFile &out, unsigned int flags, Json::Value& ffJs
 
     if (flags & FASTFORWARD_RESTORE_DEFAUTL_FBO)
     {
-        RetraceAndTrim::DefaultFboSaver fbo0(retracer.getCurrentContext(), out, retracer.getCurTid());
+        RetraceAndTrim::DefaultFboSaver fbo0(retracer.getCurrentContext(), out, retracer.getCurTid(), repeat, dpy, surface);
         fbo0.run();
     }
     else
@@ -2820,7 +2850,16 @@ static void replay_thread(common::OutFile &out, const int threadidx, const int o
         if (retracer.mCurCall.tid == retracer.mOptions.mRetraceTid && shouldSaveData)
         {
             DBG_LOG("Started saving GL state\n");
-            saveData(out, ffOptions.mFlags, ffJson);
+            GLint dpy = 0;
+            GLint surface = 0;
+
+            if (isSwapBuffers)
+            {
+                char* src = retracer.src;
+                src = common::ReadFixed(src, dpy);
+                src = common::ReadFixed(src, surface);
+            }
+            saveData(out, ffOptions.mFlags, ffOptions.mFbo0Repeat, ffJson, dpy, surface);
             DBG_LOG("Done saving GL state\n");
         }
 
@@ -2834,6 +2873,7 @@ static void replay_thread(common::OutFile &out, const int threadidx, const int o
                 || (strstr(funcName, "glDispatchCompute")) // Matches glDispatchCompute*
                 || (strstr(funcName, "glClearBuffer")) // Matches glClearBuffer*
                 || (strcmp(funcName, "glBlitFramebuffer") == 0) // NOTE: strCMP == 0
+                || (strcmp(funcName, "eglSetDamageRegionKHR") == 0)  // NOTE: strCMP == 0
                 || (strcmp(funcName, "glClear") == 0); // NOTE: strCMP == 0
 
             if (isFrameTarget)
@@ -2899,10 +2939,6 @@ static void replay_thread(common::OutFile &out, const int threadidx, const int o
         if (retracer.fptr)
         {
             (*(RetraceFunc)retracer.fptr)(retracer.src); // increments src to point to end of parameter block
-            if (isSwapBuffers && retracer.mCurCall.tid == retracer.mOptions.mRetraceTid)
-            {
-                retracer.IncCurFrameId();
-            }
 
             if (isDrawCall)
             {
@@ -3008,7 +3044,7 @@ usage(const char *argv0)
         "  --noscreen Run in pbuffer output mode\n"
         "  --norestoretex When generating a fastforward trace, don't inject commands to restore the contents of textures to what the would've been when retracing the original. (NOTE: NOT RECOMMEND)\n"
         "  --version Output the version of this program\n"
-        "  --restorefbo0 Inject a draw call commands to restore the last default FBO when generate a fast forward trace\n"
+        "  --restorefbo0 <repeat_times> Repeat to inject a draw call commands and swapbuffer the given number of times to restore the last default FBO. Suggest repeating 3~4 times if setDamageRegionKHR, else repeating 1 time.\n"
         "\n"
         , argv0);
 }
@@ -3099,12 +3135,13 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
         else if (!strcmp(arg, "--restorefbo0"))
         {
             ffOptions.mFlags |= FASTFORWARD_RESTORE_DEFAUTL_FBO;
+            ffOptions.mFbo0Repeat = readValidValue(argv[++i]);
         }
         else if (!strcmp(arg, "--version"))
         {
             std::cout << "Version:" << std::endl;
             std::cout << "- Retracer: " PATRACE_VERSION << std::endl;
-            std::cout << "- Fastforwarder: " << fastforwarderVersionString() << std::endl;
+            std::cout << "- Fastforwarder: " << PATRACE_VERSION << std::endl;
             exit(0);
         }
         else
@@ -3200,13 +3237,13 @@ int main(int argc, char** argv)
         Json::Value ffRestoreInfoJson(Json::objectValue);
         ffRestoreInfoJson["textures"] = (ffOptions.mFlags & FASTFORWARD_RESTORE_TEXTURES) ? true : false;
         ffRestoreInfoJson["buffers"]  = true;
-        ffRestoreInfoJson["fbo0"] = (ffOptions.mFlags & FASTFORWARD_RESTORE_DEFAUTL_FBO) ? true:false;
+        ffRestoreInfoJson["fbo0Repeat"] = ffOptions.mFbo0Repeat;
         ffJson["restoreOptions"] = ffRestoreInfoJson;
 
         // Version of fastforwarder and retracer
         Json::Value ffVersions(Json::objectValue);
         ffVersions["retracer"]      = PATRACE_VERSION;
-        ffVersions["fastforwarder"] = fastforwarderVersionString();
+        ffVersions["fastforwarder"] = PATRACE_VERSION;
         ffJson["versions"] = ffVersions;
     }
 

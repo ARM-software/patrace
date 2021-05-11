@@ -1,11 +1,10 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 import argparse
-from sets import Set
 
 try:
     from patrace import InputFile, OutputFile
 except ImportError:
-    print 'patrace (Python interface of PATrace SDK) is required.'
+    print('patrace (Python interface of PATrace SDK) is required.')
 
 #
 # This script converts an input trace into another trace ('output.pat') in which all calls
@@ -45,10 +44,10 @@ class Application(object):
 def frames(string):
     """Takes a comma separate list of frames/frame ranges, and returns a set containing those frames
 
-    Example: "2,3,4-7,10" => Set([2,3,4,5,6,7,10])
+    Example: "2,3,4-7,10" => set([2,3,4,5,6,7,10])
     """
     def decode_frames(string):
-        print 's', string
+        print('s', string)
         if '-' in string:
             a = string.split('-')
             start, end = int(a[0]), int(a[1])
@@ -57,7 +56,7 @@ def frames(string):
         else:
             yield int(string)
     framesList = string.split(',')
-    frames = Set()
+    frames = set()
     for strFrames in framesList:
         for frameNumber in decode_frames(strFrames):
             frames.add(frameNumber)
@@ -74,6 +73,7 @@ def main():
     args = parser.parse_args()
 
     Application(args).run()
+
 
 if __name__ == '__main__':
     main()

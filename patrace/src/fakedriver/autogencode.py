@@ -1,5 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
+from __future__ import print_function
 import sys
 import os
 import xml.etree.ElementTree as ET
@@ -48,7 +49,7 @@ def generateSourceFile(protos, folder, fname, pythonCmd, manual_imp_funcs, inclu
     dirname = os.path.join(os.path.dirname(os.path.realpath(__file__)), folder)
     filename = os.path.join(dirname, fname)
 
-    keys = protos.keys()
+    keys = list(protos.keys())
     keys.sort()
 
     if not os.path.exists(dirname):
@@ -61,6 +62,9 @@ def generateSourceFile(protos, folder, fname, pythonCmd, manual_imp_funcs, inclu
 
         for include in includes:
             f.write('#include "' + include + '"\n')
+
+        f.write('#include <unistd.h>\n')
+        f.write('#include "dispatch/gleslayer_helper.h"\n')
 
         f.write("\nextern \"C\" {\n\n")
 
@@ -129,8 +133,12 @@ def generateSourceFile(protos, folder, fname, pythonCmd, manual_imp_funcs, inclu
             returnValue = '{return_type_str}'.format(**command)
             hasReturnValue = returnValue.lower() != "void" or not returnValue
 
+            f.write('#ifdef GLESLAYER\n')
+            f.write('EGLAPI {return_type_str} EGLAPIENTRY glesLayer_{function_name}({param_string})\n'.format(**command))
+            f.write('#else\n')
             f.write('{return_type_str} {function_name}({param_string})\n'.format(**command))
-            f.write("{\n")
+            f.write('#endif\n')
+            f.write('{\n')
             if i == 'eglInitialize':
                 f.write("    fakedriverReset(); // forcibly break any OS caching of these functions\n")
             # need temporary for thread-safety in case of reentrancy or dispatch table is cleared
@@ -155,11 +163,11 @@ def generateSourceFile(protos, folder, fname, pythonCmd, manual_imp_funcs, inclu
                 # The result is that no swapping occurs, and the Android UI isn't updated on the phone.
                 # As a workaround, we here try calling 'normal' eglSwapBuffers() if WithDamage* is NULL but
                 # is still called.
-                f.write('        if (!warned_{function_name}) DBG_LOG("Warning: Fakedriver failed to get function pointer for {function_name}. eglSwapBuffers() will be called instead.\\n");\n'.format(**command))
+                f.write('        if (!warned_{function_name}) DBG_LOG("Warning: Fakedriver/Gleslayer failed to get function pointer for {function_name}. eglSwapBuffers() will be called instead.\\n");\n'.format(**command))
                 f.write('        // Try calling normal eglSwapBuffers(). See autogencode.py for details why.\n')
                 f.write('        eglSwapBuffers(dpy, surface);\n')
             else:
-                f.write('        if (!warned_{function_name}) DBG_LOG("Warning: Fakedriver failed to get function pointer for {function_name}\\n");\n'.format(**command))
+                f.write('        if (!warned_{function_name}) DBG_LOG("Warning: Fakedriver/Gleslayer failed to get function pointer for {function_name}\\n");\n'.format(**command))
             f.write('        warned_{function_name} = true;\n'.format(**command))
             if (hasReturnValue):
                 f.write('        return 0;\n')
@@ -169,10 +177,126 @@ def generateSourceFile(protos, folder, fname, pythonCmd, manual_imp_funcs, inclu
             f.write('    sp_{function_name} = tmp;\n'.format(**command))
             f.write('    return ' + real_call + ';\n')
             f.write("}\n\n")
-        f.write("} // end of extern C")
+        f.write("\n")
 
-    print 'Generated %s/%s' % (folder, fname)
+        f.write('#ifdef GLESLAYER\n')
+        f.write('LAYER_DATA gPatraceLayer;\n')
+        f.write('\n')
 
+        f.write('EGLAPI EGLFuncPointer EGLAPIENTRY glesLayer_eglGetProcAddress(const char *procName)\n')
+        f.write('{\n')
+        f.write('    EGLFuncPointer func = reinterpret_cast<EGLFuncPointer>(dispatch_intercept_func(PATRACE_LAYER_NAME, "eglGetProcAddress"));\n')
+        f.write('    //DBG_LOG("glesLayer_eglGetProcAddress(%s): wrapper intercept (eglGetProcAddress) %p\\n", procName, func);\n')
+        f.write('    if (func == NULL)    return NULL;\n')
+        f.write('    typedef EGLFuncPointer (* FUNCPTR_eglGetProcAddress)(const char *);\n')
+        f.write('    FUNCPTR_eglGetProcAddress gpa = reinterpret_cast<FUNCPTR_eglGetProcAddress>(func);\n')
+        f.write('    return gpa(procName);\n')
+        f.write('}\n\n')
+
+        f.write('static void glesLayer_InitializeLayer(void * layer_id,\n')
+        f.write('       PFNEGLGETNEXTLAYERPROCADDRESSPROC get_next_layer_proc_address) \n')
+        f.write('{\n')
+        f.write('    DBG_LOG("glesLayer_InitializeLayer called with layer_id %p get_next_layer_proc_address %p, pid(%d).\\n", layer_id, get_next_layer_proc_address, getpid());\n\n')
+        f.write('    gLayerCollector[std::string(PATRACE_LAYER_NAME)] = &gPatraceLayer;\n\n')
+        f.write('    layer_init_next_proc_address(PATRACE_LAYER_NAME, layer_id, get_next_layer_proc_address);\n\n')
+        f.write('    layer_init_intercept_map();\n')
+        f.write('}\n\n')
+
+        f.write('static EGLFuncPointer glesLayer_patrace_eglGPA(const char* funcName) \n')
+        f.write('{\n')
+        f.write('\n#define GETPROCADDR(func) if (!strcmp(funcName, #func)) { \\\n')
+        f.write('return (EGLFuncPointer) glesLayer_##func; \\\n')
+        f.write('}\n\n')
+        for i in keys:
+            if i in ['eglStreamConsumerGLTextureExternalAttribsNV']:
+                continue
+            command = protos[i]
+            f.write('    GETPROCADDR({function_name});\n'.format(**command))
+        f.write('    return NULL;\n')
+        f.write('}\n\n')
+
+        f.write('static EGLFuncPointer glesLayer_GetLayerProcAddress(const char *funcName, EGLFuncPointer next)\n')
+        f.write('{\n')
+        f.write('\n')
+        f.write('    //here return the gles layer entrypoint glesLayer_glxxx() as the new hook into EGL Loader\n')
+        f.write('    EGLFuncPointer entry = glesLayer_patrace_eglGPA(funcName);\n')
+        f.write('\n')
+        f.write('    if (entry != NULL)\n')
+        f.write('    {\n')
+        f.write('        return entry;\n')
+        f.write('    }\n\n')
+        f.write('    // If gles Layer does not hook the function, just return original func pointer.\n')
+        f.write('    DBG_LOG("GLES Layer does not hook the proc %s, just return original next func pointer %p.\\n", funcName, next);\n')
+        f.write('    return next;\n')
+        f.write('}\n\n')
+
+        f.write('//\n')
+
+        f.write('__attribute((visibility("default"))) void AndroidGLESLayer_Initialize(void* layer_id,\n')
+        f.write('           PFNEGLGETNEXTLAYERPROCADDRESSPROC get_next_layer_proc_address) {\n')
+        f.write('    return (void)glesLayer_InitializeLayer(layer_id, get_next_layer_proc_address);\n')
+        f.write('}\n')
+
+        f.write('__attribute((visibility("default"))) void* AndroidGLESLayer_GetProcAddress(\n')
+        f.write('           const char *funcName, EGLFuncPointer next) {\n')
+        f.write('    return (void*)glesLayer_GetLayerProcAddress(funcName, next);\n')
+        f.write('}\n')
+
+        f.write('#endif // GLESLAYER\n')
+
+        f.write("} // end of extern C\n")
+
+        f.write('\n')
+
+    print('Generated %s/%s' % (folder, fname))
+
+    return 0
+
+def generateHelperFile(protos, folder, fname, pythonCmd, manual_imp_funcs, includes=[]):
+    dirname = os.path.join(os.path.dirname(os.path.realpath(__file__)), folder)
+    filename = os.path.join(dirname, fname)
+
+    keys = list(protos.keys())
+    keys.sort()
+
+    with open(filename, "w") as f:
+        f.write('// This code is auto-generated by: \n')
+        f.write('// '+pythonCmd+'\n')
+
+        f.write('#include "os_string.hpp"\n')
+        f.write('#include "gleslayer_helper.h"\n')
+
+        f.write('std::unordered_map<std::string, LAYER_DATA *> gLayerCollector;\n')
+        f.write('\n')
+        f.write("\nextern \"C\" {\n\n")
+
+        f.write('void* dispatch_intercept_func(const char *layerName, const char* procName)\n')
+        f.write('{\n')
+        f.write('    LAYER_DATA *layer = gLayerCollector[std::string(layerName)];\n')
+        f.write('    void *tmp = NULL;\n\n')
+        f.write('    if (layer->interceptFuncMap.find(procName) != layer->interceptFuncMap.end())\n')
+        f.write('    {\n')
+        f.write('        tmp = reinterpret_cast<void *>(layer->interceptFuncMap[std::string(procName)]);\n')
+        f.write('    }\n\n')
+        f.write('    if (!tmp)\n')
+        f.write('    {\n')
+        f.write('        DBG_LOG("dispatch_intercept_func(%s): Not support to trace proc %s, and calling from next layer.\\n", procName, procName);\n')
+        f.write('        tmp = reinterpret_cast<void *>(layer->nextLayerFuncMap[std::string(procName)]);\n')
+        f.write('    }\n\n')
+        f.write('    return tmp;\n')
+        f.write('}\n\n')
+
+        f.write('void layer_init_next_proc_address(const char *layerName, void *layer_id,\n')
+        f.write('                          PFNEGLGETNEXTLAYERPROCADDRESSPROC get_next_layer_proc_address)\n')
+        f.write('{\n')
+        f.write('    LAYER_DATA *layer = (gLayerCollector[std::string(layerName)]);\n')
+        for i in keys:
+            command = protos[i]
+            f.write('    layer->nextLayerFuncMap[std::string("{function_name}")] = reinterpret_cast<EGLFuncPointer>(get_next_layer_proc_address(layer_id, "{function_name}"));\n'.format(**command))
+        f.write('    DBG_LOG("layer_init_netx_proc_address called with layer(%s) layer_id %p get_next_layer_proc_address %p, pid(%d)\\n", layerName, layer_id, get_next_layer_proc_address, getpid());\n')
+        f.write('}\n\n')
+
+        f.write('} //extern C\n')
     return 0
 
 def GenerateWrapper(headerDir, pythonCmd, manual_imp_funcs):
@@ -225,7 +349,7 @@ def GenerateWrapper(headerDir, pythonCmd, manual_imp_funcs):
                     command_name = command.get('name')
                     sum_commands[command_name] = glcommands[command_name]
         elif not ext.get('supported'):
-            print 'No supported attribute for extension %s' % ext.get('name')
+            print('No supported attribute for extension %s' % ext.get('name'))
     generateSourceFile(sum_commands, 'gles1', 'auto.cpp', pythonCmd, manual_imp_funcs, includes)
     all_commands.update(sum_commands)
     all_includes.extend(includes)
@@ -233,12 +357,15 @@ def GenerateWrapper(headerDir, pythonCmd, manual_imp_funcs):
     # single .so file
     generateSourceFile(all_commands, 'single', 'auto.cpp', pythonCmd, manual_imp_funcs, all_includes)
 
+    # generate gleslayer_helper.cpp
+    generateHelperFile(all_commands, '../dispatch', 'gleslayer_helper.cpp', pythonCmd, manual_imp_funcs, includes)
+
     return 0
 
 def usage():
-    print "Generate wrapper libraries based on khronos XML"
-    print "Options:"
-    print "-h Path to the khronos headers (Default = '../../../thirdparty/opengl-registry/api/'"
+    print("Generate wrapper libraries based on khronos XML")
+    print("Options:")
+    print("-h Path to the khronos headers (Default = '../../../thirdparty/opengl-registry/api/'")
 
 if __name__ == '__main__':
     opts = None
@@ -248,14 +375,14 @@ if __name__ == '__main__':
 
     try:
         opts,args = getopt.getopt(sys.argv[1:], "h:", ["help"])
-    except getopt.GetoptError, err:
-        print str(err)
+    except getopt.GetoptError as err:
+        print(str(err))
         usage()
         sys.exit(0)
 
     # Parse options:
     for o, a in opts:
-        print o, a
+        print(o, a)
         if o == '-h':
             headerDir = a
         elif o == "--help":

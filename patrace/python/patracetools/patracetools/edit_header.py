@@ -1,17 +1,17 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 import argparse
 import os
 import tempfile
 import subprocess
 import json
-import headerparser
+from patracetools import headerparser
 
 
 def patch(trace_file, header_file):
     with open(header_file) as hf:
         header = json.load(hf)
 
-    print "Patching {trace}...".format(trace=trace_file)
+    print("Patching {trace}...".format(trace=trace_file))
     headerparser.write_json_header(trace_file, header)
 
 
@@ -23,8 +23,8 @@ def mergelist(original, update):
 
 def merge(original, update):
     """ Merges two python objects """
-    for key, value in original.iteritems():
-        if not key in update:
+    for key, value in original.items():
+        if key not in update:
             update[key] = value
         elif isinstance(value, dict):
             merge(value, update[key])
@@ -37,7 +37,7 @@ def merge(original, update):
 
 def edit(json_string):
     pretty_printed_json = json.dumps(json_string, indent=2, sort_keys=True)
-    tmp_header = tempfile.NamedTemporaryFile(delete=False)
+    tmp_header = tempfile.NamedTemporaryFile('wt', delete=False)
     tmp_header.write(pretty_printed_json)
     tmp_header.close()
 

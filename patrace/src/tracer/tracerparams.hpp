@@ -24,6 +24,9 @@ public:
     int MaximumAnisotropicFiltering = 0;            // Anisotropic support. Must also add GL_EXT_texture_filter_anisotropic to SupportedExtensions
     bool ErrorOutOnBinaryShaders = true;            // Return an error if a program attempts to upload a binary shader
     bool DisableErrorReporting = false;             // Disable GLES error reporting callbacks
+    bool EnableRandomVersion = true;               //  Enable to append a random to GL_VERSION
+    std::string RandomVersion = "";
+    bool CloseTraceFileByTerminate = true;          // close current trace and create new on when calling  eglTerminate
 
     std::string _tmp_extensions;
 

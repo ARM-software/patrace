@@ -23,6 +23,16 @@ public:
 
     void rollback();
 
+    long memoryUsed()
+    {
+        long s = 0;
+        if (mCurrentChunk) s += mCurrentChunk->size();
+        if (mPrevChunk) s += mPrevChunk->size();
+        for (const auto* c : mPreloadedChunks) s += c->size();
+        for (const auto* c : mFreeChunks) s += c->size();
+        return s;
+    }
+
 private:
     void ReadSigBook();
     void PreloadFrames(int frames_to_read, int tid);

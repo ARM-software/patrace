@@ -14,7 +14,7 @@ public class NativeAPI
     private static Handler msgHandler;
     private static boolean mHasSurface;
     private static Surface surfHolder;
-    private static int mTextureViewSize;
+    private static int mViewSize;
     private static final String TAG = "paretrace NativeAPI";
 
     public static void setMsgHandler(Handler handler){
@@ -41,11 +41,11 @@ public class NativeAPI
                     Thread.currentThread().interrupt();
                 }
             }
-            setSurface(surfHolder, mTextureViewSize);
+            setSurface(surfHolder, mViewSize);
         }
     }
 
-    public static void resizeNewSurfaceAndWait(int width, int height, int format, int textureViewId) {
+    public static void resizeNewSurfaceAndWait(int width, int height, int format, int viewId) {
         Log.i(TAG, "resizeNewSurfaceAndWait");
         synchronized(msgHandler) {
             mWidth = width;
@@ -57,7 +57,7 @@ public class NativeAPI
             msg.arg1 = width;
             msg.arg2 = height;
             Bundle data = new Bundle();
-            data.putInt("textureViewId", textureViewId);
+            data.putInt("viewId", viewId);
             msg.setData(data);
             msg.what = 2;
             msgHandler.sendMessage(msg);
@@ -68,34 +68,57 @@ public class NativeAPI
                     Thread.currentThread().interrupt();
                 }
             }
-            setSurface(surfHolder, mTextureViewSize);
+            setSurface(surfHolder, mViewSize);
         }
     }
 
-    public static void onSurfaceChanged(Surface holder, int width, int height, int textureViewSize) {
+    public static void destroySurfaceAndWait(int viewId) {
+        Log.i(TAG, "destroySurfaceAndWait");
+        synchronized(msgHandler) {
+            mHasSurface = true;
+            Message msg = new Message();
+            msg.arg1 = 0;
+            msg.arg2 = 0;
+            Bundle data = new Bundle();
+            data.putInt("viewId", viewId);
+            msg.setData(data);
+            msg.what = 3;
+            msgHandler.sendMessage(msg);
+            while (mHasSurface && surfHolder != null) {
+                try {
+                    msgHandler.wait();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+        }
+    }
+
+    public static void onSurfaceChanged(Surface holder, int width, int height, int viewSize) {
         synchronized(msgHandler) {
             Log.i(TAG, "onSurfaceChanged " + holder + " " + width + " " + height);
             surfHolder = holder;
             mHasSurface= true;
-            mTextureViewSize = textureViewSize;
+            mViewSize = viewSize;
             msgHandler.notifyAll();
         }
     }
 
-    public static void onSurfaceDestroyed(Surface holder, int textureViewSize) {
+    public static void onSurfaceDestroyed(Surface holder, int viewSize) {
         synchronized(msgHandler) {
             Log.i(TAG, "onSurfaceDestroyed " + holder);
             setSurface(null, 0);
             surfHolder = null;
             mHasSurface= false;
+            msgHandler.notifyAll();
         }
     }
 
     public static native void init(boolean registerEntries);
     public static native boolean initFromJson(String jsonData, String traceDir, String resultFile);
-    public static native void setSurface(Surface surface, int textureViewSize);
+    public static native void setSurface(Surface surface, int viewSize);
     public static native boolean step();
-    public static native void stop();
+    public static native void stop(String result);
     public static native boolean opt_getIsPortraitMode();
 
     static {

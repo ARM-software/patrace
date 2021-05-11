@@ -18,6 +18,7 @@ static const std::vector<std::string> options =
     "/sys/module/mali/parameters/mali_gpu_clk", // utgard
     "/sys/kernel/gpu/gpu_clock", // standardized path in Android
     "/sys/kernel/debug/clk/clk-g3d/clk_rate", // hikey960
+    "/sys/devices/platform/soc/3d00000.qcom,kgsl-3d0/kgsl/kgsl-3d0/devfreq/cur_freq", // S21 Adreno
 };
 
 GPUFreqCollector::GPUFreqCollector(const Json::Value& config, const std::string& name)

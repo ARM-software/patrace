@@ -103,6 +103,11 @@ public:
         visible = true;
     }
 
+    virtual void close(void)
+    {
+        visible = false;
+    }
+
     virtual void swapBuffers(void) = 0;
     virtual void swapBuffersWithDamage(int *rects, int n_rects) = 0;
     virtual void setDamage(int* array, int length) {}

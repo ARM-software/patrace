@@ -30,6 +30,8 @@ TracerParams::TracerParams()
         DBG_LOG("FlushTraceFileEveryFrame: %s\n", FlushTraceFileEveryFrame ? "true" : "false");
         DBG_LOG("DisableBufferStorage: %s\n", DisableBufferStorage ? "true" : "false");
         DBG_LOG("RendererName: %s\n", RendererName.c_str());
+        DBG_LOG("EnableRandomVersion: %s\n", EnableRandomVersion ? "true": "false");
+        DBG_LOG("CloseTraceFileByTerminate: %s\n", CloseTraceFileByTerminate ? "true": "false");
         if (DisableErrorReporting) DBG_LOG("DisableErrorReporting: true\n");
         if (StateDumpAfterSnapshot) DBG_LOG("StateDumpAfterSnapshot: true\n");
         if (StateDumpAfterDrawCall) DBG_LOG("StateDumpAfterDrawCall: true\n");
@@ -127,6 +129,10 @@ void TracerParams::LoadParams()
             DisableBufferStorage = (strParamValue.compare("true") == 0);
         } else if (strParamName.compare("RendererName") == 0) {
             RendererName = strParamValue;
+        } else if(strParamName.compare("EnableRandomVersion") == 0) {
+            EnableRandomVersion = (strParamValue.compare("true") == 0);
+        } else if(strParamName.compare("CloseTraceFileByTerminate") == 0) {
+            CloseTraceFileByTerminate = (strParamValue.compare("true") == 0);
         } else if (strParamName.compare("SupportedExtension") == 0) {
             SupportedExtensions.push_back(strParamValue);
             if (SupportedExtensionsString.length() != 0)

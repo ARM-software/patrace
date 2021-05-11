@@ -1,1 +1,1 @@
-include ':collector_android'
+include ':layer_android', ':collector_android'

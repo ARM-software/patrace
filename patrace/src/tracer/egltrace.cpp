@@ -712,6 +712,7 @@ GLuint replace_glCreateShaderProgramv(unsigned char tid, GLenum type, GLsizei co
             _glShaderSource(shader, count, strings, NULL);
             _glCompileShader(shader);
             const GLuint program = _glCreateProgram();
+            after_glCreateProgram(tid, program);
             if (program)
             {
                 GLint compiled = GL_FALSE;
@@ -736,6 +737,7 @@ GLuint replace_glCreateShaderProgramv(unsigned char tid, GLenum type, GLsizei co
     else
     {
         GLuint program = _glCreateShaderProgramv(type, count, strings);
+        after_glCreateProgram(tid, program);
         after_glLinkProgram(program);
         return program;
     }
@@ -792,7 +794,7 @@ bool pre_glLinkProgram(unsigned char tid, unsigned int program)
         // That is why we need to check that attribLocation < maxVertexAttribs
         if (attribLoc >= 0 && attribLoc < maxVertexAttribs)
         {
-            glBindAttribLocation(program, attribLoc, attribName);
+            inject_glBindAttribLocation(program, attribLoc, attribName);
         }
     }
     return true;
@@ -890,7 +892,7 @@ void after_glLinkProgram(unsigned int program)
     {
         char cname[128];
         _glGetActiveUniformBlockName(program, i, sizeof(cname), NULL, cname);
-        GLuint retval = glGetUniformBlockIndex(program, cname); // injected call
+        GLuint retval = inject_glGetUniformBlockIndex(program, cname); // injected call
         if (retval == GL_INVALID_INDEX)
         {
             DBG_LOG("INVALID INDEX injecting block lookup for %s in program %u!\n", cname, program);
@@ -916,7 +918,7 @@ void after_glLinkProgram(unsigned int program)
         {
             continue; // is atomic counter, cannot be location'ed since it must be explicitly bound
         }
-        GLint retval = glGetUniformLocation(program, cname); // injected call
+        GLint retval = inject_glGetUniformLocation(program, cname); // injected call
         if (retval == -1)
         {
             DBG_LOG("Error injecting location lookup for %s in program %u!\n", cname, program);
@@ -928,7 +930,7 @@ void after_glLinkProgram(unsigned int program)
             for (int i = 1; i < size; ++i) {
                 stringstream istring;
                 istring << i;
-                GLint retval = glGetUniformLocation(program, (s + istring.str() + ']').c_str()); // injected call
+                GLint retval = inject_glGetUniformLocation(program, (s + istring.str() + ']').c_str()); // injected call
                 if (retval == -1)
                 {
                     DBG_LOG("Error injecting location lookup for %s in program %u!\n", cname, program);
@@ -1125,7 +1127,7 @@ void insert_glBindTexture(GLenum target, GLuint texture, int tid)
     char* dest = gTraceOut->writebuf;
     BCall *pCall = (BCall*)dest;
     pCall->funcId = glBindTexture_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     dest = WriteFixed<int>(dest, target); // enum
@@ -1140,7 +1142,7 @@ void insert_glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsiz
     char* dest = gTraceOut->writebuf;
     BCall_vlen *pCall2 = (BCall_vlen*)dest;
     pCall2->funcId = glTexImage2D_id;
-    pCall2->tid = tid; pCall2->reserved = 0;
+    pCall2->tid = tid; pCall2->reserved = 0; pCall2->source = 1;
     dest += sizeof(*pCall2);
 
     dest = WriteFixed<int>(dest, target); // enum
@@ -1213,7 +1215,7 @@ GLuint pre_eglCreateImageKHR(EGLImageKHR image, EGLenum target, EGLClientBuffer 
     GLint oldBoundTexture = 0;
     _glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldBoundTexture);
     GLuint textureId = 0;
-    glGenTextures(1, &textureId);
+    inject_glGenTextures(1, &textureId);
 
     unsigned char tid = GetThreadId();
     gTraceOut->callMutex.lock();
@@ -1283,7 +1285,7 @@ GLuint pre_glEGLImageTargetTexture2DOES(EGLImageKHR image, EGLint *&attrib_list)
     if (iter == gTraceThread.at(tid).mEglImageToTextureIdMap.end())
     {
         DBG_LOG("Used a non-exist EGLImageKHR %p, maybe there is something wrong!\n", image);
-        glGenTextures(1, &textureId);
+        inject_glGenTextures(1, &textureId);
         unsigned char tid = GetThreadId();
         EGLImageToTextureIdMap_t& map = gTraceThread.at(tid).mEglImageToTextureIdMap;
         map[image] = textureId;
@@ -1316,7 +1318,7 @@ void after_eglDestroyImageKHR(EGLDisplay dpy, EGLImageKHR image)
     GLuint textureId = it->second;
     if (_eglGetCurrentContext())
     {
-        glDeleteTextures(1, &textureId);
+        inject_glDeleteTextures(1, &textureId);
     }
     map.erase(it);
 }
@@ -1373,7 +1375,7 @@ void _glVertexPointer_fake(GLint size, GLenum type, GLsizei stride, const GLvoid
     char* dest = gTraceOut->writebuf;
     BCall_vlen *pCall = (BCall_vlen*)dest;
     pCall->funcId = glVertexPointer_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     //_glVertexPointer(size, type, stride, pointer);
@@ -1395,7 +1397,7 @@ void _glNormalPointer_fake(GLenum type, GLsizei stride, const GLvoid * pointer, 
     char* dest = gTraceOut->writebuf;
     BCall_vlen *pCall = (BCall_vlen*)dest;
     pCall->funcId = glNormalPointer_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     //_glNormalPointer(type, stride, pointer);
@@ -1416,7 +1418,7 @@ void _glColorPointer_fake(GLint size, GLenum type, GLsizei stride, const GLvoid 
     char* dest = gTraceOut->writebuf;
     BCall_vlen *pCall = (BCall_vlen*)dest;
     pCall->funcId = glColorPointer_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     //_glColorPointer(size, type, stride, pointer);
@@ -1437,7 +1439,7 @@ void _glTexCoordPointer_fake(GLint size, GLenum type, GLsizei stride, const GLvo
     char* dest = gTraceOut->writebuf;
     BCall_vlen *pCall = (BCall_vlen*)dest;
     pCall->funcId = glTexCoordPointer_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     //_glTexCoordPointer(size, type, stride, pointer);
@@ -1460,7 +1462,7 @@ void _glVertexAttribPointer_fake(const VertexAttributeMemoryMerger::AttributeInf
     char* dest = gTraceOut->writebuf;
     BCall_vlen *pCall = (BCall_vlen*)dest;
     pCall->funcId = glVertexAttribPointer_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     //_glVertexAttribPointer(index, size, type, normalized, stride, pointer);
@@ -1486,7 +1488,7 @@ void _glVertexAttribPointer_fake(GLuint index, GLint size, GLenum type, GLboolea
     char* dest = gTraceOut->writebuf;
     BCall_vlen *pCall = (BCall_vlen*)dest;
     pCall->funcId = glVertexAttribPointer_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     //_glVertexAttribPointer(index, size, type, normalized, stride, pointer);
@@ -1509,7 +1511,7 @@ void _glClientActiveTexture_fake(GLenum texture){
     char* dest = gTraceOut->writebuf;
     BCall *pCall = (BCall*)dest;
     pCall->funcId = glClientActiveTexture_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     // _glClientActiveTexture(texture);
@@ -1530,7 +1532,7 @@ ClientSideBufferObjectName _glCreateClientSideBuffer()
     char* dest = gTraceOut->writebuf;
     BCall *pCall = (BCall*)dest;
     pCall->funcId = glCreateClientSideBuffer_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     dest = WriteFixed<unsigned int>(dest, name); // literal
@@ -1549,7 +1551,7 @@ void _glDeleteClientSideBuffer(ClientSideBufferObjectName name)
     char* dest = gTraceOut->writebuf;
     BCall *pCall = (BCall*)dest;
     pCall->funcId = glDeleteClientSideBuffer_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     dest = WriteFixed<unsigned int>(dest, name); // literal
@@ -1566,7 +1568,7 @@ void _glCopyClientSideBuffer(GLenum target, ClientSideBufferObjectName name)
     char* dest = gTraceOut->writebuf;
     BCall *pCall = (BCall*)dest;
     pCall->funcId = glCopyClientSideBuffer_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     dest = WriteFixed<int>(dest, target); // enum
@@ -1584,7 +1586,7 @@ void _glPatchClientSideBuffer(GLenum target, int length, const void *data)
     char* dest = gTraceOut->writebuf;
     BCall_vlen *pCall = (BCall_vlen*)dest;
     pCall->funcId = glPatchClientSideBuffer_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     dest = WriteFixed<int>(dest, target); // enum
@@ -1606,7 +1608,7 @@ void _glClientSideBufferData(ClientSideBufferObjectName name,
     char* dest = gTraceOut->writebuf;
     BCall_vlen *pCall = (BCall_vlen*)dest;
     pCall->funcId = glClientSideBufferData_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     dest = WriteFixed<unsigned int>(dest, name); // literal
@@ -1628,7 +1630,7 @@ void _glClientSideBufferSubData(ClientSideBufferObjectName name,
     char* dest = gTraceOut->writebuf;
     BCall_vlen *pCall = (BCall_vlen*)dest;
     pCall->funcId = glClientSideBufferSubData_id;
-    pCall->tid = tid; pCall->reserved = 0;
+    pCall->tid = tid; pCall->reserved = 0; pCall->source = 1;
     dest += sizeof(*pCall);
 
     dest = WriteFixed<unsigned int>(dest, name); // literal
@@ -1986,7 +1988,7 @@ void _trace_user_arrays(int count, int instancecount)
         // glVertexAttribPointer below.
         if (originallyBoundBuffer)
         {
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            inject_glBindBuffer(GL_ARRAY_BUFFER, 0);
         }
 
         for (unsigned int i = 0; i < attr_count; ++i)
@@ -1998,7 +2000,7 @@ void _trace_user_arrays(int count, int instancecount)
 
         if (originallyBoundBuffer)
         {
-            glBindBuffer(GL_ARRAY_BUFFER, originallyBoundBuffer);
+            inject_glBindBuffer(GL_ARRAY_BUFFER, originallyBoundBuffer);
         }
     }
 #endif

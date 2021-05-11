@@ -287,8 +287,10 @@ public:
     unsigned int            mBkColor;
     unsigned int            mTxtColor;
 
+    bool mInjected = false;
+
     std::string ToStr(bool isAbbreviate = true);
-    char* Serialize(char* dest, int overrideID = -1);
+    char* Serialize(char* dest, int overrideID = -1, bool injected = false);
     void Stylize();
 
     std::string ToCppCall();

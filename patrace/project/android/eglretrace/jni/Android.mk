@@ -97,7 +97,6 @@ LOCAL_SRC_FILES         :=  \
                     ../../thirdparty/libcollector/interface.cpp \
                     ../../thirdparty/libcollector/collectors/collector_utility.cpp \
                     ../../thirdparty/libcollector/collectors/cputemp.cpp \
-                    ../../thirdparty/libcollector/collectors/debug.cpp \
                     ../../thirdparty/libcollector/collectors/ferret.cpp \
                     ../../thirdparty/libcollector/collectors/rusage.cpp \
                     ../../thirdparty/libcollector/collectors/streamline.cpp \

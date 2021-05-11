@@ -12,6 +12,16 @@ static int start_frame = 0;
 static int end_frame = INT32_MAX;
 static int our_tid = -1;
 static bool verbose = false;
+static bool colours = false;
+
+#define RED   "\x1B[31m"
+#define GRN   "\x1B[32m"
+#define YEL   "\x1B[33m"
+#define BLU   "\x1B[34m"
+#define MAG   "\x1B[35m"
+#define CYN   "\x1B[36m"
+#define WHT   "\x1B[37m"
+#define RESET "\x1B[0m"
 
 void usage(const char *argv0)
 {
@@ -24,6 +34,7 @@ void usage(const char *argv0)
         "  -f <f> <l> Define frame interval, inclusive\n"
         "  -tid   <thread_id> Only the function calls invoked by thread <thread_id> will be printed\n"
         "  -v     Verbose output\n"
+        "  -c     Add colours\n"
         "\n"
         , argv0);
 }
@@ -48,10 +59,17 @@ int readValidValue(const char* v)
 static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *fpp)
 {
     FILE *fp = (FILE*)fpp;
-    if (input.frames >= start_frame && input.frames <= end_frame && (our_tid == -1 || our_tid == (int)call->mTid))
-    {
-        fprintf(fp, "[t%d, f%d, c%d] %d : %s\n", call->mTid, input.frames, input.context_index, call->mCallNo, call->ToStr(false).c_str());
-    }
+
+    if (input.frames > end_frame) return false;
+    if (!(input.frames >= start_frame && input.frames <= end_frame && (our_tid == -1 || our_tid == (int)call->mTid))) return true;
+
+    const char *injected = call->mInjected ? "INJECTED " : "";
+    if (call->mInjected && colours) injected = BLU "INJECTED " RESET;
+    const char *mark = (colours && call->mCallName.compare(0, 14, "eglSwapBuffers") == 0) ? GRN : "";
+    if (colours && call->mCallName == "glInsertEventMarkerEXT") mark = YEL;
+    if (colours && call->mCallName == "eglMakeCurrent") mark = CYN;
+    const char *reset = (colours) ? RESET : "";
+    fprintf(fp, "[t%d, f%d, c%d] %d : %s%s%s%s%s\n", call->mTid, input.frames, input.context_index, call->mCallNo, injected, reset, mark, call->ToStr(false).c_str(), reset);
     if (verbose)
     {
         const int context_index = input.context_index;
@@ -78,15 +96,30 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *fpp)
             if (input.contexts[context_index].textures.contains(tex_id)) tex_index = input.contexts[context_index].textures.remap(tex_id);
             c += " tex_unit=" + std::to_string(unit) + " tex=" + std::to_string(tex_index) + "|" + std::to_string(tex_id);
         }
+        else if (call->mCallName == "glBindVertexArray" || call->mCallName == "glBindVertexArrayOES")
+        {
+            const GLuint vao_id = call->mArgs[0]->GetAsUInt();
+            if (vao_id != 0)
+            {
+                input.contexts[context_index].vao_index = input.contexts[context_index].vaos.remap(vao_id);
+                StateTracker::VertexArrayObject& vao = input.contexts[context_index].vaos.at(input.contexts[context_index].vao_index);
+                for (const auto& target : vao.boundBufferIds)
+                {
+                    for (auto& buffer : target.second)
+                    {
+                        c += " " + texEnum(target.first) + "=" + std::to_string(buffer.second.buffer);
+                    }
+                }
+            }
+        }
         if (call->mCallName.find("glUniform") != std::string::npos)
         {
             const int program_index = input.contexts[context_index].program_index;
             if (program_index != UNBOUND)
             {
-                const GLuint program_id = input.contexts[context_index].programs[program_index].id;
+                const StateTracker::Program &p = input.contexts[context_index].programs.at(program_index);
                 const GLint location = call->mArgs[0]->GetAsInt();
-                const StateTracker::Program &p = input.contexts[context_index].programs[program_index];
-                c += " program=" + std::to_string(program_index) + "|" + std::to_string(program_id) + " name=" + p.uniformNames.at(location);
+                c += " program=" + std::to_string(program_index) + "|" + std::to_string(p.id) + " name=" + (p.uniformNames.count(location) ? p.uniformNames.at(location) : std::string("INVALID"));
             }
         }
         if (call->mCallName.compare(0, 6, "glDraw") == 0 && call->mCallName != "glDrawBuffers")
@@ -167,6 +200,10 @@ int main(int argc, const char* argv[])
         {
             our_tid = readValidValue(argv[++i]);
         }
+        else if (!strcmp(arg, "-c"))
+        {
+            colours = true;
+        }
         else if (!strcmp(arg, "-v"))
         {
             verbose = true;
@@ -194,7 +231,7 @@ int main(int argc, const char* argv[])
         return 1;
     }
     common::CallTM *call = nullptr;
-    while ((call = inputFile.next_call())) callback(inputFile, call, fp);
+    while ((call = inputFile.next_call()) && callback(inputFile, call, fp)) {}
     fclose(fp);
     return 0;
 }

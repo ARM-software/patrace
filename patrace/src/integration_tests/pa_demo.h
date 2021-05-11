@@ -7,6 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <string>
+#include <vector>
 
 #define EGL_NO_X11
 #define GL_GLEXT_PROTOTYPES
@@ -56,23 +57,24 @@ struct PADEMO
 	PADEMO_CALLBACK_SWAP swap;
 	PADEMO_CALLBACK_INIT init;
 	PADEMO_CALLBACK_FREE done;
-	int frames;
-	EGLint width;
-	EGLint height;
-	void *user_data;
-	EGLDisplay display;
-	EGLContext context;
-	EGLSurface surface;
-	int current_frame;
+	int frames = 10;
+	EGLint width = 640;
+	EGLint height = 480;
+	void *user_data = nullptr;
+	EGLDisplay display = 0;
+	std::vector<EGLContext> context;
+	std::vector<EGLSurface> surface;
+	int current_frame = 0;
 };
 
-int init(const char *name, PADEMO_CALLBACK_SWAP swap, PADEMO_CALLBACK_INIT setup, PADEMO_CALLBACK_FREE cleanup, void *user_data = nullptr, EGLint *attribs = nullptr);
+int init(const char *name, PADEMO_CALLBACK_SWAP swap, PADEMO_CALLBACK_INIT setup, PADEMO_CALLBACK_FREE cleanup, void *user_data = nullptr, EGLint *attribs = nullptr, int surfaces = 1);
 void assert_fb(int width, int height);
 void checkError(const char *msg);
 void compile(const char *name, GLint shader);
 void link_shader(const char *name, GLint program);
 GLenum fb_internalformat();
 bool is_null_run();
+void annotate(const char *annotation);
 
 #define SHORT_FILE (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 #define PALOGE(format, ...) do { printf("%s,%d: " format, SHORT_FILE, __LINE__, ##__VA_ARGS__); } while(0)

@@ -17,7 +17,7 @@ if not os.path.exists(os.path.join(here, 'patrace.py')):
         outdir=here,
         input_file=input_file,
     )
-    print "Executing {0}".format(command)
+    print("Executing {0}".format(command))
     subprocess.call(command.split())
 
 on_64bit_platform = sys.maxsize > 2 ** 32
@@ -43,6 +43,7 @@ def generate_version():
     with open('version.py', 'w') as f:
         f.write("version='{major}.{minor_patch}'".format(major=major, minor_patch=("{}.{}".format(minor, patch) if patch != "0" else minor)))
 
+
 if not os.path.exists(os.path.join(here, 'PKG-INFO')):
     generate_version()
 
@@ -50,6 +51,7 @@ if not os.path.exists(os.path.join(here, 'PKG-INFO')):
 def version():
     from version import version
     return version
+
 
 patrace_extension = setuptools.Extension(
     '_patrace',

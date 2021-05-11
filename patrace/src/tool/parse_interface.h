@@ -43,6 +43,7 @@ struct DrawParams
 
     // the below are only for indexed drawing
     int unique_vertices = 0; // this may be different than vertices for indexed drawing, counting vertex reuse
+    int num_vertices_out = 0; // Number of vertices emitted after geometry processing is done (should ideally deal with tessellation and geom shaders but does not at present)
     int max_sparseness = 0; // size of largest unused hole in the used segment of the vertex array
     double avg_sparseness = 0.0; // average size of holes
     int max_value = 0; // highest index
@@ -186,6 +187,7 @@ struct ResourceStorage
     inline T& at(int idx) { return share->store.at(idx); }
     inline const T& at(int idx) const { return share->store.at(idx); }
     inline T& operator[](int idx) { return share->store.at(idx); }
+    inline const T& operator[](int idx) const = delete;
     inline T& id(GLuint id) { int idx; idx = share->remapping.at(id); return at(idx); }
     inline const T& id(GLuint id) const { int idx; idx = share->remapping.at(id); return at(idx); }
     inline int remap(GLuint id) const { return share->remapping.at(id); }
@@ -334,6 +336,15 @@ struct GLSLSampler
     GLSLSampler() {}
 };
 
+struct GLSLVarying
+{
+    GLSLPrecision precision = HIGHP;
+    GLenum type = GL_NONE;
+    std::string abstract_type;
+    GLSLVarying(GLSLPrecision p, GLenum t, const std::string& abstract_type) : precision(p), type(t), abstract_type(abstract_type) {}
+    GLSLVarying() {}
+};
+
 struct Shader : public Resource
 {
     std::string source_code;
@@ -348,6 +359,7 @@ struct Shader : public Resource
     int lowp_varyings = 0;
     int mediump_varyings = 0;
     int highp_varyings = 0;
+    std::map<std::string, GLSLVarying> varyings;
     GLenum shader_type = GL_NONE;
     unsigned call = 0; // call where shader source was uploaded
     bool compile_status = false;
@@ -676,6 +688,7 @@ public:
     void setRenderpassJSON(bool value) { mRenderpassJSON = value; }
     void setDebug(bool debug) { mDebug = debug; }
     void interpret_call(common::CallTM *call);
+    void check_enum(const std::string& callname, GLenum value);
 
     std::deque<StateTracker::Context> contexts; // using deque to avoid moving contents around in memory, invalidating pointers
     std::vector<StateTracker::Surface> surfaces;
@@ -693,6 +706,7 @@ public:
     Json::Value threadArray;
     Json::Value header;
     int frames = 0; // number of frames processed so far
+    int draws = 0; // number of draw calls processed so far
     int surface_index = UNBOUND;
     int context_index = UNBOUND;
 

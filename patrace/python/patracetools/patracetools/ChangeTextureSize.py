@@ -5,8 +5,8 @@ from patrace import InputFile, OutputFile
 try:
     import OpenGL.GL as GL
 except ImportError:
-    print 'PyOpenGL (the Python OpenGL binding) is required;'
-    print 'You could install it with "pip install PyOpenGL".'
+    print('PyOpenGL (the Python OpenGL binding) is required;')
+    print('You could install it with "pip install PyOpenGL".')
     sys.exit()
 
 # This script just modifies the dimension of a 2D texture with specified names and create a new trace ('output.pat')

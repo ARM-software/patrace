@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from __future__ import print_function
+
 import argparse
 import json
 import sys
@@ -20,7 +20,7 @@ def main():
 def mkdirpf(directory):
     try:
         os.makedirs(directory)
-    except os.error, e:
+    except os.error as e:
         if e.errno != os.errno.EEXIST:
             raise e
 
@@ -159,7 +159,7 @@ def header_format(data, include_list=None):
 
     patchdir = './patches'
 
-    for key, value in header_info.iteritems():
+    for key, value in header_info.items():
         if include_list and key not in include_list:
             continue
 
@@ -177,7 +177,7 @@ def header_format(data, include_list=None):
 
 def find_traces_that_need_attribute_handling(interleaved_data):
     result = set()
-    for key, value in interleaved_data.iteritems():
+    for key, value in interleaved_data.items():
         for program in value:
             if program['attributes']['only_on_qualcomm']:
                 result.add(key)

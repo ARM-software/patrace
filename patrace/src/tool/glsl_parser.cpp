@@ -1132,7 +1132,33 @@ GLSLRepresentation GLSLParser::parse(const GLSLShader& shader)
         }
         else if (block_depth > 0)
         {
-            continue; // don't care about the actual meat of the shader
+            // Check for usage of globals
+            if (curr.str == "gl_Position")
+            {
+                GLSLRepresentation::Variable global_var = GLSLRepresentation::Variable();
+
+                global_var.precision = default_precision.at(Keyword::Float);
+                global_var.type = Keyword::Vec4;
+                global_var.storage = Keyword::Varying;
+                global_var.name = curr.str;
+                global_var.size = 1;
+
+                ret.global.members.push_back(global_var);
+            }
+            else if (curr.str == "gl_PointSize")
+            {
+                GLSLRepresentation::Variable global_var = GLSLRepresentation::Variable();
+
+                global_var.precision = default_precision.at(Keyword::Float);
+                global_var.type = Keyword::Float;
+                global_var.storage = Keyword::Varying;
+                global_var.name = curr.str;
+                global_var.size = 1;
+
+                ret.global.members.push_back(global_var);
+            }
+            // gl_ClipDistance must be redecleared so we dont need to check for it.
+            continue;
         }
         // all the below are now only checked if in the global scope
         else if (curr.str == "[")

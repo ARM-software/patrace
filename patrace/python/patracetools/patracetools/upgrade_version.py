@@ -1,12 +1,12 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
-from __future__ import print_function
+
 import argparse
 import sys
 import os
 import json
 import datetime
-import pat_version
+from patracetools import pat_version
 
 try:
     from patrace import InputFile, OutputFile

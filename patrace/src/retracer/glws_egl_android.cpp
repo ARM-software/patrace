@@ -95,6 +95,13 @@ void GlwsEglAndroid::setupJAVAEnv(JNIEnv *env)
         DBG_LOG("ERROR: Can't get resizeNewSurfaceAndWait api!\n");
         exit(1);
     }
+
+    gDestroyWindowID = env->GetStaticMethodID(gNativeCls, "destroySurfaceAndWait", "(I)V");
+    if (gDestroyWindowID == NULL)
+    {
+        DBG_LOG("ERROR: Can't get destroySurfaceAndWait api!\n");
+        exit(1);
+    }
 }
 
 void GlwsEglAndroid::requestNativeWindow(int width, int height, int format)
@@ -115,7 +122,7 @@ void GlwsEglAndroid::requestNativeWindow(int width, int height, int format)
     jEnv->CallStaticVoidMethod(gNativeCls, gRequestWindowID, width, height, format);
 }
 
-void GlwsEglAndroid::resizeNativeWindow(int width, int height, int format, int textureViewId)
+void GlwsEglAndroid::resizeNativeWindow(int width, int height, int format, int viewId)
 {
     JNIEnv* jEnv = static_cast<JNIEnv*>(retracer::gRetracer.mState.mThreadArr[retracer::gRetracer.getCurTid()].mpJavaEnv);
 
@@ -130,7 +137,25 @@ void GlwsEglAndroid::resizeNativeWindow(int width, int height, int format, int t
         retracer::gRetracer.mState.mThreadArr[retracer::gRetracer.getCurTid()].mpJavaEnv = jEnv;
     }
 
-    jEnv->CallStaticVoidMethod(gNativeCls, gResizeWindowID, width, height, format, textureViewId);
+    jEnv->CallStaticVoidMethod(gNativeCls, gResizeWindowID, width, height, format, viewId);
+}
+
+void GlwsEglAndroid::destroyNativeWindow(int viewId)
+{
+    JNIEnv* jEnv = static_cast<JNIEnv*>(retracer::gRetracer.mState.mThreadArr[retracer::gRetracer.getCurTid()].mpJavaEnv);
+
+    if (jEnv == NULL)
+    {
+        int ret = jvm->AttachCurrentThread(&jEnv, NULL);
+        if (ret != 0)
+        {
+            DBG_LOG("ERROR: Can't get JNI interface! For thread %d.\n",retracer::gRetracer.getCurTid());
+            exit(1);
+        }
+        retracer::gRetracer.mState.mThreadArr[retracer::gRetracer.getCurTid()].mpJavaEnv = jEnv;
+    }
+
+    jEnv->CallStaticVoidMethod(gNativeCls, gDestroyWindowID, viewId);
 }
 
 void GlwsEglAndroid::syncNativeWindow()
@@ -143,7 +168,7 @@ Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint 
 {
     Drawable* handler = NULL;
     WinNameToNativeWindowMap_t::iterator it = gWinNameToNativeWindowMap.find(win);
-    std::unordered_map<int, int>::iterator it2 = winNameToTextureViewIdMap.find(win);
+    std::unordered_map<int, int>::iterator it2 = winNameToViewIdMap.find(win);
 
     NativeWindow* window = NULL;
     if (it != gWinNameToNativeWindowMap.end())
@@ -153,11 +178,11 @@ Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint 
             window->getHeight() != height)
         {
             window->resize(width, height);
-            int textureViewId = 0;
-            if (it2 != winNameToTextureViewIdMap.end()) {
-                textureViewId = it2->second;
+            int viewId = 0;
+            if (it2 != winNameToViewIdMap.end()) {
+                viewId = it2->second;
             }
-            resizeNativeWindow(width, height, mNativeVisualId, textureViewId);
+            resizeNativeWindow(width, height, mNativeVisualId, viewId);
             ANativeWindow_setBuffersGeometry(mEglNativeWindow, width, height, mNativeVisualId);
         }
     }
@@ -175,7 +200,7 @@ Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint 
         ANativeWindow_setBuffersGeometry(mEglNativeWindow, width, height, mNativeVisualId);
         window = new AndroidWindow(width, height, mEglNativeWindow, mNativeVisualId);
         gWinNameToNativeWindowMap[win] = window;
-        winNameToTextureViewIdMap[win] = mTextureViewSize - 1;
+        winNameToViewIdMap[win] = mViewSize - 1;
     }
 
     handler = new EglDrawable(width, height, mEglDisplay, mEglConfig, window, attribList);
@@ -189,16 +214,17 @@ void GlwsEglAndroid::ReleaseDrawable(NativeWindow *window)
     {
         if (it->second == window)
         {
+            destroyNativeWindow( winNameToViewIdMap[it->first] );
             gWinNameToNativeWindowMap.erase(it);
         }
     }
     if (window) delete window;
 }
 
-void GlwsEglAndroid::setNativeWindow(EGLNativeWindowType window, int textureViewSize)
+void GlwsEglAndroid::setNativeWindow(EGLNativeWindowType window, int viewSize)
 {
     mEglNativeWindow = window;
-    mTextureViewSize = textureViewSize;
+    mViewSize = viewSize;
 }
 
 GLWS& GLWS::instance()

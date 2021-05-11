@@ -27,24 +27,8 @@
 #include <android/log.h>
 #endif
 
-const char* TraceExecutor::ErrorNames[] = {
-            "TRACE_ERROR_FILE_NOT_FOUND",
-            "TRACE_ERROR_INVALID_JSON",
-            "TRACE_ERROR_INVALID_PARAMETER",
-            "TRACE_ERROR_MISSING_PARAMETER",
-            "TRACE_ERROR_PARAMETER_OUT_OF_BOUNDS",
-            "TRACE_ERROR_OUT_OF_MEMORY",
-            "TRACE_ERROR_MEMORY_BUDGET",
-            "TRACE_ERROR_INITIALISING_INSTRUMENTATION",
-            "TRACE_ERROR_CAPTURING_INSTRUMENTATION_DATA",
-            "TRACE_ERROR_INCONSISTENT_TRACE_FILE",
-            "TRACE_ERROR_GENERIC"
-        };
-static_assert(sizeof(TraceExecutor::ErrorNames)/sizeof(TraceExecutor::ErrorNames[0]) == TRACE_ERROR_COUNT,
-        "Enum-to-string table length mismatch");
-
 std::string TraceExecutor::mResultFile;
-std::vector<TraceErrorType> TraceExecutor::mErrorList;
+std::vector<std::string> TraceExecutor::mErrorList;
 ProgramAttributeListMap_t TraceExecutor::mProgramAttributeListMap;
 ProgramInfoList_t TraceExecutor::mProgramInfoList;
 
@@ -128,10 +112,6 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
     options.mForceOffscreen = value.get("offscreen", options.mForceOffscreen).asBool();
     options.mPbufferRendering = value.get("noscreen", options.mPbufferRendering).asBool();
     options.mSingleSurface = value.get("singlesurface", options.mSingleSurface).asInt();
-    if (value.isMember("skipWork"))
-    {
-        options.mSkipWork = value.get("skipWork", -1).asInt();
-    }
 
     options.mOverrideConfig = eglConfig;
     options.mMeasurePerFrame = value.get("measurePerFrame", false).asBool();
@@ -152,6 +132,32 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
             gRetracer.reportAndAbort("Invalid frames parameter [ %s ]", frames.c_str());
         };
     }
+
+    if(value.isMember("perfrange")){
+        std::string perfrange = value.get("perfrange","").asString();
+        unsigned int start, end;
+        if (sscanf(perfrange.c_str(), "%u-%u", &start, &end) == 2)
+        {
+            if (start >= end)
+            {
+                gRetracer.reportAndAbort("Start perf frame must be lower than end perf frame.");
+            }
+            options.mPerfStart = start;
+            options.mPerfStop = end;
+        }
+        else {
+            gRetracer.reportAndAbort("Invalid perf range parameter [ %s ]", perfrange.c_str());
+        }
+    }
+
+#ifdef ANDROID
+    options.mPerfPath = value.get("perfpath","/system/bin/simpleperf").asString();
+    options.mPerfOut = value.get("perfout","/sdcard/perf.data").asString();
+#else
+    options.mPerfPath = value.get("perfpath","/usr/bin/perf").asString();
+    options.mPerfOut = value.get("perfout","perf.data").asString();
+#endif
+    options.mPerfFreq = value.get("perffreq",1000).asInt();
 
     options.mPreload = value.get("preload", false).asBool();
 
@@ -292,7 +298,7 @@ void TraceExecutor::initFromJson(const std::string& json_data, const std::string
     Json::Reader reader;
     if (!reader.parse(json_data, value))
     {
-        gRetracer.reportAndAbort("JSON parse error: %s\n", reader.getFormattedErrorMessages().c_str());
+        gRetracer.reportAndAbort("JSON parse error: %s", reader.getFormattedErrorMessages().c_str());
     }
 
     // A path is absolute if
@@ -329,13 +335,9 @@ void TraceExecutor::initFromJson(const std::string& json_data, const std::string
 
     if (MemoryInfo::getFreeMemory() < ((unsigned long)membudget)*1024*1024) {
         unsigned long diff = ((unsigned long)membudget)*1024*1024 - MemoryInfo::getFreeMemory();
-        gRetracer.reportAndAbort("Cannot satisfy required memory budget, lacking %lu MiB. Aborting...\n", diff);
+        gRetracer.reportAndAbort("Cannot satisfy required memory budget, lacking %lu MiB. Aborting...", diff);
     }
 #endif
-}
-
-void TraceExecutor::addError(TraceExecutorErrorCode code, const std::string &error_description){
-    mErrorList.push_back(TraceErrorType(code, error_description));
 }
 
 void TraceExecutor::addDisabledButActiveAttribute(int program, const std::string& attributeName)
@@ -370,9 +372,9 @@ Json::Value& TraceExecutor::addProgramInfo(int program, int originalProgramName,
     {
         json["linkLog"] = pi.getInfoLog();
 
-        if(gRetracer.mOptions.mFailOnShaderError) {
-            addError(TRACE_ERROR_OUT_OF_MEMORY, "A shader program failed to link"); // TODO Proper error code
-            gRetracer.mFailedToLinkShaderProgram = true;
+        if (gRetracer.mOptions.mFailOnShaderError)
+        {
+            gRetracer.reportAndAbort("A shader program failed to link");
         }
     }
 
@@ -396,7 +398,7 @@ Json::Value& TraceExecutor::addProgramInfo(int program, int originalProgramName,
     return mProgramInfoList.back();
 }
 
-void TraceExecutor::writeError(TraceExecutorErrorCode error_code, const std::string &error_description)
+void TraceExecutor::writeError(const std::string &error_description)
 {
 #ifdef ANDROID
 #ifdef PLATFORM_64BIT
@@ -407,7 +409,7 @@ void TraceExecutor::writeError(TraceExecutorErrorCode error_code, const std::str
 #else
     DBG_LOG("%s\n", error_description.c_str());
 #endif
-    addError(error_code, error_description);
+    mErrorList.push_back(error_description);
     if (!writeData(Json::Value(), 0, 0.0f))
     {
         DBG_LOG("Failed to output error log!\n");
@@ -434,12 +436,10 @@ bool TraceExecutor::writeData(Json::Value result_data_value, int frames, float d
     {
         Json::Value error_list_value;
         Json::Value error_list_description;
-        for (std::vector<TraceErrorType>::iterator it = mErrorList.begin(); it!=mErrorList.end(); ++it) {
-            if (it->error_code < TRACE_ERROR_COUNT)
-            {
-                error_list_value.append(ErrorNames[it->error_code]);
-                error_list_description.append(it->error_description);
-            }
+        for (const std::string& v : mErrorList)
+        {
+            error_list_description.append(v);
+            error_list_value.append("TRACE_ERROR_GENERIC");
         }
         result_value["error"] = error_list_value;
         result_value["error_description"] = error_list_description;

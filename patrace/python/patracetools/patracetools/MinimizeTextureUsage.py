@@ -1,17 +1,17 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 import os, sys, json
 
 try:
     from patrace import InputFile, OutputFile, Call
 except ImportError:
-    print 'patrace (Python interface of PATrace SDK) is required.'
+    print('patrace (Python interface of PATrace SDK) is required.')
     sys.exit()
 
 try:
     import OpenGL.GL as GL
 except ImportError:
-    print 'PyOpenGL (the Python OpenGL binding) is required;'
-    print 'You could install it with "pip install PyOpenGL".'
+    print('PyOpenGL (the Python OpenGL binding) is required;')
+    print('You could install it with "pip install PyOpenGL".')
     sys.exit()
 
 # This script convert an input trace into another trace ('output.pat') which minimizes the texture bandwidth.

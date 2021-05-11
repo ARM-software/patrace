@@ -16,7 +16,7 @@ You can build the latest trunk from source. First check it out, then make sure y
 
 Building for desktop Linux is useful if you want to replay trace files on your desktop using the GLES emulator or if you want to inspect the trace files using TraceView, which is a trace browsing GUI. Install these build dependencies:
 
-    apt-get install build-essential cmake libx11-dev libwxgtk3.0-dev swig python-dev python-setuptools libtiff-dev default-jdk g++-multilib gcc-multilib libhdf5-serial-dev libpq-dev libpq5 subversion python-virtualenv qt5-default
+    apt install build-essential cmake libx11-dev libtiff-dev default-jdk g++-multilib gcc-multilib libhdf5-dev libpq-dev libpq5 subversion qt5-default python3-setuptools python3-dev python3-pip python3-venv python3-wheel swig
 
 Then build with the build.py script:
 
@@ -48,7 +48,11 @@ For embedded devices that do not use hardfloat (rare these days):
 
     ./scripts/build.py patrace fbdev_arm release
 
-### Building for Android
+To link libgcc and libstdc++ statically into patrace:
+    ./scripts/build.py patrace fbdev_aarch64 release --static true
+    ./scripts/build.py patrace fbdev_arm_hardfloat --static true
+
+### Building for Android (Not supported since r3p1)
 
 Build dependencies: You must install the Android SDK and NDK with support for the **android** command as well as the **ndk-build** command (deprecated in later SDK versions). You can get the SDK tools at https://dl.google.com/android/adt/adt-bundle-linux-x86_64-20140702.zip and the NDK at https://dl.google.com/android/repository/android-ndk-r13b-linux-x86_64.zip. Add the NDK installation dir to your path environment variable, or to the NDK environment variable. Add the tools and platform-tools folders located in the android SDK installation folder to your path.
 
@@ -56,17 +60,70 @@ The SDK you just downloaded supports Android-20 out-of-the-box, but this has bee
 
 Make sure you have java and ant installed:
 
-    apt-get install openjdk-7-jdk ant
+    apt install openjdk-7-jdk ant
+
+Note:
+Ubuntu 18.04 does not provide openjdk-7-jdk, it provides openjdk-11-jdk and openjdk-8-jdk instead. In this case, version 8 should be used as version 11 will cause compilation errors.
 
 You may also have to install these (if it complains about missing 'aapt' program):
 
-    apt-get install lib32stdc++6 lib32z1
+    apt install lib32stdc++6 lib32z1
 
 Building:
 
     ./scripts/build.py patrace android release
 
 If you have a different android target installed than what the build script expects, then you will get build errors. To fix this, grep for the `ANDROID_TARGET` variable in the ./scripts directory and change it to your android target.
+
+
+### Building for Android with Gradle (since r3p1)
+
+Build dependencies: You must install the Android SDK and NDK with Android Studio or Android command line tools, you can get them at https://developer.android.com/studio.
+
+If you use Android Studio, run bin/studio.sh, follow the setup wizard to install Android SDK and SDK Platform.
+If you've already install Android Studio, follow these steps:
+1. In Android Studio, open a project, click **File > Settings**, then navigate to **Appearance & Behavior > System Settings > Android SDK**.
+2. Under **SDK Platforms** tab, select **Android 11.0 (R) (API Level 30)**.
+3. Under **SDK Tools** tab, select **Android SDK Build-Tools** and **Android SDK Platform-Tools**.
+4. Click **Apply > OK > Accept > Next**. When installation is complete, Click **Finish**.
+
+To install NDK, follow the **step 1** above first, click the **SDK Tools** tab and select **Show Package Details** to display all the version available of the packages. Then select **21.1.6352462** under **NDK (Side by side)** as your NDK version.
+
+
+If you do not need Android Studio, you can download the basic Android command line tools. You can use the included sdkmanager to install SDK and NDK packages.
+
+List installed and available packages:
+
+    sdkmanager --sdk_root=<SDK_ROOT> --list
+
+Install the latest platform tools and the SDK tools for API level 30:
+
+    sdkmanager --sdk_root=<SDK_ROOT> "platform-tools" "platforms;android-30" "build-tools;30.0.3"
+
+Install NDK:
+
+    sdkmanager --sdk_root=<SDK_ROOT> --install "ndk;21.1.6352462"
+
+Add the tools and platform-tools folders located in the android SDK installation folder to .bashrc:
+
+    export ANDROID_HOME=<SDK_ROOT>
+    export PATH=$PATH:${ANDROID_HOME}/tools
+    export PATH=$PATH:${ANDROID_HOME}/platform-tools
+
+Make sure you have java installed:
+
+    apt-get install openjdk-8-jdk
+
+You may also have to install these (if it complains about missing 'aapt' program):
+
+    apt-get install lib32stdc++6 lib32z1
+
+No need to install Gradle as it will be installed automatically when you run build first time.
+
+Building:
+
+    ./scripts/build.py patrace android release
+
 
 ### Build Known Issues
 
@@ -321,6 +378,7 @@ The tracer can be configured through a special configuration file `$PWD/tracerpa
 -   StateDumpAfterDrawCall - Debugging tool
 -   SupportedExtension - Use this to specify which extensions to report to the application. One extension per keyword.
 -   DisableErrorReporting - Disable GLES error reporting callbacks. Set DisableErrorReporting to false if debug-callback error occurs, it's a Debug option.
+-   EnableRandomVersion  - Enable to append a random to the gl_version when gl_renderer begins with "Mali". Default to True.
 
 The most useful keyword is 'FilterSupportedExtension', which, if set to 'true', will fake the list of supported extensions reported to the application only a limited list of extensions. In this case, put each extension you want to support in the configuration file on a separate line with the 'SupportedExtension' keyword.
 
@@ -338,6 +396,26 @@ before tracing it.
 2.  Did you remember to close the application correctly? See tracing instructions above.
 3.  The tracer does not write directly to disk; instead it has a in-memory cache that is flushed to disk when full. The cache is currently hardcoded to 70MB, but can be decreased or increased. It was increased from 20MB to 70MB when it was discovered that a game allocating large textures (almost 4k by 4k) used more space that the maxium size of the cache. The downside of increasing the cache size is that we have a limited amount of memory on the devices we create traces on. The cache size is defined in `patrace/src/tracer/egltrace.hpp::TraceOut::WRITE_BUF::LEN`
 4.  If you store data on the sdcard, you may have to give the app permissions to write to the sdcard. To do so, you may need to edit the app's platform.xml and add <group gid="media_rw" />" after a <permission name="android.permission.WRITE_EXTERNAL_STORAGE"> line. If there is no such line, you may have to add it.
+
+GLES Layer
+---------
+From Android Q, Android introduces GLES Layer similar with Vulkan layer that chains calls together between the application and driver. Since new Android uses more and more restrict rule for file system permission, the possible official way to trace GLES content after Android Q is using GLES Layer.
+
+### Enable GLES Layer on Android
+First, deploy layer into the hard coded system directory:
+
+    adb push libGLES_layer_arm64.so /data/local/debug/gles
+    adb push libGLES_layer_arm.so   /data/local/debug/gles
+
+Then, enable GLES Layer for specified target application (`libGLES_layer_arm.so` for 32bit):
+
+    adb shell settings put global enable_gpu_debug_layers 1
+    adb shell settings put global gpu_debug_layers_gles libGLES_layer_arm64.so
+    adb shell settings put global gpu_debug_app  application_package_name_wantToTrace
+
+### Tracing on Android
+Create the output trace directory in advance, which will be named `/data/apitrace/<package_name>`. Give it 777 permission.
+After that, run the application and tracing begins automatically.
 
 Retracing
 ---------
@@ -422,7 +500,7 @@ There are three different ways to tell the retracer which parameters that should
 | Parameter                                    | Description                                                                                                                                                                                                                            |
 |----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `-tid THREADID`                              | only the function calls invoked by the given thread ID will be retraced                                                                                                                                                                |
-| `-s CALL_SET`                                | take snapshot for the calls in the specific call set. Example `*/frame` for one snapshot for each frame, or `250/frame` to take a snapshot just of frame 250.                                                                         |
+| `-s CALL_SET`                                | take snapshot for the calls in the specific call set. Example `*/frame` for one snapshot for each frame, or `250/frame` to take a snapshot just of frame 250.                                                                          |
 | `-step`                                      | use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call (only supported on desktop linux)                                                                                                               |
 | `-ores W H`                                  | override the resolution of the final onscreen rendering (FBOs used in earlier renderpasses are not affected!) |
 | `-msaa SAMPLES`                              | enable multi sample anti alias                                                                                                                                                                                                         |
@@ -432,8 +510,7 @@ There are three different ways to tell the retracer which parameters that should
 | `-looptime SECONDS`                          | (since r3p0) Loop the given frame range at least the given number of seconds. |
 | `-singlesurface SURFACE`                     | (since r3p0) Render all surfaces except the given one to pbuffer render target. |
 | `-debug`                                     | Output debug messages                                                                                                                                                                                                                  |
-| `-debugfull                                  | Output all of the current invoked gl functons, with callNo, frameNo and skipped or discarded information                                                                                                                               |
-| `-skipwork WARMUP_FRAMES`                    | Discard GPU work outside frame range with given number of warmup frames. Requires GLES3. Works by calling glDiscardFramebuffer() before GLES sync point, and skipping compute calls.                                                   |
+| `-debugfull`                                 | Output all of the current invoked gl functons, with callNo, frameNo and skipped or discarded information                                                                                                                               |
 | `-singlewindow`                              | Force everything to render in a single window                                                                                                                                                                                          |
 | `-offscreen`                                 | Run in offscreen mode                                                                                                                                                                                                                  |
 | `-singleframe`                               | Draw only one frame for each buffer swap (offscreen only)                                                                                                                                                                              |
@@ -443,7 +520,6 @@ There are three different ways to tell the retracer which parameters that should
 | `-instr`                                     | Output the supported instrumentation modes as a JSON file. Do not play trace.                                                                                                                                                          |
 | `-overrideEGL`                               | Red Green Blue Alpha Depth Stencil, example: overrideEGL 5 6 5 0 16 8, for 16 bit color and 16 bit depth and 8 bit stencil                                                                                                             |
 | `-strict`                                    | Use strict EGL mode (fail unless the specified EGL configuration is valid)                                                                                                                                                             |
-| `-skip CALL_SET`                             | skip calls in the specific call set                                                                                                                                                                                                    |
 | `-libEGL_path=`                              |                                                                                                                                                                                                                                        |
 | `-libGLESv1_path=`                           |                                                                                                                                                                                                                                        |
 | `-libGLESv2_path=`                           |                                                                                                                                                                                                                                        |
@@ -483,6 +559,11 @@ There are three different ways to tell the retracer which parameters that should
 | `--ei frame_end`           | Stop fps measure, and stop playback                                                                                                                                                                                                                                                                                                                                          |
 | `--ez callstats`           | true/false(default)  Output GLES API call statistics to callstats.csv under /sdcard for Android, or under the current dir, time spent in API calls measured in nanoseconds.                                                                                                                                                                                                  |
 | `--ei singlesurface`       | SURFACE. (since r3p0) Render all surfaces except the given one to pbuffer render target.                                                                                                                                                                                                                                                                                     |
+| `--ei perfstart`           | Start perf record from this frame. Frame number must be 1 or higher.  |
+| `--ei perfend`             | Stop perf record and save perf data. Frame number must be greater than `perfstart` frame  |
+| `--es perfpath`            | Path to your perf binary. The default is `/system/bin/simpleperf`   |
+| `--ei perffreq`            | Your perf polling frequency. The default is 1000.  |
+| `--es perfout`             | Destination file for your perf data. The default is `/sdcard/perf.data`          |
 | `--ez noscreen`            | true/false(default). Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.                                                                                                                                                              |
 | `--ez preload`             | True/False(default) Loads calls for frames between `frame_start` and `frame_end` into memory. Useful when playback is IO-bound.                                                                                                                                                                                                                                              |
 |                            | The following options may be used to override onscreen EGL config stored in trace header.                                                                                                                                                                                                                                                                                    |
@@ -525,10 +606,13 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | instrumentation              | list       | yes      | **(deprecated since r2p4)** See PATrace performance measurements setup for more information                                                                                                                                            |
 | callStats                    | boolean    | yes      | Output GLES API call statistics to callstats.csv under /sdcard for Android, or under the current dir, time spent in API calls measured in nanoseconds.                                                                                 |
 | collectors                   | dictionary | yes      | (since r2p4) Dictionary of libcollector collectors to enable, and their configuration options. <br> Example:                              <br>                                                                            {                                                                                                                                                                                                                                                                                              "cpufreq": { "required": true },<br>                                                                                                                                                                                                 "rusage": {}<br>                                                                                                                                                                                                                                                                               } <br>                                                                                                                                                                                                                                 For description of the various collectors, see the libcollector documentation below.                                                                                                               |
+| perfrange                    | string     | yes      | The frame range delimited with '-'. The first frame must be 1 or higher. |
+| perfpath                     | string     | yes      | Path to your perf binary. Mostly useful on embedded systems.   |
+| perffreq                     | int        | yes      | Your perf polling frequency. The default is 1000. Can usually go up to 25000.     |
+| perfout                      | string     | yes      | Destination file for your perf data      |
 | landscape                    | boolean    | yes      | Override the orientation                                                                                                                                                                                                               |
 | offscreen                    | boolean    | yes      | Render the trace offscreen                                                                                                                                                                                                             |
-| noscreen                     | boolean    | yes      | Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.
-             |
+| noscreen                     | boolean    | yes      | Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.                             |
 | overrideHeight               | int        | yes      | Override height in pixels                                                                                                                                                                                                              |
 | overrideResolution           | boolean    | yes      | If true then the resolution is overridden                                                                                                                                                                                              |
 | overrideWidth                | int        | yes      | Override width in pixels                                                                                                                                                                                                               |
@@ -542,7 +626,6 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | stencilBits                  | int        | yes      |                                                                                                                                                                                                                                        |
 | storeProgramInformation      | boolean    | yes      | In the result file, store information about a program after each glLinkProgram. Such as, active attributes and compile errors.                                                                                                         |
 | threadId                     | int        | yes      | Retrace this specified thread id. **DO NOT USE** except for debugging!                                                                                                                                                                 |
-| skipWork                     | int        | yes      | See command line options for Linux above.                                                                                                                                                                                              |
 | offscreenSingleTile          | boolean    | yes      | Draw only one frame for each buffer swap in offscreen mode.                                                                                                                                                                            |
 | multithread                  | boolean    | yes      | Enable to run the calls in all the threads recorded in the pat file. These calls will be dispatched to corresponding work threads and run simultaneously. The execution sequence of calls between different threads is not guaranteed. |
 | forceSingleWindow            | boolean    | yes      | Force render all the calls onto a single surface. This can't be true with multithread mode enabled.                                                                                                                                    |
@@ -577,6 +660,14 @@ This is an example of a JSON parameter file:
 For using it with the Linux retracer, use the following command line:
 
     paretrace -jsonParameters yourParameterFile.json result.json .
+
+### Retracing multithread trace
+
+Patrace does not encapsulate "multithread" into file head during tracing, so multithread is false by default.
+
+For trace in trace repo, there's no need to add the multithread option, as it will be added to trace head and set to true if needed.
+
+For trace made by yourself, if wanting to enable multithread, you could edit file head and set multithread to true, or use the mulithread parameter option.
 
 ### Looping
 
@@ -750,7 +841,7 @@ Existing collectors:
 
 | Name                 | What it does                                                                                                                                                                            | Unit             | Options                             
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------|-------------------------------------|
-| `perf`               | Gets CPU cycles from perf                                                                                                                                                               | Cycles           |                                     
+| `perf`               | Gets CPU Counter from perf                                                                                                                                                              | Cycles           |
 | `battery_temperature`| Gets the battery temperature                                                                                                                                                            | Celsius          |                                     |                                                                                          |
 | `cpufreq`            | CPU frequencies. Each sample is the average frequency used since the last sampling point for each core. Then you also get the max of every core in `highest_avg` for your convenience. | Hz               |                                     
 | `memfreq`            | Memory frequency                                                                                                                                                                        |  Hz              |                                     |                                                                                          |
@@ -768,7 +859,7 @@ Existing collectors:
 | `rusage`             | Information from getrusage() system call                                                                                                                                                | Various          |                                     | 
 | `power`              | TBD                                                                                                                                                                                     |                  | TBD                                 | 
 | `ferret`             | Monitors CPU usage by polling system files. Gives coarse per thread CPU load statistics (cycles consumed, frequencies during the rune etc.) | Various | 'cpus': List of cpus to monitor. Example: cpus: [0, 2, 3, 5, 7], will monitor core 0, 2, 3, 5 and 7. All work done on the other cores will be ignored.<br>This defaults to all cores on the system if not set.<br><br>'enable_postprocessing': Boolean value. If this is set, the sampled results will be postprocessed at shutdown. Giving per. thread derived statistics like estimated CPU fps etc. Defaults to false.<br><br>'banned_threads': Only used when 'enable_postprocessing' is set to true. This is a list of thread names to exclude when generating derived statistics. Defaults to: 'banned_threads': ["ferret"], this will exclude the CPU overhead added by the ferret instrumentation.<br><br>'output_dir': Path to an existing directory where sample data will be stored. |
-| `set`                | CPU counter set                                                                                                                             |         | 0: default; 1: CPU cache related; 2: CPU bandwidth related; 3: CPU bandwidth related on Cortex-A73; 4: CPU cycles for mainthread, user/kernel mode |
+| `set`                | CPU counter set, an option with perf collector                                                                                              |         | 0: default for generalized hardware CPU events; 1: CPU cache related; 2: CPU bandwidth related; 3: CPU bandwidth related on Cortex-A73; 4: CPU cycles for all/main thread including user/kernel space; 5: CPU InstructionRetired for all/main thread including user/kernel space; 6: CPU cycle and instruction for all/main thread |
 
 Example
 -------
@@ -777,13 +868,19 @@ The above names should be added as keys under the "collectors" dictionary in the
 
     {
         "collectors": {
-            "cpufreq": {},
-                "gpufreq": {
-                    "path": "/sys/kernel/gpu/gpu_clock"
-                },
-                "perf": {},
-                "procfs": {},
-                "rusage": {}
+            "cpufreq": {
+                "required": true,
+                "rate": 100,
+                "thread": true
+            },
+            "gpufreq": {
+                "path": "/sys/kernel/gpu/gpu_clock"
+            },
+            "perf": {
+                "set": 5
+            },
+            "procfs": {},
+            "rusage": {}
         },
         "file": "driver2.orig.gles3.pat",
         "frames": "1-191",

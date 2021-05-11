@@ -26,6 +26,7 @@
 '''Debugging utilities.'''
 
 
+from __future__ import print_function
 import sys
 import traceback
 import inspect
@@ -49,7 +50,7 @@ def excepthook(type, value, tb):
 		import traceback, pdb
 		# we are NOT in interactive mode, print the exception...
 		traceback.print_exception(type, value, tb)
-		print
+		print()
 		# ...then start the debugger in post-mortem mode.
 		pdb.pm()
 
@@ -58,4 +59,4 @@ oldexcepthook, sys.excepthook = sys.excepthook, excepthook
 
 def dump(var):
 	sys.stderr.write(repr(var) + '\n')
-	
+

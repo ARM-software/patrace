@@ -1,6 +1,7 @@
 #include <vector>
 #include <list>
 #include <map>
+#include <algorithm>
 #include <unordered_set>
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
@@ -62,12 +63,12 @@ static unsigned _curCallIndexInFrame = 0;
 static bool debug = false;
 static bool no_reindex = false;
 
-static void writeout(common::OutFile &outputFile, common::CallTM *call)
+static void writeout(common::OutFile &outputFile, common::CallTM *call, bool injected)
 {
     const unsigned int WRITE_BUF_LEN = 150*1024*1024;
     static char buffer[WRITE_BUF_LEN];
     char *dest = buffer;
-    dest = call->Serialize(dest);
+    dest = call->Serialize(dest, -1, injected);
     outputFile.Write(buffer, dest-buffer);
 }
 
@@ -103,33 +104,16 @@ std::vector<int> extract_ints(std::string const& input_str)
     return ints;
 }
 
-class NeedsContext
-{
-    static std::unordered_set<std::string> eglCallsNeedContext;
-public:
-    static void init()      // insert all the EGL calls need context
-    {
-        NeedsContext::eglCallsNeedContext.insert("eglCreateImageKHR");
-        NeedsContext::eglCallsNeedContext.insert("eglSwapBuffers");
-        NeedsContext::eglCallsNeedContext.insert("eglSwapBuffersWithDamageKHR");
-        NeedsContext::eglCallsNeedContext.insert("eglCreateSyncKHR");
-        NeedsContext::eglCallsNeedContext.insert("eglClientWaitSyncKHR");
-        NeedsContext::eglCallsNeedContext.insert("eglDestroySyncKHR");
-        NeedsContext::eglCallsNeedContext.insert("eglSignalSyncKHR");
-    }
-    static bool judge(const std::string &callName)  // judge whether a call needs context or not
-    {
-        if (callName[0] != 'e') // OpenGL ES call, needs context
-            return true;
-        auto iter = NeedsContext::eglCallsNeedContext.find(callName);
-        if (iter != NeedsContext::eglCallsNeedContext.end())  // This is an EGL call who needs context
-            return true;
-        else                    // This is an EGL call who doesn't need context
-            return false;
-    }
+static const std::vector<std::string> ignored_funcs = {
+    "glGetSynciv",
+    "glFenceSync",
+    "glDeleteSync",
+    "glWaitSync",
+    "glClientWaitSync",
+    "glIsSync",
+    "eglTerminate", // to make sure eglTerminate gets called last
+    "eglReleaseThread",
 };
-
-std::unordered_set<std::string> NeedsContext::eglCallsNeedContext;
 
 int main(int argc, char **argv)
 {
@@ -138,6 +122,7 @@ int main(int argc, char **argv)
     std::map<int, bool> flatten_only;
     bool insequence = false;
     bool addforcesinglewindow = false;
+    int countSkipped = 0;
     int countInjected = 0;
     int count_inside = 0; // injected inside frame range
     int first_frame = 0;
@@ -245,7 +230,6 @@ int main(int argc, char **argv)
     std::map<unsigned, thread_state> contexts;
     std::map<unsigned, unsigned> tid_remapping; // because thread IDs may be discontinuous
     int display = -1;
-    NeedsContext::init();
     for (unsigned i = 0; i < numThreads; i++)
     {
         unsigned tid = threadArray[i]["id"].asUInt();
@@ -273,6 +257,7 @@ int main(int argc, char **argv)
     std::map<unsigned, thread_state> initial_contexts = contexts;
     unsigned int previous_tid = 9999;
     bool injected = false;
+    bool force_out = false;
     for (int callNo = 0 ;(call = next_call(inputFile)); ++callNo)
     {
         const unsigned tid = call->mTid;
@@ -336,45 +321,60 @@ int main(int argc, char **argv)
             }
         }
 
+        if (call->mCallName == "glWaitSync" || call->mCallName == "glFinish" || call->mCallName == "glClientWaitSync")
+        {
+            unsigned countcalls = 0;
+            for (auto &thread : calls) countcalls += thread.size();
+            DBG_LOG("[t%u] %s is forcing writeout of %u calls at frame %u, call %u\n", tid, call->mCallName.c_str(), countcalls, _curFrameIndex, call->mCallNo);
+            force_out = true;
+        }
+
         // Add some extra logging
         if (call->mCallName == "eglCreateWindowSurface" || call->mCallName == "eglCreateWindowSurface2"
                  || call->mCallName == "eglCreatePbufferSurface" || call->mCallName == "eglCreatePixmapSurface")
         {
-            if (debug) DBG_LOG("[%u] Creating surface %d at %u\n", tid, call->mRet.GetAsInt(), call->mCallNo);
+            if (debug) DBG_LOG("[t%u] Creating surface %d at %u\n", tid, call->mRet.GetAsInt(), call->mCallNo);
         }
         else if (call->mCallName == "eglCreateContext")
         {
-            if (debug) DBG_LOG("[%u] Creating context %d at %u\n", tid, call->mRet.GetAsInt(), call->mCallNo);
+            if (debug) DBG_LOG("[t%u] Creating context %d at %u\n", tid, call->mRet.GetAsInt(), call->mCallNo);
         }
         else if (call->mCallName == "eglDestroyContext")
         {
-            if (debug) DBG_LOG("[%u] Destroying context %d at %u\n", tid, call->mArgs[1]->GetAsInt(), call->mCallNo);
+            if (debug) DBG_LOG("[t%u] Destroying context %d at %u\n", tid, call->mArgs[1]->GetAsInt(), call->mCallNo);
         }
         else if (!insequence && call->mCallName == "eglDestroySurface")
         {
-            if (debug) DBG_LOG("[%u] Destroying surface %d at %u\n", tid, call->mArgs[1]->GetAsInt(), call->mCallNo);
+            if (debug) DBG_LOG("[t%u] Destroying surface %d at %u\n", tid, call->mArgs[1]->GetAsInt(), call->mCallNo);
         }
 
-        if (call->mCallName != "eglTerminate") // make sure eglTerminate gets called last
+        if (std::find(ignored_funcs.cbegin(), ignored_funcs.cend(), call->mCallName) == ignored_funcs.cend())
         {
             assert(calls.at(idx).size() == 0 || calls.at(idx).front()->mTid == call->mTid);
             calls[idx].push_back(call);
         }
+        else
+        {
+            countSkipped++;
+        }
+
 
         if (insequence)
         {
+            const auto &context = contexts.at(call->mTid);
             if (!injected && call->mCallName == "eglMakeCurrent")
             {
                 // Special case. The app supplied eglMakeCurrent takes priority.
                 injected = true;
             }
-            else if (NeedsContext::judge(call->mCallName) && !injected) {
-                const auto &context = contexts.at(call->mTid);
+            else if (callNeedsContext(call->mCallName) && !injected)
+            {
                 // Inject an eglMakeCurrent to set context and display for each
                 // flattened thread section, to reproduce original behaviour.
                 // However, do not put it in front of EGL calls, since they do
                 // not need it (and may break, eg eglInitialize).
-                if (context.display != -1) {
+                if (context.display != -1)
+                {
                     common::CallTM makeCurrent("eglMakeCurrent");
                     makeCurrent.mArgs.push_back(new common::ValueTM(context.display));
                     makeCurrent.mArgs.push_back(new common::ValueTM(context.draw));
@@ -388,15 +388,16 @@ int main(int argc, char **argv)
                     {
                         count_inside++;
                     }
-                    writeout(outputFile, &makeCurrent);
+                    writeout(outputFile, &makeCurrent, true);
                 }
             }
             call->mTid = 0;
-            writeout(outputFile, call);
+            writeout(outputFile, call, false);
         }
         else {      // !insequence
-            if (_curCallIndexInFrame >= _curFrame->GetLoadedCallCount()) // flush calls
+            if (_curCallIndexInFrame >= _curFrame->GetLoadedCallCount() || force_out) // flush calls
             {
+                force_out = false;
                 if (debug) DBG_LOG("-- writeout frame %u! %u threads --\n", _curFrameIndex, (unsigned)calls.size());
                 bool any_injected = false;
                 for (auto &thread : calls)
@@ -427,21 +428,24 @@ int main(int argc, char **argv)
                             // Special case. The app supplied eglMakeCurrent takes priority.
                             injected = true;
                         }
-                        else if (NeedsContext::judge(out->mCallName) && !injected)
+                        else if (callNeedsContext(out->mCallName) && !injected)
                         {
                             if (context.display == -1)
                             {
                                 DBG_LOG("  Warning: eglMakeCurrent(%d,%d,%d,%d) at %u(%u) - invalid display\n",
                                         context.display, context.draw, context.read, context.context, call->mCallNo, callNo);
                             }
-
-                            writeout(outputFile, &makeCurrent);
+                            if (last_frame != -1 && (int)_curFrameIndex >= first_frame && (int)_curFrameIndex <= last_frame)
+                            {
+                                count_inside++;
+                            }
+                            writeout(outputFile, &makeCurrent, true);
                             injected = true;
                             countInjected++;
                             any_injected = true;
                         }
                         out->mTid = 0;
-                        writeout(outputFile, out);
+                        writeout(outputFile, out, false);
                     }
                     thread.clear();
                 }
@@ -467,9 +471,7 @@ int main(int argc, char **argv)
     common::CallTM eglTerminate("eglTerminate");
     eglTerminate.mArgs.push_back(new common::ValueTM(display));
     eglTerminate.mRet = common::ValueTM((int)EGL_TRUE);
-    writeout(outputFile, &eglTerminate);
-
-    DBG_LOG("Injected %d extra eglMakeCurrent() calls\n", countInjected);
+    writeout(outputFile, &eglTerminate, false);
 
     info["injected_total"] = countInjected;
     if (last_frame != -1)
@@ -485,11 +487,13 @@ int main(int argc, char **argv)
     inputFile.Close();
     outputFile.Close();
 
+    DBG_LOG("Skipped %d unnecessary calls\n", countSkipped);
     DBG_LOG("Injected %d extra eglMakeCurrent() calls\n", countInjected);
     if (last_frame != -1)
     {
         DBG_LOG("Injected %d extra eglMakeCurrent() calls inside the defined frame range\n", count_inside);
-        return -1;
+        if (count_inside != 0) return -1;
+        return 0;
     }
 
     prev_injected = std::max(0, prev_injected);

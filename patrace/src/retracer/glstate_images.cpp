@@ -87,7 +87,7 @@ static GLuint createAndCompileShader(const std::string& shaderSrc, GLuint type)
     GLuint shader = _glCreateShader(type);
     if(shader == 0)
     {
-        gRetracer.reportAndAbort("Error creating shader with type 0x%x.\n", type);
+        gRetracer.reportAndAbort("Error creating shader with type 0x%x", type);
     }
 
     ShaderInfo si(shader);

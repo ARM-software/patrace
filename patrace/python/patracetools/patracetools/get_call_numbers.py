@@ -1,11 +1,14 @@
-import os, sys, json
+import os
+import sys
+import json
 import argparse
 
 try:
-    from patrace import InputFile, OutputFile, Call
+    from patrace import InputFile
 except ImportError:
-    print 'patrace (Python interface of PATrace SDK) is required.'
+    print('patrace (Python interface of PATrace SDK) is required.')
     sys.exit(1)
+
 
 def main():
     ap = argparse.ArgumentParser(description="Output the call numbers of a certain GLES function.")
@@ -20,7 +23,8 @@ def main():
         sys.exit(1)
 
     out = get_call_numbers(args.trace_path, args.func_name, args.min_call_num, args.max_call_num)
-    print json.dumps(out)
+    print(json.dumps(out))
+
 
 def get_call_numbers(trace_path, func_name, min_call_num, max_call_num):
     out = list()
@@ -32,6 +36,7 @@ def get_call_numbers(trace_path, func_name, min_call_num, max_call_num):
                 out.append((call.number, str(call.name), [a.asUInt for a in call.args]))
 
     return out
+
 
 if __name__ == '__main__':
     main()

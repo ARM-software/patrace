@@ -125,7 +125,6 @@ public:
     StateLogger& getStateLogger() { return mStateLogger; }
 
 private:
-    Path mPath;
     StateLogger mStateLogger;
 };
 

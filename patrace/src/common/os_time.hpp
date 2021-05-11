@@ -58,7 +58,7 @@ namespace os {
 
     // Time from an unknown base in a unit determined by timeFrequency
     inline long long
-    getTime(void) {
+    getTime() {
 #if defined(_WIN32)
         if (!timeFrequency) {
             LARGE_INTEGER frequency;
@@ -88,7 +88,15 @@ namespace os {
 #endif
     }
 
-
+    inline long long getTimeType(clockid_t id)
+    {
+        struct timespec tp;
+        if (clock_gettime(id, &tp) == -1)
+        {
+            return 0;
+        }
+        return tp.tv_sec * 1000000000LL + tp.tv_nsec;
+    }
 } /* namespace os */
 
 #endif /* _OS_TIME_HPP_ */

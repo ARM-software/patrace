@@ -62,7 +62,7 @@ public:
     void CheckGlError();
 
     void reportAndAbort(const char *format, ...) NORETURN;
-    void saveResult();
+    void saveResult(Json::Value& results);
     bool addResultInformation();
 
     void OnFrameComplete();
@@ -96,7 +96,6 @@ public:
     RetraceOptions mOptions;
     StateMgr mState;
     common::BCall_vlen mCurCall;
-    bool mFailedToLinkShaderProgram = false;
     std::atomic_bool mFinish;
     OffscreenManager *mpOffscrMgr = nullptr;
     common::ClientSideBufferObjectSet mCSBuffers;
@@ -152,8 +151,15 @@ private:
     unsigned short mExIdEglSwapBuffers;
     unsigned short mExIdEglSwapBuffersWithDamage;
 
+    int64_t mInitTime = 0;
+    int64_t mInitTimeMono = 0;
+    int64_t mInitTimeMonoRaw = 0;
+    int64_t mInitTimeBoot = 0;
     int64_t mEndFrameTime = 0;
     int64_t mTimerBeginTime = 0;
+    int64_t mTimerBeginTimeMono = 0;
+    int64_t mTimerBeginTimeMonoRaw = 0;
+    int64_t mTimerBeginTimeBoot = 0;
     int64_t mFinishSwapTime = 0;
 
     StateLogger mStateLogger;

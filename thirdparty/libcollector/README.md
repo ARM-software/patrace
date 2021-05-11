@@ -58,6 +58,25 @@ Example:
 }
 
 
+Using as a layer (Vulkan only)
+==============================
+
+Once built, the layer and json manifest will be in <build_dir>/implicit_layer.d
+
+Set the following env. vars to enable the layer on linux:
+
+export VK_LAYER_PATH=<build_dir>/implicit_layer.d
+export VK_INSTANCE_LAYERS=VK_LAYER_ARM_libcollector
+export VK_DEVICE_LAYERS=VK_LAYER_ARM_libcollector
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$VK_LAYER_PATH
+
+Then set the following env var to point to your libcollector JSON configuration file:
+
+export VK_LIBCOLLECTOR_CONFIG_PATH=<path_to_json>
+
+Then run your app as normal. One result file will be created per device in your application, and by default the results are written to the run directory.
+To override this, set the "result_file_basename" field in the config json.
+
 JSON interface (layer specific)
 ---------------------------
 

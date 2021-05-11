@@ -27,6 +27,8 @@
 """Generate DLL/SO dispatching functions.
 """
 
+from __future__ import print_function
+
 # Adjust path
 import os.path
 import sys
@@ -85,7 +87,7 @@ synonyms = {
 
 # Map commonly used core functions to extensions, in case core
 # version not high enough but functions supported through extensions.
-inverse_mapping = dict((v, k) for k, v in synonyms.items())
+inverse_mapping = dict((v, k) for k, v in list(synonyms.items()))
 
 def function_pointer_type(function):
     return 'PFN_' + function.name.upper()
@@ -104,34 +106,34 @@ class Dispatcher:
         # define standard name aliases for convenience, but only when not
         # tracing, as that would cause symbol clashing with the tracing
         # functions
-        print '#ifdef RETRACE'
+        print('#ifdef RETRACE')
         for function in api.functions:
-            print '#define %s _%s' % (function.name, function.name)
-        print '#endif /* RETRACE */'
-        print
+            print('#define %s _%s' % (function.name, function.name))
+        print('#endif /* RETRACE */')
+        print()
 
     def dispatchFunction(self, api, function):
         ptype = function_pointer_type(function)
         pvalue = function_pointer_value(function)
-        print 'typedef ' + function.prototype('* %s' % ptype) + ';'
-        print 'extern %s %s;' % (ptype, pvalue)
-        print
-        print 'static inline ' + function.prototype('_' + function.name) + ' {'
-        print '    const char *_name = "%s";' % function.name
+        print('typedef ' + function.prototype('* %s' % ptype) + ';')
+        print('extern %s %s;' % (ptype, pvalue))
+        print()
+        print('static inline ' + function.prototype('_' + function.name) + ' {')
+        print('    const char *_name = "%s";' % function.name)
         if function.type is stdapi.Void:
             ret = ''
         else:
             ret = 'return '
         self.invokeGetProcAddress(api, function)
-        print '    %s%s(%s);' % (ret, pvalue, ', '.join([str(arg.name) for arg in function.args]))
-        print '}'
-        print
+        print('    %s%s(%s);' % (ret, pvalue, ', '.join([str(arg.name) for arg in function.args])))
+        print('}')
+        print()
 
     def defineFptrs(self, api):
         for function in api.functions:
             ptype = function_pointer_type(function)
             pvalue = function_pointer_value(function)
-            print '%s %s = NULL;' % (ptype, pvalue)
+            print('%s %s = NULL;' % (ptype, pvalue))
 
     def getProcAddressName(self, api, function):
         return '_getProcAddress'
@@ -140,45 +142,45 @@ class Dispatcher:
         ptype = function_pointer_type(function)
         pvalue = function_pointer_value(function)
         getProcAddressName = self.getProcAddressName(api, function)
-        print '    if (!%s) {' % (pvalue,)
-        print '        static bool has_warned = false;'
-        print '        bool has_warned_cached = has_warned;'
+        print('    if (!%s) {' % (pvalue,))
+        print('        static bool has_warned = false;')
+        print('        bool has_warned_cached = has_warned;')
         if function.name == 'eglQueryString':
-            print '#if defined RETRACE && defined ANDROID'
-            print '        %s = (%s)%s("eglQueryStringImplementationANDROID");' % (pvalue, ptype, getProcAddressName)
-            print '        if (!%s) {' % (pvalue)
-            print '            %s = (%s)%s("_Z35eglQueryStringImplementationANDROIDPvi");' % (pvalue, ptype, getProcAddressName)
-            print '            if (!%s)' % (pvalue)
-            print '                %s = (%s)%s(_name);' % (pvalue, ptype, getProcAddressName)
-            print '        }'
-            print '#else'
-            print '        %s = (%s)%s(_name);' % (pvalue, ptype, getProcAddressName)
-            print '#endif'
+            print('#if defined RETRACE && defined ANDROID')
+            print('        %s = (%s)%s("eglQueryStringImplementationANDROID");' % (pvalue, ptype, getProcAddressName))
+            print('        if (!%s) {' % (pvalue))
+            print('            %s = (%s)%s("_Z35eglQueryStringImplementationANDROIDPvi");' % (pvalue, ptype, getProcAddressName))
+            print('            if (!%s)' % (pvalue))
+            print('                %s = (%s)%s(_name);' % (pvalue, ptype, getProcAddressName))
+            print('        }')
+            print('#else')
+            print('        %s = (%s)%s(_name);' % (pvalue, ptype, getProcAddressName))
+            print('#endif')
         else :
-            print '        %s = (%s)%s(_name);' % (pvalue, ptype, getProcAddressName)
-        print '        if (!%s) {' % (pvalue,)
+            print('        %s = (%s)%s(_name);' % (pvalue, ptype, getProcAddressName))
+        print('        if (!%s) {' % (pvalue,))
         if function.name in synonyms: # try different version of same function
-            print '            const char *_name2 = "%s";' % synonyms[function.name]
-            print r'            if (!has_warned_cached) DBG_LOG("Warning: %s unavailable - trying %s\n", _name, _name2);'
-            print '            has_warned = true;'
-            print '            %s = (%s)%s(_name2);' % (pvalue, ptype, getProcAddressName)
-            print '        }'
-            print '        if (!%s) {' % (pvalue,)
+            print('            const char *_name2 = "%s";' % synonyms[function.name])
+            print(r'            if (!has_warned_cached) DBG_LOG("Warning: %s unavailable - trying %s\n", _name, _name2);')
+            print('            has_warned = true;')
+            print('            %s = (%s)%s(_name2);' % (pvalue, ptype, getProcAddressName))
+            print('        }')
+            print('        if (!%s) {' % (pvalue,))
         if function.name in inverse_mapping: # try different version of same function, inverse of above
-            print '            const char *_name2 = "%s";' % inverse_mapping[function.name]
-            print r'            if (!has_warned_cached) DBG_LOG("Warning: %s unavailable - trying %s\n", _name, _name2);'
-            print '            has_warned = true;'
-            print '            %s = (%s)%s(_name2);' % (pvalue, ptype, getProcAddressName)
-            print '        }'
-            print '        if (!%s) {' % (pvalue,)
-        print r'            if (!has_warned_cached) DBG_LOG("Warning: Ignoring call to unavailable function %s\n", _name);'
-        print '            has_warned = true;'
+            print('            const char *_name2 = "%s";' % inverse_mapping[function.name])
+            print(r'            if (!has_warned_cached) DBG_LOG("Warning: %s unavailable - trying %s\n", _name, _name2);')
+            print('            has_warned = true;')
+            print('            %s = (%s)%s(_name2);' % (pvalue, ptype, getProcAddressName))
+            print('        }')
+            print('        if (!%s) {' % (pvalue,))
+        print(r'            if (!has_warned_cached) DBG_LOG("Warning: Ignoring call to unavailable function %s\n", _name);')
+        print('            has_warned = true;')
         if function.type is not stdapi.Void:
-            print '            %s ret = 0;' % function.type
+            print('            %s ret = 0;' % function.type)
 
         if function.type is stdapi.Void:
-            print '            return;'
+            print('            return;')
         else:
-            print '            return ret;'
-        print '        }'
-        print '    }'
+            print('            return ret;')
+        print('        }')
+        print('    }')

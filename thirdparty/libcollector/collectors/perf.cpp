@@ -101,7 +101,7 @@ bool PerfCollector::init()
     }
     else if (mSet == 4)
     {
-        DBG_LOG("Using CPU counter set number 4, this will fail on non-ARM CPU's\n");
+        DBG_LOG("Using CPU counter set number 4 for cycleCount(all K/U, main K/U), this will fail on non-ARM CPU's\n");
         /* All Threads */
         mCounters["CPUCyclesUser"] = add_event(PERF_TYPE_RAW, 0x11, group, 1, PERF_EVENT_EXCLUDE_KERNEL);
         mCounters["CPUCyclesKernel"] = add_event(PERF_TYPE_RAW, 0x11, group, 1, PERF_EVENT_EXCLUDE_USER);
@@ -114,10 +114,34 @@ bool PerfCollector::init()
         mCounters["CPUCyclesKernelMainThread"] =
             add_event(PERF_TYPE_RAW, 0x11, group_main_thread, 0, PERF_EVENT_EXCLUDE_USER);
     }
+    else if (mSet == 5)
+    {
+        DBG_LOG("Using CPU counter set number 5 for InstructionRetired(all K/U, main K/U), this will fail on non-ARM CPU's\n");
+        /* All Threads */
+        mCounters["CPUInstructionRetired"] = add_event(PERF_TYPE_RAW, 0x8, group);
+        mCounters["CPUInstructionRetiredUser"] = add_event(PERF_TYPE_RAW, 0x8, group, 1, PERF_EVENT_EXCLUDE_KERNEL);
+        mCounters["CPUInstructionRetiredKernel"] = add_event(PERF_TYPE_RAW, 0x8, group, 1, PERF_EVENT_EXCLUDE_USER);
+        /* Main Thread */
+        const int group_main_thread = mCounters["CPUInstructionRetiredMainThread"] =
+              add_event(PERF_TYPE_RAW, 0x8, -1, 0);
+        mCounters["CPUInstructionRetiredUserMainThread"] =
+              add_event(PERF_TYPE_RAW, 0x8, group_main_thread, 0, PERF_EVENT_EXCLUDE_KERNEL);
+        mCounters["CPUInstructionRetiredKernelMainThread"] =
+              add_event(PERF_TYPE_RAW, 0x8, group_main_thread, 0, PERF_EVENT_EXCLUDE_USER);
+    }
+    else if (mSet == 6)
+    {
+        DBG_LOG("Using CPU counter set number 6 for cycleCount/instruction(all,main), this will fail on non-ARM CPU's\n");
+        /* All Threads */
+        mCounters["CPUInstructionRetired"] = add_event(PERF_TYPE_RAW, 0x8, group);
+        /* Main Thread */
+        mCounters["CPUCycleCountMainThread"] = add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_CPU_CYCLES, -1, 0);
+        mCounters["CPUInstructionRetiredMainThread"] = add_event(PERF_TYPE_RAW, 0x8, -1, 0);
+    }
     else // default set, same as for x86
     {
-        DBG_LOG("Using CPU counter set number 0 (default)\n");
-        mCounters["CPUInstructionCount"] = add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS, group);
+        DBG_LOG("Using CPU counter set number 0 for generalized hardware CPU events.(default)\n");
+        mCounters["CPUInstructionRetired"] = add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS, group);
         mCounters["CPUCacheReferences"] = add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_REFERENCES, group);
         mCounters["CPUCacheMisses"] = add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_MISSES, group);
         mCounters["CPUBranchMispredictions"] = add_event(PERF_TYPE_HARDWARE, PERF_COUNT_HW_BRANCH_MISSES, group);

@@ -15,7 +15,6 @@
 #include "collectors/procfs_stat.hpp"
 #include "collectors/cputemp.hpp"
 #include "collectors/memory.hpp"
-#include "collectors/debug.hpp"
 #include "collectors/power.hpp"
 #include "collectors/ferret.hpp"
 #if defined(ANDROID) || defined(__ANDROID__)
@@ -221,7 +220,7 @@ Collection::Collection(const Json::Value& config) : mConfig(config)
     mCollectors.push_back(new SysfsCollector(config, "cpufreqtrans",
         { "/sys/devices/system/cpu/cpu0/cpufreq/stats/total_trans" },
         true)); // accumulative value
-    mCollectors.push_back(new DebugCollector(config, "debug"));
+    if (config.isMember("debug") && config["debug"].asBool()) mDebug = true;
 #if defined(ANDROID) || defined(__ANDROID__)
     mCollectors.push_back(new StreamlineCollector(config, "streamline"));
 #endif
@@ -239,7 +238,7 @@ Collection::Collection(const Json::Value& config) : mConfig(config)
     {
         if (mDebug)
         {
-            DBG_LOG("Enabled collector %s\n", c->name().c_str());
+            DBG_LOG("Built-in collector: %s\n", c->name().c_str());
             c->setDebug(true);
         }
         mCollectorMap[c->name()] = c;
@@ -284,42 +283,58 @@ std::vector<std::string> Collection::unavailable()
     return list;
 }
 
-void Collection::initialize_collector(const std::string& name)
+bool Collection::initialize_collector(const std::string& name)
 {
     for (const Collector* m : mRunning) // check if we already enabled it
     {
         if (m->name() == name)
         {
-            return; // if so, ignore it
+            return true; // if so, ignore it
         }
     }
-    mCollectorMap[name]->init();
+    if (!mCollectorMap[name]->init())
+    {
+        DBG_LOG("Failed to initialize collector: %s\n", name.c_str());
+        return false;
+    }
     mRunning.push_back(mCollectorMap[name]);
     if (mConfig[name].get("threaded", false).asBool())
     {
         int sample_rate = mConfig[name].get("sample_rate", 100).asInt();
         mCollectorMap[name]->useThreading(sample_rate);
     }
+    DBG_LOG("Successfully initialized collector: %s\n", name.c_str());
+    return true;
 }
 
 bool Collection::initialize(std::vector<std::string> list)
 {
-    for (const std::string& s : list)
+    std::vector<std::string> l = list;
+    for (const std::string& s : mConfig.getMemberNames()) if (mConfig[s].isObject()) l.push_back(s);
+    for (const std::string& s : l)
     {
-        if (mCollectorMap.count(s) > 0 && mCollectorMap[s]->available())
+        if (s == "debug" || s == "provenance") // ignore these special cases
         {
-            initialize_collector(s);
+            continue;
         }
-    }
-    for (const std::string& s : mConfig.getMemberNames())
-    {
-        if (mCollectorMap.count(s) > 0 && mCollectorMap[s]->available())
+        else if (mCollectorMap.count(s) == 0)
         {
-            initialize_collector(s);
+            DBG_LOG("No such built-in collector: %s\n", s.c_str());
         }
-        else if (mConfig.isMember(s) && mConfig[s].isObject() && mConfig[s].get("required", false).asBool()) // is it required?
+        else if (!mCollectorMap[s]->available()) // permit this one
+        {
+            DBG_LOG("Collector exists but is not available: %s\n", s.c_str());
+        }
+        else if (initialize_collector(s))
+        {
+            continue;
+        }
+
+        // We get here on failure... check if it was required
+        if (mConfig.isMember(s) && mConfig[s].isObject() && mConfig[s].get("required", false).asBool())
         {
             mRunning.clear();
+            DBG_LOG("The %s collector failed to initialize but is REQUIRED - failing the run!\n", s.c_str());
             return false;
         }
     }
@@ -344,7 +359,11 @@ void Collection::start(const std::vector<std::string>& headers)
     for (Collector* c : mRunning)
     {
         c->clear();
-        c->start();
+        if (!c->start())
+        {
+            DBG_LOG("Failed to start collector: %s\n", c->name().c_str());
+            continue;
+        }
         if (c->isThreaded())
         {
             c->finished = false;

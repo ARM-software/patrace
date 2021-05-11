@@ -11,7 +11,6 @@ set(COLLECTOR_SOURCES
     ${PROJECT_DIR}/interface.cpp
     ${SOURCE_DIR}/collector_utility.cpp
     ${SOURCE_DIR}/cputemp.cpp
-    ${SOURCE_DIR}/debug.cpp
     ${SOURCE_DIR}/ferret.cpp
     ${SOURCE_DIR}/rusage.cpp
     ${SOURCE_DIR}/streamline.cpp

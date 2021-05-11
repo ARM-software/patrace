@@ -633,7 +633,7 @@ static void retrace_eglCreateImageKHR(char* src)
                 if (tgt == EGL_NATIVE_BUFFER_ANDROID) {
                     if (!isEglExtensionSupported(gRetracer.mState.mEglDisplay, "EGL_ANDROID_image_crop"))
                         gRetracer.reportAndAbort("Call %d eglCreateImageKHR, attrib_list[%d] = 0x%X needs EGL_ANDROID_image_crop extension,"
-                                                 " which is not supported by your GPU. Retracing would be aborted.\n", gRetracer.GetCurCallId(), i, attrib_list[i]);
+                                                 " which is not supported by your GPU. Retracing would be aborted.", gRetracer.GetCurCallId(), i, attrib_list[i]);
                 }
                 else {  // 0x3148, 0x3149, 0x314A and 0x314B are only compatible with target=EGL_NATIVE_BUFFER_ANDROID
                     if (!target_not_nb_warned) {
@@ -710,7 +710,7 @@ static void retrace_eglCreateImageKHR(char* src)
     }
     else
     {
-        gRetracer.reportAndAbort("Invalid buffer type for eglCreateImageKHR\n");
+        gRetracer.reportAndAbort("Invalid buffer type for eglCreateImageKHR");
     }
 
     //  ------------- retrace ---------------
@@ -785,24 +785,6 @@ static void retrace_glEGLImageTargetTexture2DOES(char* src)
     {
         _glEGLImageTargetTexture2DOES(tgt, imageNew);
     }
-}
-
-static void retrace_glEGLImageTargetTexStorageEXT(char* src)
-{
-    // ------- ret & params definition --------
-    EGLenum tgt;
-    int image;
-    common::Array<int> attrib_list;
-
-    // --------- read ret & params ----------
-    src = ReadFixed(src, tgt);
-    src = ReadFixed<int>(src, image);
-    src = Read1DArray(src, attrib_list);
-
-    //  ------------- retrace ---------------
-    bool found = false;
-    EGLImageKHR imageNew = gRetracer.mState.GetEGLImage(image, found);
-    _glEGLImageTargetTexStorageEXT(tgt, imageNew, attrib_list);
 }
 
 static void swapBuffersCommon(char* src, bool withDamage)
@@ -1093,7 +1075,6 @@ const common::EntryMap retracer::egl_callbacks = {
     {"eglSetDamageRegionKHR", (void*)retrace_eglSetDamageRegionKHR},
     {"eglCreateWindowSurface", (void*)retrace_eglCreateWindowSurface},
     {"eglCreateWindowSurface2", (void*)retrace_eglCreateWindowSurface2},
-    {"eglCreatePlatformWindowSurface", (void*)retrace_eglCreateWindowSurface},
     {"eglCreatePbufferSurface", (void*)retrace_eglCreatePbufferSurface},
     //{"eglCreatePixmapSurface", (void*)ignore},
     {"eglDestroySurface", (void*)retrace_eglDestroySurface},
@@ -1123,5 +1104,4 @@ const common::EntryMap retracer::egl_callbacks = {
     {"eglCreateImageKHR", (void*)retrace_eglCreateImageKHR},
     {"eglDestroyImageKHR", (void*)retrace_eglDestroyImageKHR},
     {"glEGLImageTargetTexture2DOES", (void*)retrace_glEGLImageTargetTexture2DOES},
-    {"glEGLImageTargetTexStorageEXT", (void*)retrace_glEGLImageTargetTexStorageEXT},
 };

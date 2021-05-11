@@ -99,3 +99,13 @@ void addConversionEntry(Json::Value& header, const std::string& type, const std:
     header["conversions"] = conversions;
 
 }
+
+bool callNeedsContext(const std::string &name)
+{
+    if (name[0] != 'e') // OpenGL ES call, needs context
+        return true;
+    if (name == "eglCreateImageKHR" || name == "eglSwapBuffers" || name == "eglSwapBuffersWithDamageKHR" || name == "eglCreateSyncKHR"
+        || name == "eglClientWaitSyncKHR" || name == "eglDestroySyncKHR" || name == "eglSignalSyncKHR")
+        return true;
+    return false;
+}

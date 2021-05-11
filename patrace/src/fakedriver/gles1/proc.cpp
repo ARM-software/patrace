@@ -1,6 +1,7 @@
 #include "../common.h"
 #include <sys/types.h>
 #include <unistd.h>
+#include "dispatch/gleslayer_helper.h"
 
 #ifndef ANDROID
 #include <cstdlib>
@@ -10,6 +11,10 @@ namespace wrapper
 {
     void* CWrapper::GetProcAddress(const char* procName)
     {
+#ifdef GLESLAYER
+        void *retval = dispatch_intercept_func(PATRACE_LAYER_NAME, procName);
+        return retval;
+#else
         static void *sInterceptorHandler = 0;
         pid_t myPid = getpid();
         static pid_t previousPid = 0;
@@ -31,5 +36,6 @@ namespace wrapper
                 DBG_LOG("Successfully loaded GLES1 library %s \n", strDestDll);
         }
         return dlsym(sInterceptorHandler, procName);
+#endif
     }
 }

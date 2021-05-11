@@ -18,7 +18,7 @@
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:textSize="16sp"
-    android:textColor="#EEEEEE"
+    android:textColor="#777777"
     />
     <TextView 
     android:id="@+id/subtitle"
@@ -27,6 +27,7 @@
     android:layout_gravity="center_vertical"
     android:layout_marginTop="2dp"
     android:textSize="13sp"
+    android:textColor="#000000"
     />
     </LinearLayout>
 </LinearLayout>

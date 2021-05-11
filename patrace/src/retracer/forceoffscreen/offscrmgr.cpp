@@ -102,7 +102,7 @@ OffscreenManager::OffscreenManager(
     if (mMsaaSamples > 0 && extension.find("GL_EXT_multisampled_render_to_texture") == std::string::npos) {
         gRetracer.reportAndAbort("The pat file requires MSAA = %d. However, the current GPU (%s %s) doesn't support "
                                  "GL_EXT_multisampled_render_to_texture extension. "
-                                 "So it cannot be retraced under offscreen mode.\n",
+                                 "So it cannot be retraced under offscreen mode.",
                                  mMsaaSamples, _glGetString(GL_VENDOR), _glGetString(GL_RENDERER));
     }
 }
@@ -422,7 +422,7 @@ void OffscreenManager::CreateFBOs()
     int status = glCheckFramebufferStatus12(GL_FRAMEBUFFER);
     if (status != GL_FRAMEBUFFER_COMPLETE)
     {
-        gRetracer.reportAndAbort("OnScrMosaic Framebuffer incomplete: FBO%d, %d x %d, color_mode=%x, depth_mode=%d, status=%04X\n",
+        gRetracer.reportAndAbort("OnScrMosaic Framebuffer incomplete: FBO%d, %d x %d, color_mode=%x, depth_mode=%d, status=%04X",
                                  mMosaicFBO, mOnscrMosaicWidth, mOnscrMosaicHeight, GL_UNSIGNED_SHORT_5_6_5, 0, status);
     }
     glBindFramebuffer12(GL_FRAMEBUFFER, ON_SCREEN_FBO);

@@ -14,7 +14,6 @@ add_library(collector
         ${SRC_ROOT}/interface.cpp
         ${SRC_ROOT}/collectors/collector_utility.cpp
         ${SRC_ROOT}/collectors/cputemp.cpp
-        ${SRC_ROOT}/collectors/debug.cpp
         ${SRC_ROOT}/collectors/rusage.cpp
         ${SRC_ROOT}/collectors/streamline.cpp
         ${SRC_ROOT}/collectors/streamline_annotate.cpp

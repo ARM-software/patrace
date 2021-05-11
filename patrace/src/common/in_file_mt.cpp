@@ -74,8 +74,8 @@ bool InFile::Open(const char* name, bool readHeaderAndExit)
         DBG_LOG("Failed to open %s: %s\n", mFileName.c_str(), strerror(errno));
         return false;
     }
-    struct stat sb;
-    if (fstat(mFd, &sb) == -1)
+    struct stat64 sb;
+    if (fstat64(mFd, &sb) == -1)
     {
         DBG_LOG("Failed to stat %s: %s\n", mFileName.c_str(), strerror(errno));
         close(mFd);
@@ -169,7 +169,7 @@ void InFile::PreloadFrames(int frames_to_read, int tid)
         while (ptr < newchunk->data() + newchunk->size())
         {
             const common::BCall& call = *(common::BCall*)ptr;
-            if (call.tid == tid && (call.funcId == eglSwapBuffers_id || call.funcId == eglSwapBuffersWithDamage_id)) frames_read++;
+            if ((call.tid == tid || tid == -1) && (call.funcId == eglSwapBuffers_id || call.funcId == eglSwapBuffersWithDamage_id)) frames_read++;
             unsigned int callLen = mExIdToLen[call.funcId];
             if (callLen == 0)
             {
@@ -187,7 +187,9 @@ void InFile::PreloadFrames(int frames_to_read, int tid)
 
 bool InFile::GetNextCall(void*& fptr, common::BCall_vlen& call, char*& src)
 {
-    if (mPtr >= mChunkEnd) // read more data?
+    if (mFrameNo >= mEndFrame) return false; // we're done!
+
+    if (mPtr + sizeof(common::BCall) > mChunkEnd) // read more data?
     {
         if (mPreloadedChunks.size() > 0)
         {
@@ -200,7 +202,7 @@ bool InFile::GetNextCall(void*& fptr, common::BCall_vlen& call, char*& src)
             {
                 delete mPrevChunk;
                 std::swap(mPrevChunk, mCurrentChunk);
-                mPrevChunk = mPreloadedChunks.front();
+                mCurrentChunk = mPreloadedChunks.front();
             }
             mPreloadedChunks.pop_front();
         }
@@ -239,10 +241,9 @@ bool InFile::GetNextCall(void*& fptr, common::BCall_vlen& call, char*& src)
     fptr = mExIdToFunc[call.funcId];
 
     // Count frames and check if we are done or need to start preloading
-    if (tmp.tid == mTraceTid && (tmp.funcId == eglSwapBuffers_id || tmp.funcId == eglSwapBuffersWithDamage_id))
+    if ((tmp.tid == mTraceTid || mTraceTid == -1) && (tmp.funcId == eglSwapBuffers_id || tmp.funcId == eglSwapBuffersWithDamage_id))
     {
         mFrameNo++;
-        if (mFrameNo > mEndFrame) return false; // we're done!
         if (mFrameNo >= mBeginFrame && mPreload)
         {
             // The below count does not include frames still remaining to be read in the current chunk, so we might possibly

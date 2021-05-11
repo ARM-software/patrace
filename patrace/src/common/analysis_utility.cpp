@@ -53,6 +53,31 @@ long calculate_primitives(GLenum mode, long vertices, GLuint patchSize)
     return 0;
 }
 
+long get_num_output_vertices(GLenum mode, long vertices)
+{
+    switch (mode)
+    {
+    case GL_POINTS:
+    case GL_LINE_LOOP:
+        return vertices;
+    case GL_LINE_STRIP:
+        return vertices - 1;
+    case GL_TRIANGLE_FAN:
+    case GL_TRIANGLE_STRIP:
+        return (vertices - 2) * 3;
+    case GL_LINES:
+        return vertices;
+    case GL_TRIANGLES:
+        return vertices;
+    case GL_PATCHES:
+        return vertices;
+    default:
+        DBG_LOG("Error: Unrecognized draw method\n");
+        break;
+    }
+    return 0;
+}
+
 bool isUniformSamplerType(GLenum type)
 {
     return (type == GL_SAMPLER_2D || type == GL_SAMPLER_3D || type == GL_SAMPLER_CUBE || type == GL_SAMPLER_2D_SHADOW

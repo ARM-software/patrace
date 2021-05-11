@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 import argparse
 import struct
 import svgwrite
@@ -78,7 +78,7 @@ class Remapper:
 
     def run(self, filename, input):
 
-        print 'Searching for relevant calls...'
+        print('Searching for relevant calls...')
         call_lists = {
             'eglMakeCurrent': [],
             'eglCreateContext': [],
@@ -95,7 +95,7 @@ class Remapper:
         num_calls = 0
         for call in input.Calls():
             num_calls += 1
-            if call.name in call_lists.keys():
+            if call.name in list(call_lists.keys()):
                 context_calls.append({
                     'name': call.name,
                     'tid': call.thread_id,
@@ -104,7 +104,7 @@ class Remapper:
                     'number': call.number,
                 })
 
-        print "Number of calls: {}".format(num_calls)
+        print("Number of calls: {}".format(num_calls))
         # Sometimes, contexts can get the same pointer values
         # Hence, the contexts pointers will not be unique. Therefor,
         # we create an unique, sequential id.
@@ -259,7 +259,7 @@ class Remapper:
                 )
                 context_calls = context_calls[1:]
 
-            if context_calls and context_calls[0]['name'] in call_lists.keys():
+            if context_calls and context_calls[0]['name'] in list(call_lists.keys()):
                 if context_calls[0]['name'] not in ['eglMakeCurrent', 'eglSwapBuffers']:
                     context_calls = context_calls[1:]
 

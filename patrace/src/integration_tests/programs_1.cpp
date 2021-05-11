@@ -1,37 +1,69 @@
 #include "pa_demo.h"
 
-const char *update_buf_cs_source[] =
+const char *vertex_shader_source[] = GLSL_VS(
+	uniform float offset;
+	in vec4 a_v4Position;
+	in vec4 a_v4FillColor;
+	highp out vec4 v_v4FillColor;
+	void main()
+	{
+		v_v4FillColor = a_v4FillColor;
+		gl_Position = a_v4Position;
+		gl_Position.x += offset;
+	}
+);
+
+const char *fragment_shader_source[] = GLSL_FS(
+	highp in vec4 v_v4FillColor;
+	out vec4 fragColor;
+	void main()
+	{
+	        fragColor = v_v4FillColor;
+	}
+);
+
+const float triangleVertices[] =
 {
-	"#version 310 es\n"
-	"layout (local_size_x = 128) in;\n"
-	"layout(binding = 0, std140) buffer block\n"
-	"{\n"
-	"        vec4 pos_out[];\n"
-	"};\n"
-	"uniform float value;\n"
-	"void main(void)\n"
-	"{\n"
-	"        uint gid = gl_GlobalInvocationID.x;\n"
-	"        pos_out[gid] = vec4(value);\n"
-	"}"
+	0.0f,  0.5f, 0.0f,
+	-0.5f, -0.5f, 0.0f,
+	0.5f, -0.5f, 0.0f,
 };
 
-const int size = 1024;
-static GLuint update_buf_cs, result_buffer, ppipeline;
+const float triangleColors[] =
+{
+	1.0, 0.0, 0.0, 1.0,
+	0.0, 1.0, 0.0, 1.0,
+	0.0, 1.0, 0.0, 1.0,
+};
+
+
+static int width = 1024;
+static int height = 600;
+static GLuint vpos_obj, vcol_obj, vertex_program, fragment_program, vao, ppipeline;
+static GLint upos;
 
 static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 {
-	glUseProgram(0); // work around bug in paframework
-	update_buf_cs = glCreateShaderProgramv(GL_COMPUTE_SHADER, 1, update_buf_cs_source);
-	glGenBuffers(1, &result_buffer);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, result_buffer);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLfloat) * size * 4, NULL, GL_DYNAMIC_DRAW);
-	GLfloat *ptr = (GLfloat *)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GLfloat) * size * 4, GL_MAP_WRITE_BIT);
-	memset(ptr, 0, sizeof(GLfloat) * size * 4);
-	glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+	width = w;
+	height = h;
+
+	// setup space
+	glViewport(0, 0, width, height);
+	glDepthFunc(GL_LEQUAL);
+	glEnable(GL_DEPTH_TEST);
+	glClearColor(0.0f, 0.0f, 0.5f, 1.0f);
+	glClearDepthf(1.0f);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+	// setup draw program
+	vertex_program = glCreateShaderProgramv(GL_VERTEX_SHADER, 1, vertex_shader_source);
+	fragment_program = glCreateShaderProgramv(GL_FRAGMENT_SHADER, 1, fragment_shader_source);
 	glGenProgramPipelines(1, &ppipeline); // pipeline object registered here
 	glBindProgramPipeline(ppipeline); // pipeline object actually created here
-	glUseProgramStages(ppipeline, GL_COMPUTE_SHADER_BIT, update_buf_cs);
+	glUseProgramStages(ppipeline, GL_VERTEX_SHADER_BIT, vertex_program);
+	glUseProgramStages(ppipeline, GL_FRAGMENT_SHADER_BIT, fragment_program);
 	assert(glIsProgramPipeline(ppipeline));
 	glValidateProgramPipeline(ppipeline);
 	GLint len;
@@ -44,8 +76,6 @@ static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 		PALOGE("PIPELINE LOG: %s\n", buf);
 		free(buf);
 	}
-
-
 	GLint program = 0;
 	GLint pipe = 0;
 	GLint count = 0;
@@ -54,9 +84,11 @@ static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 	assert(program == 0);
 
 	glGetIntegerv(GL_PROGRAM_PIPELINE_BINDING, &pipe);
+	PALOGI("program pipeline: %d\n", program);
 	assert(pipe == (int)ppipeline);
 
-	glGetProgramPipelineiv(ppipeline, GL_COMPUTE_SHADER, &program);
+	glGetProgramPipelineiv(ppipeline, GL_VERTEX_SHADER, &program);
+	PALOGI("vertex program: %d\n", program);
 
 	glGetProgramInterfaceiv(program, GL_UNIFORM_BLOCK, GL_ACTIVE_RESOURCES, &count);
 	PALOGI("uniform blocks: %d\n", count);
@@ -67,20 +99,37 @@ static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 	assert(count == 1);
 
 	glGetProgramInterfaceiv(program, GL_PROGRAM_INPUT, GL_ACTIVE_RESOURCES, &count);
-	PALOGI("inputs: %d (expected 0)\n", count);
-	//assert(count == 0);
+	PALOGI("inputs: %d\n", count);
+	assert(count == 2);
 
 	glGetProgramInterfaceiv(program, GL_PROGRAM_OUTPUT, GL_ACTIVE_RESOURCES, &count);
 	PALOGI("outputs: %d\n", count);
-	assert(count == 0);
+	assert(count == 2);
 
 	glGetProgramInterfaceiv(program, GL_BUFFER_VARIABLE, GL_ACTIVE_RESOURCES, &count);
 	PALOGI("variables: %d\n", count);
-	assert(count == 1);
+	assert(count == 0);
 
 	glGetProgramInterfaceiv(program, GL_SHADER_STORAGE_BLOCK, GL_ACTIVE_RESOURCES, &count);
 	PALOGI("buffer blocks: %d\n", count);
-	assert(count == 1);
+	assert(count == 0);
+
+	// setup buffers
+	glGenVertexArrays(1, &vao);
+	glBindVertexArray(vao);
+	GLint iLocPosition = glGetProgramResourceLocation(vertex_program, GL_PROGRAM_INPUT, "a_v4Position");
+	GLint iLocFillColor = glGetProgramResourceLocation(vertex_program, GL_PROGRAM_INPUT, "a_v4FillColor");
+	upos = glGetProgramResourceLocation(vertex_program, GL_UNIFORM, "offset");
+	glGenBuffers(1, &vcol_obj);
+	glBindBuffer(GL_ARRAY_BUFFER, vcol_obj);
+	glBufferData(GL_ARRAY_BUFFER, 3 * 4 * sizeof(GLfloat), triangleColors, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(iLocFillColor);
+	glVertexAttribPointer(iLocFillColor, 4, GL_FLOAT, GL_FALSE, 0, NULL);//triangleColors);
+	glGenBuffers(1, &vpos_obj);
+	glBindBuffer(GL_ARRAY_BUFFER, vpos_obj);
+	glBufferData(GL_ARRAY_BUFFER, 3 * 3 * sizeof(GLfloat), triangleVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(iLocPosition);
+	glVertexAttribPointer(iLocPosition, 3, GL_FLOAT, GL_FALSE, 0, NULL);//triangleVertices);
 
 	return 0;
 }
@@ -88,40 +137,22 @@ static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 // first frame render something, second frame verify it
 static void callback_draw(PADEMO *handle, void *user_data)
 {
-	// compute
-	GLfloat value = 0.0f;
-	glUseProgram(0); // work around bug in paframework
-	glBindProgramPipeline(ppipeline);
-	GLint location = glGetProgramResourceLocation(update_buf_cs, GL_UNIFORM, "value");
-	assert(location != -1);
-	glProgramUniform1f(update_buf_cs, location, 1.5f);
-	glGetUniformfv(update_buf_cs, location, &value);
-	assert(value == 1.5f);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, result_buffer);
-	glDispatchCompute(size / 128, 1, 1);
-	glMemoryBarrier(GL_UNIFORM_BARRIER_BIT);
+	glProgramUniform1f(vertex_program, upos, handle->current_frame * 0.1f);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
 	glStateDump_ARM();
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
-	glUseProgramStages(ppipeline, GL_ALL_SHADER_BITS, 0);
-
-	// verify
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, result_buffer);
-	GLfloat *ptr = (GLfloat *)glMapBufferRange(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GLfloat) * size * 4, GL_MAP_READ_BIT);
-	for (int i = 0; i < size * 4; i++)
-	{
-		if (!is_null_run()) assert(ptr[i] == 1.5f);
-	}
-	glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
 	// verify in retracer
-	glAssertBuffer_ARM(GL_SHADER_STORAGE_BUFFER, 0, sizeof(GLfloat) * size * 4, "0123456789abcdef");
+	assert_fb(width, height);
 }
 
 static void test_cleanup(PADEMO *handle, void *user_data)
 {
+	glDeleteVertexArrays(1, &vao);
+	glDeleteBuffers(1, &vcol_obj);
+	glDeleteBuffers(1, &vpos_obj);
 	glDeleteProgramPipelines(1, &ppipeline);
-	glDeleteProgram(update_buf_cs);
-	glDeleteBuffers(1, &result_buffer);
+	glDeleteProgram(vertex_program);
+	glDeleteProgram(fragment_program);
 }
 
 int main()

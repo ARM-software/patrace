@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 import os
 import re
@@ -27,7 +27,7 @@ for line in fd:
 fd.close()
 
 # Parse gl.xml
-print '--- GLES extensions ---'
+print('--- GLES extensions ---')
 script_dir = os.path.dirname(os.path.realpath(__file__))
 tree = ET.parse(os.path.join(script_dir, '../../../thirdparty/opengl-registry/xml/gl.xml'))
 root = tree.getroot()
@@ -45,11 +45,11 @@ for extension in root.findall('extensions/extension'):
         continue
     if not 'GL_OES' in name and not 'GL_EXT' in name and not 'GL_KHR' in name and not 'GL_ARM' in name and not 'GL_ANGLE' in name: # only want official ones
         continue
-    print '%s' % name
+    print('%s' % name)
 
 # Parse egl.xml
-print
-print '--- EGL extensions ---'
+print()
+print('--- EGL extensions ---')
 script_dir = os.path.dirname(os.path.realpath(__file__))
 tree = ET.parse(os.path.join(script_dir, '../../../thirdparty/egl-registry/api/egl.xml'))
 root = tree.getroot()
@@ -67,4 +67,4 @@ for extension in root.findall('extensions/extension'):
         continue
     if not 'EGL_OES' in name and not 'EGL_EXT' in name and not 'EGL_KHR' in name and not 'EGL_ARM' in name and not 'EGL_ANGLE' in name: # only want official ones
         continue
-    print '%s' % name
+    print('%s' % name)

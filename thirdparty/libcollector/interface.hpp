@@ -17,7 +17,7 @@
 #ifndef DBG_LOG
 #ifdef ANDROID
 #include <android/log.h>
-#define DBG_LOG(...) __android_log_print(ANDROID_LOG_INFO, "LIBCOLLECTOR", __VA_ARGS__);
+#define DBG_LOG(...) __android_log_print(ANDROID_LOG_INFO, "LIBCOLLECTOR", __VA_ARGS__)
 #else
 #define DBG_LOG(...) do { fprintf(stdout, "LIBCOLLECTOR DEBUG :: FILE: %s, LINE: %d, INFO: ", __FILE__, __LINE__);printf(__VA_ARGS__); } while(0)
 #endif
@@ -203,7 +203,7 @@ public:
     bool initialize(std::vector<std::string> collectors = std::vector<std::string>());
 
     /// Initialize a single collector. Attempts to initialize a collector more than once is ignored.
-    void initialize_collector(const std::string& name);
+    bool initialize_collector(const std::string& name);
 
     /// Return reference to a named collector.
     Collector* collector(const std::string& name);

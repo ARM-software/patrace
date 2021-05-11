@@ -32,18 +32,18 @@ void glCopyClientSideBuffer(GLenum target, unsigned int name)
     if (unlikely(buffer == 0))
     {
         const char* bufname = bufferName(target);
-        gRetracer.reportAndAbort("Trying to copy client side buffer %u, but no %s buffer bound\n", name, bufname);
+        gRetracer.reportAndAbort("Trying to copy client side buffer %u, but no %s buffer bound", name, bufname);
     }
     void* data = gRetracer.getCurrentContext()._bufferToData_map.at(buffer);
     ClientSideBufferObject* csb = gRetracer.mCSBuffers.get_object(gRetracer.getCurTid(), name);
     if (unlikely(data == NULL))
     {
         const char* bufname = bufferName(target);
-        gRetracer.reportAndAbort("Trying to copy client side buffer %u, but failed to fetch %s buffer %u\n", name, bufname, buffer);
+        gRetracer.reportAndAbort("Trying to copy client side buffer %u, but failed to fetch %s buffer %u", name, bufname, buffer);
     }
     if (unlikely(csb == NULL))
     {
-        gRetracer.reportAndAbort("Trying to copy client side buffer %u, but failed to fetch client side buffer\n", name);
+        gRetracer.reportAndAbort("Trying to copy client side buffer %u, but failed to fetch client side buffer", name);
     }
     memcpy(data, csb->base_address, csb->size);
 }
@@ -56,13 +56,13 @@ void glPatchClientSideBuffer(GLenum target, int _size, const char* _data)
     if (unlikely(buffer == 0))
     {
         const char* name = bufferName(target);
-        gRetracer.reportAndAbort("Trying to copy client side buffer, but no %s buffer bound!\n", name);
+        gRetracer.reportAndAbort("Trying to copy client side buffer, but no %s buffer bound!", name);
     }
     void* data = gRetracer.getCurrentContext()._bufferToData_map.at(buffer);
     if (unlikely(data == NULL))
     {
         const char* name = bufferName(target);
-        gRetracer.reportAndAbort("Trying to copy client side buffer, but failed to fetch %s buffer %u!\n", name, buffer);
+        gRetracer.reportAndAbort("Trying to copy client side buffer, but failed to fetch %s buffer %u!", name, buffer);
     }
 
     // patch it
@@ -120,13 +120,13 @@ unsigned int glGenGraphicBuffer_ARM(unsigned int _width, unsigned int _height, i
     }
 
     // should never get here, as we abort with exception once libui.so fails to open, as well as libnativewindow.so
-    gRetracer.reportAndAbort("Fail to open libui.so and libnativewindow.so somehow. Please report this as a bug. Aborting...\n");
+    gRetracer.reportAndAbort("Fail to open libui.so and libnativewindow.so somehow. Please report this as a bug. Aborting...");
 
     return 0;
 #else
     auto iter = context.mAndroidToLinuxPixelMap.find(static_cast<PixelFormat>(_pix_format));
     if (iter == context.mAndroidToLinuxPixelMap.end()) {
-        gRetracer.reportAndAbort("Cannot find the corresponding PixelFormat of %x\n", _pix_format);
+        gRetracer.reportAndAbort("Cannot find the corresponding PixelFormat of %x", _pix_format);
     }
     unsigned int linux_pix_format = iter->second;
     mali_tpi_egl_pixmap_format format = MALI_TPI_EGL_PIXMAP_FORMAT_INVALID;
@@ -147,7 +147,7 @@ unsigned int glGenGraphicBuffer_ARM(unsigned int _width, unsigned int _height, i
         format = MALI_TPI_EGL_PIXMAP_FORMAT_P010;
         break;
     default:
-        gRetracer.reportAndAbort("glGenGraphicBuffer_ARM doesn't support format=0x%x, aborting...\n", _pix_format);
+        gRetracer.reportAndAbort("glGenGraphicBuffer_ARM doesn't support format=0x%x, aborting...", _pix_format);
         break;
     }
     egl_image_fixture *fix = new egl_image_fixture(format);

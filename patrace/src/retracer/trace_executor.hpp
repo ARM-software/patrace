@@ -48,30 +48,6 @@ struct TraceExecutorFrameResult{
         : result(r), category(cat), frameNo(fno) { }
 };
 
-// TODO: Remove this. It is not used for anything useful.
-enum TraceExecutorErrorCode
-{
-            TRACE_ERROR_FILE_NOT_FOUND,
-            TRACE_ERROR_INVALID_JSON,
-            TRACE_ERROR_INVALID_PARAMETER,
-            TRACE_ERROR_MISSING_PARAMETER,
-            TRACE_ERROR_PARAMETER_OUT_OF_BOUNDS,
-            TRACE_ERROR_OUT_OF_MEMORY,
-            TRACE_ERROR_MEMORY_BUDGET,
-            TRACE_ERROR_INITIALISING_INSTRUMENTATION,
-            TRACE_ERROR_CAPTURING_INSTRUMENTATION_DATA,
-            TRACE_ERROR_INCONSISTENT_TRACE_FILE,
-            TRACE_ERROR_GENERIC,
-            TRACE_ERROR_COUNT,
-};
-
-struct TraceErrorType
-{
-    TraceErrorType(TraceExecutorErrorCode code, const std::string &descr) { error_description = descr; error_code = code; }
-    std::string error_description;
-    TraceExecutorErrorCode error_code;
-};
-
 class TraceExecutor{
     // TraceExecutor provides an alternative way play back tracefiles using the global Retracer object.
     // More information is collected and a result file is generated
@@ -79,8 +55,7 @@ class TraceExecutor{
 
     public:
         static void initFromJson(const std::string& json_data, const std::string& trace_dir, const std::string& result_file);
-        static void addError(TraceExecutorErrorCode code, const std::string &error_description = std::string());
-        static void writeError(TraceExecutorErrorCode code, const std::string &error_description = std::string());
+        static void writeError(const std::string &error_description = std::string());
         static bool writeData(Json::Value result_data_value, int frames, float duration);
         static void clearResult();
         static void clearError();
@@ -93,7 +68,7 @@ class TraceExecutor{
 
     private:
         static std::string mResultFile;
-        static std::vector<TraceErrorType> mErrorList;
+        static std::vector<std::string> mErrorList;
         struct ResultFile
         {
             ResultFile(const std::string& name, const std::string& path, bool shouldDelete) :

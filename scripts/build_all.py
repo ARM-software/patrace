@@ -15,8 +15,6 @@ WARNING = '\033[93m'
 WARNRED = '\033[31m'
 ENDC = '\033[0m'
 
-ANDROID_TARGET = 'android-23'
-
 SUCCESS = 0
 ERROR = 1
 
@@ -92,6 +90,7 @@ def update_android_versions(major, minor, patch, revision, version_type, source_
         release_code=release_code,
         edit_file=out_file
     )
+
     run_command(release_code_pattern)
 
 
@@ -145,10 +144,10 @@ def run_command(commandstr, log=sys.stdout, environment=None):
     p.communicate()
 
     if p.returncode != SUCCESS:
-        print "The following command failed with error code {code}:\n{command}".format(
+        print("The following command failed with error code {code}:\n{command}".format(
             code=p.returncode,
             command=commandstr
-        )
+        ))
         sys.exit(p.returncode)
 
     return p.returncode
@@ -163,7 +162,7 @@ def check_log_erros(log_file):
                 print_error(line)
 
 
-def build_project(platform, variant, build_dir, install_dir, project_path, log_file=sys.stdout, make_target='install', cmake_defines=[], stop_early=False):
+def build_project(platform, variant, build_dir, install_dir, project_path, log_file=sys.stdout, make_target='install', cmake_defines=[], stop_early=False, static=False):
     sanitizer = 'false'
     if variant == 'sanitizer':
         sanitizer = 'true'
@@ -232,7 +231,8 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
     if 'x32' in platform:
         cmake_command += ' -DCMAKE_C_FLAGS=-m32 -DCMAKE_CXX_FLAGS=-m32'
 
-    if platform in ['fbdev_x32', 'fbdev_x64', 'rhe6_x32', 'rhe6_x64']:
+    if platform in ['fbdev_x32', 'fbdev_x64', 'rhe6_x32', 'rhe6_x64']\
+            or (platform in ['fbdev_arm_hardfloat', 'fbdev_aarch64'] and static):
         cmake_command += ' -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"'
 
     if not os.path.exists(build_dir):
@@ -262,11 +262,11 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
 
 
 def install(src, dst):
-    print "Installing: {src} -> {dst}".format(src=src, dst=dst)
+    print("Installing: {src} -> {dst}".format(src=src, dst=dst))
     try:
         shutil.copy(src, dst)
     except IOError:
-        print "Unable to copy file: {src}".format(src=src)
+        print("Unable to copy file: {src}".format(src=src))
         sys.exit(ERROR)
 
 
@@ -293,21 +293,6 @@ def ndk_test():
         return True
 
     return False
-
-
-def update_android_projects(src_path):
-    dirs_to_update = [p[0]
-                      for p in os.walk(src_path)
-                      if "AndroidManifest.xml" in p[2]]
-    for path in dirs_to_update:
-        name = os.path.basename(os.path.normpath(path))
-        run_command(
-            'android update project --name {name} --target {androidtarget} --path {path}'.format(
-                name=name,
-                androidtarget=ANDROID_TARGET,
-                path=path,
-            )
-        )
 
 
 def build_cmake(src_path, build_base_dir, install_base_dir):
@@ -369,7 +354,7 @@ set and pointed to the directory where ndk-build resides."""
                          )
         return ERROR
 
-    print "Using ndk-build: {0}".format(os.environ['NDK'])
+    print("Using ndk-build: {0}".format(os.environ['NDK']))
     script_dir = os.path.dirname(os.path.realpath(__file__))
 
     products = {
@@ -381,21 +366,21 @@ set and pointed to the directory where ndk-build resides."""
             'targets': [
                 {
                     'name': 'egltrace',
-                    'binaries': ('libs/armeabi-v7a/libinterceptor_patrace_arm.so',
-                                 'libs/arm64-v8a/libinterceptor_patrace_arm64.so',),
+                    'binaries': ('build/intermediates/library_and_local_jars_jni/release/jni/armeabi-v7a/libinterceptor_patrace_arm.so',
+                                 'build/intermediates/library_and_local_jars_jni/release/jni/arm64-v8a/libinterceptor_patrace_arm64.so',),
                     'update-version-functions': [update_cmake_versions]
                 },
                 {
                     'name': 'fakedriver',
-                    'binaries': (
-                        'libs/armeabi-v7a/libEGL_wrapper_arm.so',
-                        'libs/arm64-v8a/libEGL_wrapper_arm64.so',
-                        'libs/armeabi-v7a/libGLESv1_CM_wrapper_arm.so',
-                        'libs/arm64-v8a/libGLESv1_CM_wrapper_arm64.so',
-                        'libs/armeabi-v7a/libGLESv2_wrapper_arm.so',
-                        'libs/arm64-v8a/libGLESv2_wrapper_arm64.so',
-                        'libs/armeabi-v7a/libGLES_wrapper_arm.so',
-                        'libs/arm64-v8a/libGLES_wrapper_arm64.so',
+                    'binaries': ( # build/intermediates/library_and_local_jars_jni/release/
+                        'build/intermediates/library_and_local_jars_jni/release/jni/armeabi-v7a/libEGL_wrapper_arm.so',
+                        'build/intermediates/library_and_local_jars_jni/release/jni/arm64-v8a/libEGL_wrapper_arm64.so',
+                        'build/intermediates/library_and_local_jars_jni/release/jni/armeabi-v7a/libGLESv1_CM_wrapper_arm.so',
+                        'build/intermediates/library_and_local_jars_jni/release/jni/arm64-v8a/libGLESv1_CM_wrapper_arm64.so',
+                        'build/intermediates/library_and_local_jars_jni/release/jni/armeabi-v7a/libGLESv2_wrapper_arm.so',
+                        'build/intermediates/library_and_local_jars_jni/release/jni/arm64-v8a/libGLESv2_wrapper_arm64.so',
+                        'build/intermediates/library_and_local_jars_jni/release/jni/armeabi-v7a/libGLES_wrapper_arm.so',
+                        'build/intermediates/library_and_local_jars_jni/release/jni/arm64-v8a/libGLES_wrapper_arm64.so',
                         'egl.cfg'
                     ),
                     'update-version-functions': [],
@@ -403,9 +388,17 @@ set and pointed to the directory where ndk-build resides."""
                 {
                     'name': 'eglretrace',
                     'binaries': (
-                        'bin/eglretrace-release.apk',
+                        'build/outputs/apk/release/eglretrace-release.apk',
                     ),
                     'update-version-functions': [update_android_versions]
+                },
+                {
+                    'name': 'gleslayer',
+                    'binaries': (
+                        'build/intermediates/library_and_local_jars_jni/release/jni/armeabi-v7a/libGLES_layer_arm.so',
+                        'build/intermediates/library_and_local_jars_jni/release/jni/arm64-v8a/libGLES_layer_arm64.so'
+                    ),
+                    'update-version-functions': []
                 },
             ],
         },
@@ -432,7 +425,6 @@ set and pointed to the directory where ndk-build resides."""
     version_type = os.environ.get('VERSION_TYPE', 'dev')
 
     # Update version information. This modifies e.g. AndroidManifest.xml
-    # so must be done before update_android_projects() below.
     for product_name in product_names:
         product = products[product_name]
         for target in product['targets']:
@@ -446,22 +438,17 @@ set and pointed to the directory where ndk-build resides."""
                     android_target_dir=android_target_dir
                 )
 
-    # Update Android project (runs "android update project")
-    update_android_projects(src_path)
+    # build with gradle
+    gradlew_dir = os.path.join(product['android_root'],'gradlew')
+    build_file = os.path.join(product['android_root'],'build.gradle')
+    run_command('{gradlew}  --build-file {buildfile} {buildtype}'.format(gradlew = gradlew_dir, buildfile=build_file, buildtype='assembleRelease --stacktrace'))
 
     for product_name in product_names:
         product = products[product_name]
 
+        # Install
         for target in product['targets']:
-            print "*" * 70
-            print "Building {}/{}".format(product['name'], target['name'])
-            print "*" * 70
             android_target_dir = os.path.join(product['android_root'], target['name'])
-
-            # Build
-            run_command('make -j8 -C {makedir}'.format(makedir=android_target_dir))
-
-            # Install
             target_install_dir = os.path.join(install_dir, target['name'])
             if not os.path.exists(target_install_dir):
                 os.makedirs(target_install_dir)
@@ -471,5 +458,15 @@ set and pointed to the directory where ndk-build resides."""
                     os.path.join(android_target_dir, binary),
                     target_install_dir
                 )
+
+    abis = ['armeabi-v7a','arm64-v8a']
+    for abi in abis:
+        dest_dir = os.path.join(install_dir, 'eglretrace', abi)
+        if not os.path.exists(dest_dir):
+            os.makedirs(dest_dir)
+        run_command("cp {lib_dir}/{abi}/libeglretrace.so {dest_dir}".format(
+            lib_dir=os.path.join(products['patrace']['android_root'], 'eglretrace', 'build/intermediates/merged_native_libs/release/out/lib'),
+            abi=abi,
+            dest_dir=dest_dir))
 
     return SUCCESS

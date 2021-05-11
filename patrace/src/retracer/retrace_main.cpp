@@ -39,7 +39,6 @@ usage(const char *argv0) {
         "  -offscreen Run in offscreen mode\n"
         "  -singlewindow Force everything to render in a single window\n"
         "  -singleframe Draw only one frame for each buffer swap (offscreen only)\n"
-        "  -skipwork WARMUP_FRAMES Discard GPU work outside frame range with given number of warmup frames. Requires GLES3.\n"
         "  -debug output debug messages\n"
         "  -debugfull output all of the current invoked gl functions, with callNo, frameNo and skipped or discarded information\n"
         "  -infojson Dump the header of the trace file in json format, then exit\n"
@@ -47,7 +46,6 @@ usage(const char *argv0) {
         "  -overrideEGL Red Green Blue Alpha Depth Stencil, example: overrideEGL 5 6 5 0 16 8, for 16 bit color and 16 bit depth and 8 bit stencil\n"
         "  -strict Use strict EGL mode (fail unless the specified EGL configuration is valid)\n"
         "  -strictcolor Same as -strict, but only checks color channels (RGBA). Useful for dumping when we want to be sure returned EGL is same as requested\n"
-        "  -skip CALL_SET skip calls in the specific call set\n"
         "  -collect Collect performance counters\n"
         "  -perfmon Collect performance counters in the built-in perfmon interface\n"
         "  -flush Before starting running the defined measurement range, make sure we flush all pending driver work\n"
@@ -149,8 +147,6 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             DBG_LOG("WARNING: Please think twice before using -ores - it is usually a mistake!\n");
         } else if (!strcmp(arg, "-msaa")) {
             mOptions.mOverrideConfig.msaa_samples = readValidValue(argv[++i]);
-        } else if (!strcmp(arg, "-skipwork")) {
-            mOptions.mSkipWork = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-callstats")) {
             mOptions.mCallStats = true;
         } else if (!strcmp(arg, "-perf")) {
@@ -262,8 +258,6 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             mOptions.mStrictEGLMode = true;
         } else if (!strcmp(arg, "-strictcolor")) {
             mOptions.mStrictColorMode = true;
-        } else if (!strcmp(arg, "-skip")) {
-            mOptions.mSkipCallSet = new common::CallSet(argv[++i]);
         } else if (strstr(arg, "-lib")) {
             const char* strEGL = "-libEGL_path=";
             const char* strGLES1 = "-libGLESv1_path=";
@@ -328,6 +322,7 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
         if (!gRetracer.mCollectors->initialize(filtered))
         {
             fprintf(stderr, "Failed to initialize collectors\n");
+            return false;
         }
         else DBG_LOG("libcollector instrumentation enabled through cmd line.\n");
     }
@@ -395,6 +390,14 @@ int main(int argc, char** argv)
         gRetracer.drawBudget = 1; // we need at least one draw to get things started
     }
     gRetracer.Retrace();
-    GLWS::instance().Cleanup();
+    Json::Value results;
+    std::string cmds;
+    for (int i = 0; i < argc; i++)
+    {
+        cmds += std::string(argv[i]);
+        if (i + 1 < argc) cmds += " ";
+    }
+    results["cmdline"] = cmds;
+    gRetracer.saveResult(results);
     return 0;
 }

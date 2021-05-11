@@ -70,5 +70,6 @@ private:
 
 const std::string shader_extension(GLenum type);
 long calculate_primitives(GLenum mode, long vertices, GLuint patchSize);
+long get_num_output_vertices(GLenum mode, long vertices);
 GLenum interpret_texture_target(GLenum target);
 bool isUniformSamplerType(GLenum type);

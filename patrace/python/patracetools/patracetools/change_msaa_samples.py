@@ -1,11 +1,11 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 import argparse
 import json
 
 try:
     from patrace import InputFile, OutputFile
 except ImportError:
-    print 'patrace (Python interface of PATrace SDK) is required.'
+    print('patrace (Python interface of PATrace SDK) is required.')
 
 
 def change_msaa_samples(input, output, samples):
@@ -22,19 +22,19 @@ def change_msaa_samples(input, output, samples):
             call.args[1].asInt = samples
             modified_fbos.add(current_fbo)
 
-            print 'fbo: ' + str(current_fbo)
-            print 'original samples: ' + str(original_samples)
-            print 'new samples: ' + str(samples)
-            print '---'
+            print('fbo: ' + str(current_fbo))
+            print('original samples: ' + str(original_samples))
+            print('new samples: ' + str(samples))
+            print('---')
         elif call.name == 'glFramebufferTexture2DMultisampleEXT':
             original_samples = call.args[5].asInt
             call.args[5].asInt = samples
             modified_fbos.add(current_fbo)
 
-            print 'fbo: ' + str(current_fbo)
-            print 'original samples: ' + str(original_samples)
-            print 'new samples: ' + str(samples)
-            print '---'
+            print('fbo: ' + str(current_fbo))
+            print('original samples: ' + str(original_samples))
+            print('new samples: ' + str(samples))
+            print('---')
 
         output.WriteCall(call)
 
@@ -52,7 +52,7 @@ def main():
     with InputFile(args.file) as input:
         with OutputFile(args.newfile) as output:
             modified_fbos = change_msaa_samples(input, output, args.samples)
-            print 'Modified FBOs: ' + str(modified_fbos)
+            print('Modified FBOs: ' + str(modified_fbos))
 
 if __name__ == '__main__':
     main()

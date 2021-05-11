@@ -29,7 +29,7 @@
 
 import platform
 
-from stdapi import *
+from specs.stdapi import *
 
 # GLboolean is typedefed to be *unsigned char* in the khronos header
 # We don't want to use Enum to represent it, otherwise it will

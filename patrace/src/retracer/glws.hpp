@@ -14,6 +14,7 @@ public:
     NativeWindow(int width, int height, const std::string& title);
     virtual ~NativeWindow() {}
     virtual void show();
+    virtual void close();
     virtual bool resize(int w, int h);
     virtual EGLNativeWindowType getHandle() const { return mHandle; }
 

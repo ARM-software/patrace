@@ -72,6 +72,7 @@ DrawParams ParseInterfaceBase::getDrawCallCount(common::CallTM *call)
     }
 
     ret.mode = call->mArgs[0]->GetAsUInt();
+    ret.num_vertices_out = get_num_output_vertices(ret.mode, ret.vertices);
     ret.primitives = calculate_primitives(ret.mode, ret.vertices, contexts[context_index].patchSize);
 
     // Indirect draw calls not handled
@@ -156,7 +157,7 @@ bool ParseInterface::open(const std::string& input, const std::string& output)
     jsonConfig.depth = eglconfig["depth"].asInt();
     jsonConfig.stencil = eglconfig["stencil"].asInt();
     jsonConfig.samples = eglconfig.get("msaaSamples", -1).asInt();
-    if (header.isMember("multiThread")) only_default = header.get("multiThread", false).asBool();
+    if (header.isMember("multiThread")) only_default = !header.get("multiThread", false).asBool();
     return true;
 }
 
@@ -194,7 +195,10 @@ common::CallTM* ParseInterface::next_call()
     }
     delete mCall;
     mCall = new common::CallTM(inputFile, mCallNo, call);
-    context_index = current_context[mCall->mTid];
+    if (current_context.count(mCall->mTid) > 0)
+    {
+        context_index = current_context[mCall->mTid];
+    }
     if (!only_default || mCall->mTid == defaultTid)
     {
         interpret_call(mCall);
@@ -374,6 +378,35 @@ void ParseInterfaceBase::update_renderpass(common::CallTM *call, StateTracker::C
             else if (rb.first == GL_COLOR_ATTACHMENT0 && jsonConfig.red == 11) rp.attachments[i].format = GL_R11F_G11F_B10F;
         }
         i++;
+    }
+}
+
+// This is a hack, but there is no means within the GLES XML to reliably map enums to extensions.
+void ParseInterfaceBase::check_enum(const std::string& callname, GLenum value)
+{
+    if (value == GL_BLEND_ADVANCED_COHERENT_KHR) used_extensions.insert("GL_KHR_blend_equation_advanced_coherent");
+    else if (callname == "glBlendEquation" || callname == "glBlendEquationi")
+    {
+        switch (value)
+        {
+        case GL_MULTIPLY_KHR:
+        case GL_SCREEN_KHR:
+        case GL_OVERLAY_KHR:
+        case GL_DARKEN_KHR:
+        case GL_LIGHTEN_KHR:
+        case GL_COLORDODGE_KHR:
+        case GL_COLORBURN_KHR:
+        case GL_HARDLIGHT_KHR:
+        case GL_SOFTLIGHT_KHR:
+        case GL_DIFFERENCE_KHR:
+        case GL_EXCLUSION_KHR:
+        case GL_HSL_HUE_KHR:
+        case GL_HSL_SATURATION_KHR:
+        case GL_HSL_COLOR_KHR:
+        case GL_HSL_LUMINOSITY_KHR:
+            used_extensions.insert("GL_KHR_blend_equation_advanced");
+        default: break;
+        }
     }
 }
 
@@ -1675,9 +1708,17 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         s.contains_optimize_off_pragma = sh.contains_optimize_off_pragma;
         s.contains_debug_on_pragma = sh.contains_debug_on_pragma;
         s.contains_invariant_all_pragma = sh.contains_invariant_all_pragma;
+
         for (const auto& var : repr.global.members)
         {
-            if (lookup_is_sampler(var.type))
+            if (var.storage == Keyword::Out || var.storage == Keyword::Varying)
+            {
+                StateTracker::GLSLPrecision precision = StateTracker::HIGHP;
+                if (var.precision == Keyword::Mediump) precision = StateTracker::MEDIUMP;
+                else if (var.precision == Keyword::Lowp) precision = StateTracker::LOWP;
+                s.varyings.emplace(var.name, StateTracker::GLSLVarying{ precision, lookup_get_gles_type(var.type), lookup_get_string(var.type) });
+            }
+            else if (lookup_is_sampler(var.type))
             {
                 StateTracker::GLSLPrecision precision = StateTracker::HIGHP;
                 if (var.precision == Keyword::Mediump) precision = StateTracker::MEDIUMP;
@@ -2007,6 +2048,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     {
         contexts[context_index].state_change(frames);
         GLenum pname = call->mArgs[0]->GetAsUInt();
+        check_enum(call->mCallName, pname);
         if (pname == GL_PATCH_VERTICES)
         {
             contexts[context_index].patchSize = call->mArgs[1]->GetAsInt();
@@ -2020,6 +2062,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     else if (call->mCallName == "glDepthFunc")
     {
         const GLenum depthfunc = call->mArgs[0]->GetAsUInt();
+        check_enum(call->mCallName, depthfunc);
         if (depthfunc != contexts[context_index].fillstate.depthfunc)
         {
             contexts[context_index].state_change(frames);
@@ -2038,6 +2081,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     {
         contexts[context_index].state_change(frames);
         const GLenum face = call->mArgs[0]->GetAsUInt();
+        check_enum(call->mCallName, face);
         const GLuint mask = call->mArgs[1]->GetAsUInt();
         if (face == GL_FRONT_AND_BACK)
         {
@@ -2053,6 +2097,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     {
         contexts[context_index].state_change(frames);
         const GLenum face = call->mArgs[0]->GetAsUInt();
+        check_enum(call->mCallName, face);
         const GLuint func = call->mArgs[1]->GetAsUInt();
         const GLint ref = call->mArgs[2]->GetAsUInt();
         const GLuint mask = call->mArgs[1]->GetAsUInt();
@@ -2232,6 +2277,10 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         GLenum dstRGB = call->mArgs[1]->GetAsUInt();
         GLenum srcAlpha = call->mArgs[2]->GetAsUInt();
         GLenum dstAlpha = call->mArgs[3]->GetAsUInt();
+        check_enum(call->mCallName, srcRGB);
+        check_enum(call->mCallName, dstRGB);
+        check_enum(call->mCallName, srcAlpha);
+        check_enum(call->mCallName, dstAlpha);
         if (srcRGB != fillstate.blend_rgb.source || fillstate.blend_rgb.destination != dstRGB
             || fillstate.blend_alpha.source != srcAlpha || fillstate.blend_alpha.destination != dstAlpha)
         {
@@ -2248,6 +2297,8 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         StateTracker::FillState& fillstate = contexts[context_index].fillstate;
         GLenum src = call->mArgs[0]->GetAsUInt();
         GLenum dst = call->mArgs[1]->GetAsUInt();
+        check_enum(call->mCallName, src);
+        check_enum(call->mCallName, dst);
         if (fillstate.blend_rgb.source != src || fillstate.blend_rgb.destination != dst
             || fillstate.blend_alpha.source != src || fillstate.blend_alpha.destination != dst)
         {
@@ -2265,6 +2316,8 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         contexts[context_index].state_change(frames);
         GLenum modeRGB = call->mArgs[0]->GetAsUInt();
         GLenum modeAlpha = call->mArgs[1]->GetAsUInt();
+        check_enum(call->mCallName, modeRGB);
+        check_enum(call->mCallName, modeAlpha);
         fillstate.blend_rgb.operation = modeRGB;
         fillstate.blend_alpha.operation = modeAlpha;
     }
@@ -2273,6 +2326,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         StateTracker::FillState& fillstate = contexts[context_index].fillstate;
         contexts[context_index].state_change(frames);
         GLenum mode = call->mArgs[0]->GetAsUInt();
+        check_enum(call->mCallName, mode);
         fillstate.blend_rgb.operation = mode;
         fillstate.blend_alpha.operation = mode;
     }
@@ -2347,6 +2401,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName.compare(0, 6, "glDraw") == 0 && call->mCallName != "glDrawBuffers")
     {
+        draws++;
         contexts[context_index].draws_since_last_state_change++;
         contexts[context_index].draws_since_last_state_or_uniform_change++;
         contexts[context_index].draw_calls_per_frame[frames]++;

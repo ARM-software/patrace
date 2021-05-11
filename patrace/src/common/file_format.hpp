@@ -175,11 +175,12 @@ enum CALL_ERROR_NO {
 // glBindTexture is fixed length, thus it will not use *toNext*
 // glTexImage2D is variable length (the last parameter is a blob type), so it will use *toNext*
 struct BCall {
-    BCall() : funcId(0), tid(0), errNo(0), reserved(0) {}
+    BCall() : funcId(0), tid(0), errNo(0), source(0), reserved(0) {}
     unsigned short funcId;
     unsigned char tid;
     unsigned char errNo : 4;
-    unsigned char reserved : 4;
+    unsigned char source : 1; // 0 = native, 1 = injected by tracer
+    unsigned char reserved : 3;
 };
 struct BCall_vlen : BCall { // variable length
     BCall_vlen() : BCall(), toNext(0) {}

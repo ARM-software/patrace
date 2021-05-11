@@ -9,10 +9,12 @@ patrace/src/fakedriver/gles1/auto.cpp
 patrace/src/fakedriver/gles2/auto.cpp
 patrace/src/fakedriver/single/auto.cpp
 
+patrace/src/dispatch/gleslayer_helper.cpp
 patrace/src/dispatch/eglproc_auto.cpp
 patrace/src/dispatch/eglproc_auto.hpp
 patrace/src/dispatch/eglproc_trace.hpp
 patrace/src/retracer/retrace_gles_auto.cpp
+patrace/src/retracer/config.hpp
 patrace/src/fastforwarder/fastforward_gles_auto.cpp
 patrace/src/tracer/egltrace_auto.cpp
 patrace/src/tracer/sig_enum.hpp
@@ -84,6 +86,7 @@ patrace/python/pypatrace/build/
 patrace/python/pypatrace/patrace.py
 patrace/python/pypatrace/version.py
 patrace/python/pypatrace/patrace_wrap.cpp
+patrace/python/pypatrace/pypatrace.egg-info/
 patrace/python/patracetools/dist/
 patrace/python/patracetools/patracetools/version.py
 patrace/python/patracetools/patracetools.egg-info
