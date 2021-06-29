@@ -53,6 +53,8 @@ commands.add('paMandatoryExtensions')
 commands.add('glAssertBuffer_ARM')
 commands.add('glStateDump_ARM')
 commands.add('glLinkProgram2')
+commands.add('glTexStorageAttribs2DARM')
+commands.add('glTexStorageAttribs3DARM')
 
 GLfixed = Alias("GLfixed", Int32)
 GLclampx = Alias("GLclampx", Int32)
@@ -75,6 +77,8 @@ def OutGlString(charType, lengthPtr, argName):
     lengthExpr = '((%s) ? *(%s) : strlen(%s))' % (lengthPtr, lengthPtr, argName)
     return Out(String(charType, lengthExpr), argName)
 
+GLIntAttrib = Alias("GLint", GLint)
+GLAttribList = Array(Const(GLIntAttrib), "_AttribPairList_size(attrib_list, GL_NONE)")
 
 # OpenGL ES specific functions
 gles_functions = [
@@ -1005,6 +1009,10 @@ gles_functions = [
     # (GLES extension does not support client-side buffers)
     GlFunction(Void, "glMultiDrawArraysIndirectEXT", [(GLenum_mode, "mode"), (GLpointerConst, "indirect"), (GLsizei, "drawcount"), (GLsizei, "stride")]),
     GlFunction(Void, "glMultiDrawElementsIndirectEXT", [(GLenum_mode, "mode"), (GLenum, "type"), (GLpointerConst, "indirect"), (GLsizei, "drawcount"), (GLsizei, "stride")]),
+
+    # ARM_texture_storage_compression
+    GlFunction(Void, "glTexStorageAttribs2DARM", [(GLenum, "target"), (GLsizei, "levels"), (GLenum, "internalformat"), (GLsizei, "width"), (GLsizei, "height"), (GLAttribList, "attrib_list")]),
+    GlFunction(Void, "glTexStorageAttribs3DARM", [(GLenum, "target"), (GLsizei, "levels"), (GLenum, "internalformat"), (GLsizei, "width"), (GLsizei, "height"), (GLsizei, "depth"), (GLAttribList, "attrib_list")]),
 
     # GL_EXT_external_buffer
     GlFunction(Void, "glBufferStorageExternalEXT", [(GLenum, "target"), (GLintptr, "offset"), (GLsizeiptr, "size"), (OpaquePointer(Void), "clientBuffer"), (GLbitfield, "flags")]),
