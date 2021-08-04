@@ -11,5 +11,4 @@
 libs
 R.java
 BuildConfig.java
-*.jar
 *.ap_
