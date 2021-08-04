@@ -27,9 +27,9 @@ private:
     int mViewSize;
     std::unordered_map<int, int> winNameToViewIdMap;
 
-    void requestNativeWindow(int width, int height, int format);
-    void resizeNativeWindow(int width, int height, int format, int textureViewId);
-    void destroyNativeWindow(int viewId);
+    void requestNativeWindow(int width, int height, int format, int win);
+    void resizeNativeWindow(int width, int height, int format, int win);
+    void destroyNativeWindow(int win);
     void syncNativeWindow();
 };
 

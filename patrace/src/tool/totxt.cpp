@@ -13,6 +13,7 @@ static int end_frame = INT32_MAX;
 static int our_tid = -1;
 static bool verbose = false;
 static bool colours = false;
+static bool bare = false;
 
 #define RED   "\x1B[31m"
 #define GRN   "\x1B[32m"
@@ -35,6 +36,7 @@ void usage(const char *argv0)
         "  -tid   <thread_id> Only the function calls invoked by thread <thread_id> will be printed\n"
         "  -v     Verbose output\n"
         "  -c     Add colours\n"
+        "  -b     Bare mode (useful for making diffs between two output files)\n"
         "\n"
         , argv0);
 }
@@ -69,7 +71,8 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *fpp)
     if (colours && call->mCallName == "glInsertEventMarkerEXT") mark = YEL;
     if (colours && call->mCallName == "eglMakeCurrent") mark = CYN;
     const char *reset = (colours) ? RESET : "";
-    fprintf(fp, "[t%d, f%d, c%d] %d : %s%s%s%s%s\n", call->mTid, input.frames, input.context_index, call->mCallNo, injected, reset, mark, call->ToStr(false).c_str(), reset);
+    if (!bare) fprintf(fp, "[t%d, f%d, c%d] %d : %s%s%s%s%s\n", call->mTid, input.frames, input.context_index, call->mCallNo, injected, reset, mark, call->ToStr(false).c_str(), reset);
+    else fprintf(fp, "%s%s%s%s%s\n", injected, reset, mark, call->ToStr(false).c_str(), reset);
     if (verbose)
     {
         const int context_index = input.context_index;
@@ -203,6 +206,10 @@ int main(int argc, const char* argv[])
         else if (!strcmp(arg, "-c"))
         {
             colours = true;
+        }
+        else if (!strcmp(arg, "-b"))
+        {
+            bare = true;
         }
         else if (!strcmp(arg, "-v"))
         {

@@ -88,6 +88,7 @@ void InitEnumMap()
     InsertEglEnumString(EGL_LUMINANCE_SIZE);
     InsertEglEnumString(EGL_ALPHA_MASK_SIZE);
     InsertEglEnumString(EGL_COLOR_BUFFER_TYPE);
+    InsertEglEnumString(EGL_COLOR_COMPONENT_TYPE_EXT);
     InsertEglEnumString(EGL_RENDERABLE_TYPE);
     InsertEglEnumString(EGL_MATCH_NATIVE_PIXMAP);
     InsertEglEnumString(EGL_CONFORMANT);
@@ -106,6 +107,7 @@ void InitEnumMap()
     InsertEglEnumString(EGL_CLIENT_APIS);
     InsertEglEnumString(EGL_HEIGHT);
     InsertEglEnumString(EGL_WIDTH);
+    InsertEglEnumString(EGL_BUFFER_AGE_KHR);
     InsertEglEnumString(EGL_LARGEST_PBUFFER);
     InsertEglEnumString(EGL_TEXTURE_FORMAT);
     InsertEglEnumString(EGL_TEXTURE_TARGET);

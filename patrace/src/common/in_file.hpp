@@ -22,6 +22,7 @@ public:
 
     const char* ExIdToName(unsigned short id) const { return mExIdToName.at(id).c_str(); }
     int getDefaultThreadID() const;
+    inline bool getMultithread() const { return mMultithread; }
     char* dataPointer() const { return mDataPtr; }
 
     inline unsigned short NameToExId(const char* str) const
@@ -42,6 +43,7 @@ protected:
     bool checkJsonMembers(Json::Value &root);
 
     bool                mIsOpen = false;
+    bool                mMultithread = false;
     std::fstream        mStream;
     std::string         mFileName;
     bool mKeepAll = false;

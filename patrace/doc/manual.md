@@ -413,8 +413,12 @@ Then, enable GLES Layer for specified target application (`libGLES_layer_arm.so`
     adb shell settings put global gpu_debug_layers_gles libGLES_layer_arm64.so
     adb shell settings put global gpu_debug_app  application_package_name_wantToTrace
 
+#### Enable GLES Layer on S21
+First, enable GLES layer by running `adb shell setprop debug.gles.layers libGLES_layer_arm64.so`.
+Then, find which directory to place the GLES layer by running `adb logcat | grep libEGL`, while starting the game. It will list where it is searching for the GLES layer. Copy the GLES layer to this directory, and give it 755 permission.
+
 ### Tracing on Android
-Create the output trace directory in advance, which will be named `/data/apitrace/<package_name>`. Give it 777 permission.
+Create the output trace directory in advance, which will be named `/data/apitrace/<package_name>`. Give it 777 permission, and run `chcon u:object_r:app_data_file:s0:c512,c768 /data/apitrace/<package_name>`
 After that, run the application and tracing begins automatically.
 
 Retracing
@@ -841,7 +845,7 @@ Existing collectors:
 
 | Name                 | What it does                                                                                                                                                                            | Unit             | Options                             
 |----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------|-------------------------------------|
-| `perf`               | Gets CPU Counter from perf                                                                                                                                                              | Cycles           |
+| `perf`               | Gets CPU Counter from perf                                                                                                                                                              | Cycles           | "set", "event", "allthread". See detailed information in perf collector options. |
 | `battery_temperature`| Gets the battery temperature                                                                                                                                                            | Celsius          |                                     |                                                                                          |
 | `cpufreq`            | CPU frequencies. Each sample is the average frequency used since the last sampling point for each core. Then you also get the max of every core in `highest_avg` for your convenience. | Hz               |                                     
 | `memfreq`            | Memory frequency                                                                                                                                                                        |  Hz              |                                     |                                                                                          |
@@ -859,9 +863,9 @@ Existing collectors:
 | `rusage`             | Information from getrusage() system call                                                                                                                                                | Various          |                                     | 
 | `power`              | TBD                                                                                                                                                                                     |                  | TBD                                 | 
 | `ferret`             | Monitors CPU usage by polling system files. Gives coarse per thread CPU load statistics (cycles consumed, frequencies during the rune etc.) | Various | 'cpus': List of cpus to monitor. Example: cpus: [0, 2, 3, 5, 7], will monitor core 0, 2, 3, 5 and 7. All work done on the other cores will be ignored.<br>This defaults to all cores on the system if not set.<br><br>'enable_postprocessing': Boolean value. If this is set, the sampled results will be postprocessed at shutdown. Giving per. thread derived statistics like estimated CPU fps etc. Defaults to false.<br><br>'banned_threads': Only used when 'enable_postprocessing' is set to true. This is a list of thread names to exclude when generating derived statistics. Defaults to: 'banned_threads': ["ferret"], this will exclude the CPU overhead added by the ferret instrumentation.<br><br>'output_dir': Path to an existing directory where sample data will be stored. |
-| `set`                | CPU counter set, an option with perf collector                                                                                              |         | 0: default for generalized hardware CPU events; 1: CPU cache related; 2: CPU bandwidth related; 3: CPU bandwidth related on Cortex-A73; 4: CPU cycles for all/main thread including user/kernel space; 5: CPU InstructionRetired for all/main thread including user/kernel space; 6: CPU cycle and instruction for all/main thread |
 
-Example
+
+Example with libcollector
 -------
 
 The above names should be added as keys under the "collectors" dictionary in the input.json file:
@@ -876,9 +880,6 @@ The above names should be added as keys under the "collectors" dictionary in the
             "gpufreq": {
                 "path": "/sys/kernel/gpu/gpu_clock"
             },
-            "perf": {
-                "set": 5
-            },
             "procfs": {},
             "rusage": {}
         },
@@ -889,7 +890,114 @@ The above names should be added as keys under the "collectors" dictionary in the
     }
 
 
-Generating CPU load statistics
+Generating CPU load with perf collector
+------------------------------
+
+A new GLES CPU performance measurement is provided with perf collector since r3p2.
+
+Perf collector can also be configured with the following json options.
+
+| Key                          | Type       | Optional | Description                                                                                                                                                                                                                            |
+|------------------------------|------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| set                          | int        | no       | CPU counters set for a group of events. set 0~3 is reserved for specified event counters. 0:default for generalized hardware CPU events  1:CPU cache related  2:CPU bandwidth related  3:CPU bandwidth related on Cortex-A73. 4 and greater:customized CPU counter set.It should be used with "event" option to specify event counters.                                                                                                                                                                                                                             |
+| event                        | jsonarray  | yes      | a group of event. Only works with set 4 or greater. set 0~3 will overwrite it with reserved event counter. If "set" is 0~3, just skip this option.                                                                                                                               |
+| allthread                    | boolean    | yes      | true(default)/false. If true, the count includes events that happens in replay main threads as well as mali- background threads. If false, the count only includes events in replay main threads. Recommend setting it to true strongly to get data of main thread and background thread at the same time.                                                                                                                                                                                                                                                          |
+
+
+Event option of perf collector can be configured with the following json options.
+
+| Key                          | Type       | Optional | Description                                                                                                                                                                                                                            |
+|------------------------------|------------|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| name                         | string     | no       | the PMU event mnemonic named by user. It's a field to classify the event output result in thread_data item.                                                                                                                                                                      |
+| type                         | int        | no       | PMU event type. 0:PERF_TYPE_HARDWARE  1:PERF_TYPE_SOFTWARE  2:PERF_TYPE_TRACEPOINT  3:PERF_TYPE_HW_CACHE  4:PERF_TYPE_RAW  5:PERF_TYPE_BREAKPOINT                                                                                                                                |
+| config                       | int        | no       | PMU event number. Should be decimal format, not in hex format. Please refer to your CPU reference manaul to get event number.                                                                                                                                                    |
+| excludeUser                  | boolean    | yes      | true/false(default). If this is true, the count excludes events that happens in user space.                                                                                                                                                                                      |
+| excludeKernel                | boolean    | yes      | true/false(default). If this is true, the count excludes events that happens in kernel space.                                                                                                                                                                                    |
+| counterLen64bit              | int        | yes      | 1/0(default). 0 means using 32bit counters, 1 means using 64bit counters.                                                                                                                                                                                                        |
+
+
+Example with perf collector
+------------------------------
+
+perf collector should be added as keys under the "collectors" dictionary in input.json file. "set", "event" and "allthread" should be added as keys under "perf" dictionary in input.json file.
+
+    {
+        "collectors": {
+            "perf": {
+                "set": 4,
+                "event": [
+                    {
+                        "name": "CPUCyclesUser",
+                        "type": 4,
+                        "config": 17,
+                        "excludeKernel": true
+                    },
+                    {
+                        "name": "CPUCyclesKernel",
+                        "type": 4,
+                        "config": 17,
+                        "excludeUser": true,
+                    }
+                ]
+            }
+        },
+        "file": "driver2.orig.gles3.pat",
+        "frames": "1-191",
+        "preload": true
+    }
+
+
+Output result of perf collector
+------------------------------
+
+PerfCollector samples counter per frame for each thread. To reduce the size of output json file, it merges all replay main threads to a single entry named "replayMainThreads" in result file, also the same way for all background threads to a single entry named "backgroundThreads". Then it merges the main and background threads to a single entry named "allThreads".
+
+    {
+        "results" : [
+            "frame_data": {
+                "perf": {
+                    "thread_data": [
+                        {
+                            "CCthread": "replayMainThreads",
+                            "CPUCycleCount": [],
+                            "CPUCyclesUser": [],
+                            "CPUCyclesKernel": [],
+                            "SUM": [
+                                "CPUCycleCount": 6564218453,
+                                "CPUCyclesUser": 6141323697,
+                                "CPUCyclesKernel": 422510306
+                            ]
+                        },
+                        {
+                            "CCthread": "backgroundThreads",
+                            "CPUCycleCount": [],
+                            "CPUCyclesUser": [],
+                            "CPUCyclesKernel": [],
+                            "SUM": [
+                                "CPUCycleCount": 171442785,
+                                "CPUCyclesUser": 89874083,
+                                "CPUCyclesKernel": 81563989
+                            ]
+                        },
+                        {
+                            "CCthread": "allThreads",
+                            "CPUCycleCount": [],
+                            "CPUCyclesUser": [],
+                            "CPUCyclesKernel": [],
+                            "SUM": [
+                                "CPUCycleCount": 6735661238,
+                                "CPUCyclesUser": 6231197780,
+                                "CPUCyclesKernel": 504074295
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+
+Generating CPU load statistics with ferret
 ------------------------------
 
 You can get statistics for the CPU load (driver overhead) when running a trace by enabling the ferret libcollector module with postprocessing.

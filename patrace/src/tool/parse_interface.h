@@ -28,6 +28,19 @@
 /// Large negative index number to encourage crashing if used improperly.
 const int UNBOUND = -1000;
 
+struct Position
+{
+    int frame;
+    int call;
+};
+inline bool operator< (const Position& lhs, const Position& rhs) { return lhs.call < rhs.call; }
+inline bool operator> (const Position& lhs, const Position& rhs) { return rhs < lhs; }
+inline bool operator<=(const Position& lhs, const Position& rhs) { return !(lhs > rhs); }
+inline bool operator>=(const Position& lhs, const Position& rhs) { return !(lhs < rhs); }
+inline bool operator==(const Position& lhs, const Position& rhs) { return lhs.call == rhs.call; }
+inline bool operator!=(const Position& lhs, const Position& rhs) { return !(lhs == rhs); }
+extern Position current_pos; // number of frames and calls processed so far; having it a a global is hacky but very effective here
+
 struct DrawParams
 {
     GLenum mode = GL_NONE;
@@ -89,14 +102,34 @@ enum SurfaceType
 namespace StateTracker
 {
 
-struct Buffer
+struct Resource
 {
-    int id;
+    GLuint id;
     int index;
-    unsigned call_created;
-    unsigned call_destroyed = 0;
-    unsigned frame_created;
-    unsigned frame_destroyed = 0;
+    Position created;
+    Position destroyed = { -1, -1 };
+    Position last_updated = { -1, -1 };
+    Position last_used = { -1, -1 };
+    std::set<Position> partial_updates;
+    std::string label;
+
+    inline void updated()
+    {
+        last_used = current_pos;
+        last_updated = current_pos;
+        partial_updates.clear();
+    }
+
+    inline void partial_update()
+    {
+        partial_updates.insert(current_pos);
+    }
+
+    Resource(GLuint _id, int _index) : id(_id), index(_index), created(current_pos), last_updated(current_pos), last_used(current_pos) {}
+};
+
+struct Buffer : public Resource
+{
     // A buffer can be viewed in several different ways, if interleaved.
     std::set<std::tuple<GLenum, GLint, GLsizei>> types; // type, components, stride
     std::set<GLenum> usages;
@@ -109,8 +142,7 @@ struct Buffer
 
     int clientsidebuffer = UNBOUND;
 
-    Buffer(int _id, int _index, unsigned _call_created, unsigned _frame_created) : id(_id), index(_index),
-        call_created(_call_created), frame_created(_frame_created) {}
+    Buffer(int _id, int _index) : Resource(_id, _index) {}
 };
 
 struct SamplerState
@@ -152,19 +184,6 @@ struct SamplerState
     }
 };
 
-struct Resource
-{
-    GLuint id;
-    int index;
-    unsigned call_created;
-    int call_destroyed = -1;
-    unsigned frame_created;
-    int frame_destroyed = -1;
-    std::string label;
-    Resource(GLuint _id, int _index, unsigned _call_created, unsigned _frame_created) : id(_id), index(_index),
-             call_created(_call_created), frame_created(_frame_created) {}
-};
-
 template<typename T>
 struct ResourceStorage
 {
@@ -184,35 +203,47 @@ struct ResourceStorage
     /// invalidate all our pointers!
     ResourceStorage(const ResourceStorage& r) = delete;
 
-    inline T& at(int idx) { return share->store.at(idx); }
-    inline const T& at(int idx) const { return share->store.at(idx); }
-    inline T& operator[](int idx) { return share->store.at(idx); }
-    inline const T& operator[](int idx) const = delete;
+    inline T& at(int idx) { T&i = share->store.at(idx); i.last_used = current_pos; return i; }
+    inline const T& at(int idx) const { return share->store.at(idx); } // _not_ usage tracked!
+    inline T& operator[](int idx) { T& i = share->store.at(idx); i.last_used = current_pos; return i; }
+    inline const T& operator[](int idx) const = delete; // explicitly use at() instead
     inline T& id(GLuint id) { int idx; idx = share->remapping.at(id); return at(idx); }
-    inline const T& id(GLuint id) const { int idx; idx = share->remapping.at(id); return at(idx); }
     inline int remap(GLuint id) const { return share->remapping.at(id); }
     inline bool contains(GLuint id) const { return share->remapping.count(id) > 0; }
     const std::vector<T>& all() const { return share->store; }
     size_t size() const { return share->store.size(); }
     ssize_t ssize() const { return static_cast<ssize_t>(share->store.size()); }
 
-    inline T & add(GLuint _id, unsigned _call_created, unsigned _frame_created)
+    inline T & add(GLuint _id)
     {
         const int idx = share->store.size();
         share->remapping[_id] = idx;
-        share->store.emplace_back(_id, idx, _call_created, _frame_created);
+        share->store.emplace_back(_id, idx);
         return share->store.back();
     }
 
-    inline void remove(GLuint _id, unsigned _call_destroyed, unsigned _frame_destroyed)
+    inline void remove(GLuint _id)
     {
         if (share->remapping.count(_id) > 0)
         {
             const int idx = share->remapping.at(_id);
-            share->store.at(idx).call_destroyed = _call_destroyed;
-            share->store.at(idx).frame_destroyed = _frame_destroyed;
+            share->store.at(idx).destroyed = current_pos;
+            share->store.at(idx).partial_updates.clear();
             share->remapping.erase(_id);
         }
+    }
+
+    // Return the most recent frame this frame depends on
+    inline Position most_recent_frame_dependency()
+    {
+        Position dep = { -1, -1 };
+        for (const auto& i : share->store)
+        {
+            if (i.last_used.frame != current_pos.frame) continue; // if not used this frame, ignore
+            if (i.last_updated.frame < current_pos.frame && i.last_updated > dep) dep = i.last_updated; // get last full update not in this frame
+            for (const auto j : i.partial_updates) if (j.frame != current_pos.frame && dep < j) dep = j; // get last partial update not in this frame
+        }
+        return dep;
     }
 
 private:
@@ -224,20 +255,20 @@ private:
 struct Sampler : public Resource
 {
     SamplerState state;
-    Sampler(int _id, int _index, unsigned _call_created, unsigned _frame_created) : Resource(_id, _index, _call_created, _frame_created) {}
+    Sampler(int _id, int _index) : Resource(_id, _index) {}
 };
 
 struct Query : public Resource
 {
     GLenum target; // each query object can only be of a single type
-    Query(int _id, int _index, unsigned _call_created, unsigned _frame_created) : Resource(_id, _index, _call_created, _frame_created) {}
+    Query(int _id, int _index) : Resource(_id, _index) {}
 };
 
 struct TransformFeedback : public Resource
 {
     GLenum primitiveMode = GL_NONE;
     bool active = false;
-    TransformFeedback(int _id, int _index, unsigned _call_created, unsigned _frame_created) : Resource(_id, _index, _call_created, _frame_created) {}
+    TransformFeedback(int _id, int _index) : Resource(_id, _index) {}
 };
 
 struct Texture : public Resource
@@ -247,11 +278,10 @@ struct Texture : public Resource
     int width = 1;
     int height = 1;
     int depth = 1;
-    GLenum internal_format;
-    GLenum binding_point;
+    GLenum internal_format = GL_NONE;
+    GLenum binding_point = GL_NONE;
     SamplerState state;
-    Texture(int _id, int _index, unsigned _call_created, unsigned _frame_created) : Resource(_id, _index, _call_created, _frame_created),
-            internal_format(GL_NONE), binding_point(GL_NONE) {}
+    Texture(int _id, int _index) : Resource(_id, _index) {}
 
     // the below are not set by the parse_interface, because we need dynamic runtime info to fill them out
     std::set<GLenum> used_min_filters;
@@ -260,12 +290,11 @@ struct Texture : public Resource
 
 struct Renderbuffer : public Resource
 {
-    GLsizei samples;
-    GLenum internalformat;
-    GLsizei width;
-    GLsizei height;
-    Renderbuffer(int _id, int _index, unsigned _call_created, unsigned _frame_created) : Resource(_id, _index, _call_created, _frame_created),
-                 samples(0), internalformat(GL_NONE), width(0), height(0) {}
+    GLsizei samples = 0;
+    GLenum internalformat = GL_NONE;
+    GLsizei width = 0;
+    GLsizei height = 0;
+    Renderbuffer(int _id, int _index) : Resource(_id, _index) {}
 };
 
 struct FillState
@@ -314,9 +343,8 @@ struct Attachment
 struct Framebuffer : public Resource
 {
     std::map<GLenum, Attachment> attachments; // buffer type : Attachment
-    Framebuffer(int _id, int _index, unsigned _call_created, unsigned _frame_created) : Resource(_id, _index, _call_created, _frame_created) {}
+    Framebuffer(int _id, int _index) : Resource(_id, _index) {}
     int used = 0; // considered 'used' if anything drawn to it
-    int last_used = 0; // which frame it was last drawn to
     int attachment_calls = 0; // how many times we have changed attachments to it
     std::unordered_map<int, int> duplicate_clears; // by frame
     std::unordered_map<int, int> total_clears; // by frame
@@ -365,7 +393,7 @@ struct Shader : public Resource
     bool compile_status = false;
     std::vector<std::string> extensions;
 
-    Shader(int _id, int _index, int _call_created, int _frame_created) : Resource(_id, _index, _call_created, _frame_created) {}
+    Shader(int _id, int _index) : Resource(_id, _index) {}
 };
 
 struct base_stats
@@ -380,7 +408,7 @@ struct ProgramPipeline : public Resource
 {
     base_stats stats;
     std::unordered_map<GLenum, int> program_stages; // enum to index
-    ProgramPipeline(int _id, int _index, int _call_created, int _frame_created) : Resource(_id, _index, _call_created, _frame_created) {}
+    ProgramPipeline(int _id, int _index) : Resource(_id, _index) {}
 };
 
 struct Program : public Resource
@@ -416,7 +444,7 @@ struct Program : public Resource
     std::map<int, std::vector<GLfloat>> uniformfValues; // only those we need for samplers stored, we don't know the array size of each, hence vectors
     std::map<int, int> uniformLastChanged; // call number when last set
 
-    Program(int _id, int _index, int _call_created, int _frame_created) : Resource(_id, _index, _call_created, _frame_created) {}
+    Program(int _id, int _index) : Resource(_id, _index) {}
 };
 
 // A "render pass" binds together draw calls that operate on the same framebuffer configuration, in the same frame.
@@ -460,7 +488,7 @@ struct RenderPass
 
 struct VertexArrayObject : public Resource
 {
-    VertexArrayObject(int _id, int _index, int _call_created, int _frame_created) : Resource(_id, _index, _call_created, _frame_created) {}
+    VertexArrayObject(int _id, int _index) : Resource(_id, _index) {}
 
     struct BufferBinding
     {
@@ -524,6 +552,7 @@ struct Context : public Resource
     }
 
     std::vector<RenderPass> render_passes;
+    std::set<int> swaps; // swap calls by frame
 
     struct
     {
@@ -551,6 +580,19 @@ struct Context : public Resource
     ResourceStorage<Shader> shaders;
     ResourceStorage<VertexArrayObject> vaos;
     ResourceStorage<ProgramPipeline> program_pipelines;
+
+    void updated_fbo_attachment(int fbo_idx, int attachment)
+    {
+        assert(fbo_idx < (int)framebuffers.size());
+        Framebuffer &fbo = framebuffers.at(fbo_idx);
+        assert(fbo.attachments.count(attachment) > 0);
+        Attachment &att = fbo.attachments.at(attachment);
+        if (att.index >= 0)
+        {
+            if (att.type == GL_RENDERBUFFER) renderbuffers.at(att.index).updated();
+            else textures.at(att.index).updated();
+        }
+    }
 
     int renderbuffer_index = UNBOUND;
     std::vector<GLenum> draw_buffers; // as set by glDrawBuffers()
@@ -581,8 +623,8 @@ struct Context : public Resource
     int patchSize = 3;
     std::map<GLenum, bool> enabled;
 
-    Context(int _id, int _display, int _index, int _share_context, unsigned _call_created, unsigned _frame_created, Context* _share)
-            : Resource(_id, _index, _call_created, _frame_created), display(_display), share_context(_share_context),
+    Context(int _id, int _display, int _index, int _share_context, Context* _share)
+            : Resource(_id, _index), display(_display), share_context(_share_context),
               framebuffers(nullptr, 0),
               textures(&_share->textures),
               renderbuffers(&_share->renderbuffers),
@@ -595,31 +637,31 @@ struct Context : public Resource
               vaos(nullptr, 0),
               program_pipelines(nullptr)
     {
-        init(_call_created, _frame_created, _share);
+        init(_share);
     }
 
-    Context(int _id, int _display, int _index, unsigned _call_created, unsigned _frame_created)
-            : Resource(_id, _index, _call_created, _frame_created), display(_display), framebuffers(nullptr, 0), transform_feedbacks(nullptr, 0),
+    Context(int _id, int _display, int _index)
+            : Resource(_id, _index), display(_display), framebuffers(nullptr, 0), transform_feedbacks(nullptr, 0),
               buffers(nullptr, 0), vaos(nullptr, 0)
     {
-        init(_call_created, _frame_created, nullptr);
+        init(nullptr);
     }
 
 private:
-    void init(unsigned _call_created, unsigned _frame_created, const Context* _share)
+    void init(const Context* _share)
     {
-        Framebuffer& f = framebuffers.add(0, _call_created, _frame_created); // create default framebuffer
+        Framebuffer& f = framebuffers.add(0); // create default framebuffer
         f.attachments.emplace(GL_STENCIL_ATTACHMENT, Attachment(GL_STENCIL));
         f.attachments.emplace(GL_DEPTH_ATTACHMENT, Attachment(GL_DEPTH));
         f.attachments.emplace(GL_COLOR_ATTACHMENT0, Attachment(GL_COLOR));
-        vaos.add(0, _call_created, _frame_created); // create default VAO
-        transform_feedbacks.add(0, _call_created, _frame_created); // create default transform feedback object
+        vaos.add(0); // create default VAO
+        transform_feedbacks.add(0); // create default transform feedback object
         if (!_share)
         {
             draw_buffers.resize(1);
             draw_buffers[0] = GL_BACK;
             enabled[GL_DITHER] = true; // the only one that starts enabled
-            buffers.add(0, _call_created, _frame_created); // create default buffer for GL_ARRAY_BUFFER
+            buffers.add(0); // create default buffer for GL_ARRAY_BUFFER
         }
         render_passes.emplace_back(0, 0, 0, 0);
     }
@@ -632,10 +674,10 @@ struct Surface : public Resource
     std::map<GLenum, GLint> attribs;
     int width;
     int height;
-    std::vector<int> swap_calls; // by call numbers
+    std::set<int> swaps; // swap calls by frame
     int eglconfig;
-    Surface(GLuint _id, int _display, int _index, unsigned _call_created, unsigned _frame_created, SurfaceType _type, std::map<GLenum, GLint> _attribs, int _width, int _height, int _config)
-            : Resource(_id, _index, _call_created, _frame_created), display(_display), type(_type), attribs(_attribs), width(_width), height(_height), eglconfig(_config) {}
+    Surface(GLuint _id, int _display, int _index, SurfaceType _type, std::map<GLenum, GLint> _attribs, int _width, int _height, int _config)
+            : Resource(_id, _index), display(_display), type(_type), attribs(_attribs), width(_width), height(_height), eglconfig(_config) {}
 };
 
 struct EglConfig
@@ -680,6 +722,7 @@ public:
     virtual int64_t getCpuCycles() { return 0; }
 
     void dumpFrameBuffers(bool value) { mDumpFramebuffers = value; }
+    void forceMultithread() { mForceMultithread = true; }
     void setQuickMode(bool value) { mQuickMode = value; }
     void setDisplayMode(bool value) { mDisplayMode = value; }
     void setScreenshots(bool value) { mScreenshots = value; }
@@ -696,6 +739,7 @@ public:
     std::map<int, int> surface_remapping; // from id to index in the original file
     std::map<int, int> current_context; // map threads to contexts
     std::map<int, int> current_surface; // map threads to surfaces
+    std::vector<std::vector<Position>> dependencies; // frame dependencies
 
     std::map<int, std::map<int, int>> client_side_last_use; // thread -> (client id, call no)
     std::map<int, std::map<int, std::string>> client_side_last_use_reason; // thread -> (client id, reason), for debugging!!
@@ -735,6 +779,7 @@ protected:
 
     bool only_default = false; // only parse default tid calls
     std::string mOutputName = "trace";
+    bool mForceMultithread = false;
     bool mDumpFramebuffers = false;
     bool mQuickMode = true;
     bool mDisplayMode = false;

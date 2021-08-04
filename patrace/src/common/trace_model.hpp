@@ -293,8 +293,6 @@ public:
     char* Serialize(char* dest, int overrideID = -1, bool injected = false);
     void Stylize();
 
-    std::string ToCppCall();
-
 private:
     CallTM(const CallTM &);
     CallTM &operator =(const CallTM &);

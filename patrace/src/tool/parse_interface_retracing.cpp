@@ -364,7 +364,16 @@ bool ParseInterfaceRetracing::open(const std::string& input, const std::string& 
     threadArray = header["threads"];
     defaultTid = header["defaultTid"].asUInt();
     gRetracer.mOptions.mDebug = mDebug;
-    gRetracer.mOptions.mMultiThread = header.get("multiThread", false).asBool();
+    if (mForceMultithread)
+    {
+        gRetracer.mOptions.mMultiThread = true;
+        only_default = false;
+    }
+    else
+    {
+        gRetracer.mOptions.mMultiThread = header.get("multiThread", false).asBool();
+        only_default = header.get("multiThread", false).asBool();
+    }
     DBG_LOG("Multi-threading is %s, selected thread is %d\n", gRetracer.mOptions.mMultiThread ? "ON" : "OFF", (int)defaultTid);
     highest_gles_version = header["glesVersion"].asInt() * 10;
     DBG_LOG("Initial GLES version set to %d based on JSON header\n", highest_gles_version);
@@ -384,7 +393,6 @@ bool ParseInterfaceRetracing::open(const std::string& input, const std::string& 
     jsonConfig.samples = eglconfig.get("msaaSamples", -1).asInt();
     if (jsonConfig.red <= 0) DBG_LOG("Zero red bits! This trace likely has a bad header!\n");
     if (!perf_init()) DBG_LOG("Could not initialize perf subsystem\n");
-    only_default = header.get("multiThread", false).asBool();
     return true;
 }
 
@@ -443,7 +451,7 @@ common::CallTM* ParseInterfaceRetracing::next_call()
         else
         {
             program_index = contexts[context_index].program_pipelines.at(contexts[context_index].program_pipeline_index).program_stages.at(GL_VERTEX_SHADER);
-            gRetracer.reportAndAbort("draw call TF from separate program\n");
+            gRetracer.reportAndAbort("draw call TF from separate program");
         }
 
         const DrawParams params = getDrawCallCount(mCall);
@@ -566,7 +574,7 @@ common::CallTM* ParseInterfaceRetracing::next_call()
                     size_t written = fwrite(static_cast<void*>(varying_data.data()), varying_data.size() * sizeof(GLfloat), 1, fp);
                     if (written != 1)
                     {
-                        gRetracer.reportAndAbort("Failed to write out feedback data! wrote = %d\n", (int)written);
+                        gRetracer.reportAndAbort("Failed to write out feedback data! wrote = %d", (int)written);
                     }
                     fclose(fp);
                 } else {
@@ -1250,6 +1258,7 @@ void ParseInterfaceRetracing::thread(const int threadidx, const int our_tid, Cal
         // Get next packet
 skip_call:
         gRetracer.curCallNo++;
+        current_pos.call = gRetracer.curCallNo;
         if (!gRetracer.mFile.GetNextCall(gRetracer.fptr, gRetracer.mCurCall, gRetracer.src))
         {
             gRetracer.mFinish = true;

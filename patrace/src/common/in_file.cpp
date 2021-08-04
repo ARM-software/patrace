@@ -125,6 +125,7 @@ bool InFileBase::parseHeader(BHeaderV3 hdrV3, Json::Value &jsonRoot)
         DBG_LOG("parse json failed\n");
         return false;
     } else {
+        mMultithread = mJsonHeader.get("multiThread", false).asBool();
         return checkJsonMembers(mJsonHeader);
     }
 

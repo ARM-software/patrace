@@ -134,6 +134,7 @@ post_functions = [
     'glLinkProgram',
     'glUnmapBuffer',
     'eglDestroyImageKHR',
+    'eglDestroyImage',
 ]
 
 arrays_es1 = [("Vertex", "VERTEX"),
@@ -429,10 +430,10 @@ class Tracer:
             print('    if (_eglQuerySurface(dpy, _result, EGL_HEIGHT, (EGLint*) &height) == EGL_FALSE)')
             print('        DBG_LOG("Failed to query surface height\\n");')
 
-        if func.name == 'eglCreateImageKHR':
+        if func.name in ['eglCreateImage', 'eglCreateImageKHR']:
             print('    // Create a texture based on the the newly created EGLImage.')
             print('    // The texture created, will be used as an EGLImage when retracing.')
-            print('    GLuint textureId = pre_eglCreateImageKHR(_result, target, buffer, attrib_list);')
+            print('    GLuint textureId = pre_%s(_result, target, buffer, attrib_list);' % func.name)
             print()
             print('    // Use texture created in pre_eglCreateImageKHR')
             print('    ctx = _eglGetCurrentContext();')
@@ -452,6 +453,21 @@ class Tracer:
             print('    EGLClientBuffer buffer = reinterpret_cast<EGLClientBuffer>(textureIdAsPtr);')
             print()
 
+        if func.name == 'glGetInternalformativ':
+            print('    if (tracerParams.Support2xMSAA && pname == GL_NUM_SAMPLE_COUNTS) // check if we need to increase this value to include MSAA 2')
+            print('    {')
+            print('        printf("glGetInternalformativ GL_NUM_SAMPLE_COUNTS count=%d\\n", *params);')
+            print('        std::vector<GLint> vals(*params);')
+            print('        _glGetInternalformativ(target, internalformat, GL_SAMPLES, *params, vals.data());')
+            print('        bool found = false;')
+            print('        for (int i = 0; i < *params; i++) if (vals.at(i) == 2) found = true;')
+            print('        printf("glGetInternalformativ GL_NUM_SAMPLE_COUNTS inc cap\\n");')
+            print('        if (!found) *params = *params + 1; // increase requested capacity by one')
+            print('    }')
+            print('    else if (tracerParams.Support2xMSAA && pname == GL_SAMPLES && bufSize > 1)')
+            print('    {')
+            print('        params[bufSize - 1] = 2; // the list is always sorted in descending order, and 2 is always the minimum possible')
+            print('    }')
         print('    // save parameters')
         print('    gTraceOut->callMutex.lock();')
         print('    char* dest = gTraceOut->writebuf;')
@@ -609,14 +625,18 @@ class Tracer:
             print('%s    %s%s(%s);' % (indent, result, dispatch, params))
             print('%s    --gTraceThread.at(tid).mCallDepth;' % indent)
             print('%s    const char *str = reinterpret_cast<const char*>(_result);' % indent)
-            print('%s    if (name == GL_EXTENSIONS && _result && tracerParams.ErrorOutOnBinaryShaders && (strcmp(str, "GL_ARM_mali_shader_binary") == 0 || strcmp(str, "GL_ARM_mali_program_binary") == 0 || strcmp(str, "GL_OES_get_program_binary") == 0))' % indent)
+            print('%s    if (name == GL_EXTENSIONS && _result)' % indent)
             print('%s    {' % indent)
-            print('%s        gTraceOut->callMutex.lock();' % indent)
-            print('%s        static std::string s;' % indent)
-            print('%s        s = str;' % indent)
-            print("%s        std::replace(s.begin(), s.end(), '_', 'X'); // make it not match anything anymore" % indent)
-            print('%s        _result = reinterpret_cast<const GLubyte*>(s.c_str());' % indent)
-            print('%s        gTraceOut->callMutex.unlock();' % indent)
+            print('%s        if ((tracerParams.ErrorOutOnBinaryShaders && (strcmp(str, "GL_ARM_mali_shader_binary") == 0 || strcmp(str, "GL_ARM_mali_program_binary") == 0 || strcmp(str, "GL_OES_get_program_binary") == 0))' % indent)
+            print('%s            || (tracerParams.DisableBufferStorage && strcmp(str, "GL_EXT_buffer_storage") == 0))' % indent)
+            print('%s        {' % indent)
+            print('%s            gTraceOut->callMutex.lock();' % indent)
+            print('%s            static std::string s;' % indent)
+            print('%s            s = str;' % indent)
+            print("%s            std::replace(s.begin(), s.end(), '_', 'X'); // make it not match anything anymore" % indent)
+            print('%s            _result = reinterpret_cast<const GLubyte*>(s.c_str());' % indent)
+            print('%s            gTraceOut->callMutex.unlock();' % indent)
+            print('%s        }' % indent)
             print('%s    }' % indent)
             print('%s}' % indent)
             return

@@ -91,6 +91,18 @@ const GLchar *DepthDumper::depthCopyCubeFSCode =
      fragColor = texture(u_Texture, texCoord).x;\n\
  }";
 
+const GLchar *DepthDumper::depthArrayCopyFSCode =
+"#version 310 es\n\
+ uniform highp sampler2DArray u_Texture;\n\
+ uniform int layerIdx;\n\
+ in highp vec2 v_TexCoordinate;\n\
+ out highp float fragColor;\n\
+ void main() {\n\
+     highp vec3 texCoord;\n\
+     texCoord = vec3(v_TexCoordinate.x, v_TexCoordinate.y, layerIdx);\n\
+     fragColor = texture(u_Texture, texCoord).x;\n\
+ }";
+
 DepthDumper::~DepthDumper()
 {
     _glDeleteShader(depthCopyVS);
@@ -181,6 +193,15 @@ void DepthDumper::initializeDepthCopyer()
     if (frag_status == GL_FALSE)
         printShaderInfoLog(DSCopy_sFS, "D24S8 stencilCopy fragment shader");
 
+    // fragment shader for 2DArray depth
+    depthArrayCopyFS = _glCreateShader(GL_FRAGMENT_SHADER);
+    _glShaderSource(depthArrayCopyFS, 1, &depthArrayCopyFSCode, 0);
+    _glCompileShader(depthArrayCopyFS);
+
+    _glGetShaderiv(depthArrayCopyFS, GL_COMPILE_STATUS, &frag_status);
+    if (frag_status == GL_FALSE)
+        printShaderInfoLog(depthCopyCubeFS, "depthArrayCopyFS fragment shader");
+
     //////////////////////////////////////////////////////////////////////////////////////
 
     // program
@@ -242,6 +263,21 @@ void DepthDumper::initializeDepthCopyer()
     u_Texture_location = getUniLoc(depthCopyCubeProgram, "u_Texture");    // get uniform location
     _glUniform1i(u_Texture_location, 0);             // set uniform variables
     cubemapIdLocation = getUniLoc(depthCopyCubeProgram, "cubemapId");    // get uniform location
+
+    // program for 2dArray
+    depthArrayCopyProgram = _glCreateProgram();
+    _glAttachShader(depthArrayCopyProgram, depthCopyVS);
+    _glAttachShader(depthArrayCopyProgram, depthArrayCopyFS);
+    _glBindAttribLocation(depthArrayCopyProgram, 0, "a_Position");
+    _glLinkProgram(depthArrayCopyProgram);
+    _glGetProgramiv(depthArrayCopyProgram, GL_LINK_STATUS, &link_status);
+    if (link_status == GL_FALSE)
+        printProgramInfoLog(depthArrayCopyProgram, "depthArrayCopy program");
+    _glUseProgram(depthArrayCopyProgram);
+
+    u_Texture_location = getUniLoc(depthArrayCopyProgram, "u_Texture");    // get uniform location
+    _glUniform1i(u_Texture_location, 0);             // set uniform variables
+    layerIdxLocation = getUniLoc(depthArrayCopyProgram, "layerIdx");    // get uniform location
 
     //////////////////////////////////////////////////////////////////////////////////////
 
@@ -357,6 +393,9 @@ void DepthDumper::get_depth_texture_image(GLuint sourceTexture, int width, int h
         if (texType == TexCubemap) {
             _glUseProgram(depthCopyCubeProgram);
             _glUniform1i(cubemapIdLocation, id);
+        } else if (texType == Tex2DArray) {
+            _glUseProgram(depthArrayCopyProgram);
+            _glUniform1i(layerIdxLocation, id);
         }
     }
     _glBindBuffer(GL_ARRAY_BUFFER, depthVertexBuf);

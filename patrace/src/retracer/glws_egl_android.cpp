@@ -82,7 +82,7 @@ void GlwsEglAndroid::setupJAVAEnv(JNIEnv *env)
         exit(1);
     }
 
-    gRequestWindowID = env->GetStaticMethodID(gNativeCls, "requestNewSurfaceAndWait", "(III)V");
+    gRequestWindowID = env->GetStaticMethodID(gNativeCls, "requestNewSurfaceAndWait", "(IIII)V");
     if (gRequestWindowID == NULL)
     {
         DBG_LOG("ERROR: Can't get requestNewSurfaceAndWait api!\n");
@@ -104,7 +104,7 @@ void GlwsEglAndroid::setupJAVAEnv(JNIEnv *env)
     }
 }
 
-void GlwsEglAndroid::requestNativeWindow(int width, int height, int format)
+void GlwsEglAndroid::requestNativeWindow(int width, int height, int format, int win)
 {
     JNIEnv* jEnv = static_cast<JNIEnv*>(retracer::gRetracer.mState.mThreadArr[retracer::gRetracer.getCurTid()].mpJavaEnv);
 
@@ -119,10 +119,10 @@ void GlwsEglAndroid::requestNativeWindow(int width, int height, int format)
         retracer::gRetracer.mState.mThreadArr[retracer::gRetracer.getCurTid()].mpJavaEnv = jEnv;
     }
 
-    jEnv->CallStaticVoidMethod(gNativeCls, gRequestWindowID, width, height, format);
+    jEnv->CallStaticVoidMethod(gNativeCls, gRequestWindowID, width, height, format, win);
 }
 
-void GlwsEglAndroid::resizeNativeWindow(int width, int height, int format, int viewId)
+void GlwsEglAndroid::resizeNativeWindow(int width, int height, int format, int win)
 {
     JNIEnv* jEnv = static_cast<JNIEnv*>(retracer::gRetracer.mState.mThreadArr[retracer::gRetracer.getCurTid()].mpJavaEnv);
 
@@ -137,10 +137,10 @@ void GlwsEglAndroid::resizeNativeWindow(int width, int height, int format, int v
         retracer::gRetracer.mState.mThreadArr[retracer::gRetracer.getCurTid()].mpJavaEnv = jEnv;
     }
 
-    jEnv->CallStaticVoidMethod(gNativeCls, gResizeWindowID, width, height, format, viewId);
+    jEnv->CallStaticVoidMethod(gNativeCls, gResizeWindowID, width, height, format, win);
 }
 
-void GlwsEglAndroid::destroyNativeWindow(int viewId)
+void GlwsEglAndroid::destroyNativeWindow(int win)
 {
     JNIEnv* jEnv = static_cast<JNIEnv*>(retracer::gRetracer.mState.mThreadArr[retracer::gRetracer.getCurTid()].mpJavaEnv);
 
@@ -155,7 +155,7 @@ void GlwsEglAndroid::destroyNativeWindow(int viewId)
         retracer::gRetracer.mState.mThreadArr[retracer::gRetracer.getCurTid()].mpJavaEnv = jEnv;
     }
 
-    jEnv->CallStaticVoidMethod(gNativeCls, gDestroyWindowID, viewId);
+    jEnv->CallStaticVoidMethod(gNativeCls, gDestroyWindowID, win);
 }
 
 void GlwsEglAndroid::syncNativeWindow()
@@ -168,7 +168,6 @@ Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint 
 {
     Drawable* handler = NULL;
     WinNameToNativeWindowMap_t::iterator it = gWinNameToNativeWindowMap.find(win);
-    std::unordered_map<int, int>::iterator it2 = winNameToViewIdMap.find(win);
 
     NativeWindow* window = NULL;
     if (it != gWinNameToNativeWindowMap.end())
@@ -178,11 +177,7 @@ Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint 
             window->getHeight() != height)
         {
             window->resize(width, height);
-            int viewId = 0;
-            if (it2 != winNameToViewIdMap.end()) {
-                viewId = it2->second;
-            }
-            resizeNativeWindow(width, height, mNativeVisualId, viewId);
+            resizeNativeWindow(width, height, mNativeVisualId, win);
             ANativeWindow_setBuffersGeometry(mEglNativeWindow, width, height, mNativeVisualId);
         }
     }
@@ -190,7 +185,7 @@ Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint 
     {
         syncNativeWindow();
         mEglNativeWindow = NULL;
-        requestNativeWindow(width, height, mNativeVisualId);
+        requestNativeWindow(width, height, mNativeVisualId, win);
         if (mEglNativeWindow == NULL)
         {
             DBG_LOG("ERROR: Can't create Native window!\n");
@@ -214,7 +209,7 @@ void GlwsEglAndroid::ReleaseDrawable(NativeWindow *window)
     {
         if (it->second == window)
         {
-            destroyNativeWindow( winNameToViewIdMap[it->first] );
+            destroyNativeWindow(it->first);
             gWinNameToNativeWindowMap.erase(it);
         }
     }

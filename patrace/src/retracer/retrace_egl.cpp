@@ -43,7 +43,7 @@ void getSurfaceDimensions(int* width, int* height)
     }
 }
 
-void retrace_eglCreateWindowSurface(char* src)
+PUBLIC void retrace_eglCreateWindowSurface(char* src)
 {
     // ------- ret & params definition --------
     int ret;
@@ -133,7 +133,7 @@ void retrace_eglCreateWindowSurface(char* src)
     }
 }
 
-static void retrace_eglCreateWindowSurface2(char* src)
+PUBLIC void retrace_eglCreateWindowSurface2(char* src)
 {
     // ------- ret & params definition --------
     int ret;
@@ -236,7 +236,7 @@ static void retrace_eglCreateWindowSurface2(char* src)
     }
 }
 
-static void retrace_eglCreatePbufferSurface(char* src)
+PUBLIC void retrace_eglCreatePbufferSurface(char* src)
 {
     // ------- ret & params definition --------
     int ret;
@@ -262,7 +262,7 @@ static void retrace_eglCreatePbufferSurface(char* src)
     gRetracer.mState.InsertDrawableMap(ret, pbufferDrawable);
 }
 
-static void retrace_eglDestroySurface(char* src)
+PUBLIC void retrace_eglDestroySurface(char* src)
 {
     gRetracer.OnFrameComplete();
 
@@ -303,7 +303,7 @@ static void retrace_eglDestroySurface(char* src)
     }
 }
 
-static void retrace_eglBindAPI(char* src)
+PUBLIC void retrace_eglBindAPI(char* src)
 {
     // ------- ret & params definition --------
     int ret;
@@ -317,7 +317,7 @@ static void retrace_eglBindAPI(char* src)
     //eglBindAPI(api);
 }
 
-void retrace_eglCreateContext(char* src)
+PUBLIC void retrace_eglCreateContext(char* src)
 {
     // ------- ret & params definition --------
     int ret;
@@ -392,7 +392,7 @@ void retrace_eglCreateContext(char* src)
     gRetracer.mState.InsertContextMap(ret, context);
 }
 
-static void retrace_eglDestroyContext(char* src)
+PUBLIC void retrace_eglDestroyContext(char* src)
 {
     // ------- ret & params definition --------
     int ret;
@@ -417,7 +417,7 @@ static void retrace_eglDestroyContext(char* src)
     gRetracer.mState.RemoveContextMap(ctx);
 }
 
-void retrace_eglMakeCurrent(char* src)
+PUBLIC void retrace_eglMakeCurrent(char* src)
 {
     static bool only_once_ever = true;
 
@@ -600,7 +600,7 @@ void retrace_eglMakeCurrent(char* src)
     gRetracer.mState.mThreadArr[gRetracer.getCurTid()].setContext(context);
 }
 
-static void retrace_eglCreateImageKHR(char* src)
+PUBLIC void retrace_eglCreateImageKHR(char* src)
 {
     // ------- ret & params definition --------
     int dpy;
@@ -732,7 +732,7 @@ retrace:
     gRetracer.mState.InsertEGLImageMap(ret, image);
 }
 
-static void retrace_eglDestroyImageKHR(char* src)
+PUBLIC void retrace_eglDestroyImageKHR(char* src)
 {
     // ------- ret & params definition --------
     int dpy;
@@ -748,7 +748,7 @@ static void retrace_eglDestroyImageKHR(char* src)
     gRetracer.mState.RemoveEGLImageMap(image);
 }
 
-static void retrace_glEGLImageTargetTexture2DOES(char* src)
+PUBLIC void retrace_glEGLImageTargetTexture2DOES(char* src)
 {
     // ------- ret & params definition --------
     EGLenum tgt;
@@ -787,7 +787,25 @@ static void retrace_glEGLImageTargetTexture2DOES(char* src)
     }
 }
 
-static void swapBuffersCommon(char* src, bool withDamage)
+PUBLIC void retrace_glEGLImageTargetTexStorageEXT(char* src)
+{
+    // ------- ret & params definition --------
+    EGLenum tgt;
+    int image;
+    common::Array<int> attrib_list;
+
+    // --------- read ret & params ----------
+    src = ReadFixed(src, tgt);
+    src = ReadFixed<int>(src, image);
+    src = Read1DArray(src, attrib_list);
+
+    //  ------------- retrace ---------------
+    bool found = false;
+    EGLImageKHR imageNew = gRetracer.mState.GetEGLImage(image, found);
+    _glEGLImageTargetTexStorageEXT(tgt, imageNew, attrib_list);
+}
+
+PUBLIC void swapBuffersCommon(char* src, bool withDamage)
 {
     int n_rects;
     common::Array<int> rect_list;
@@ -899,17 +917,17 @@ static void swapBuffersCommon(char* src, bool withDamage)
     }
 }
 
-static void retrace_eglSwapBuffers(char* src)
+PUBLIC void retrace_eglSwapBuffers(char* src)
 {
     swapBuffersCommon(src, false);
 }
 
-static void retrace_eglSwapBuffersWithDamageKHR(char* src)
+PUBLIC void retrace_eglSwapBuffersWithDamageKHR(char* src)
 {
     swapBuffersCommon(src, true);
 }
 
-static void retrace_eglSurfaceAttrib(char* src)
+PUBLIC void retrace_eglSurfaceAttrib(char* src)
 {
     // ------- ret & params definition --------
     int ret;
@@ -931,7 +949,7 @@ static void retrace_eglSurfaceAttrib(char* src)
     GLWS::instance().setAttribute(d, attribute, value);
 }
 
-static void retrace_eglCreateSyncKHR(char* src)
+PUBLIC void retrace_eglCreateSyncKHR(char* src)
 {
     int dpy;
     int type;
@@ -951,7 +969,7 @@ static void retrace_eglCreateSyncKHR(char* src)
     context.getEGLSyncMap().LValue(old_result) = new_result;
 }
 
-static void retrace_eglClientWaitSyncKHR(char* src)
+PUBLIC void retrace_eglClientWaitSyncKHR(char* src)
 {
     int dpy;
     int sync;
@@ -974,7 +992,7 @@ static void retrace_eglClientWaitSyncKHR(char* src)
     (void)new_result; // ignore
 }
 
-static void retrace_eglDestroySyncKHR(char* src)
+PUBLIC void retrace_eglDestroySyncKHR(char* src)
 {
     int dpy;
     int sync;
@@ -991,7 +1009,7 @@ static void retrace_eglDestroySyncKHR(char* src)
     (void)new_result; // ignore
 }
 
-static void retrace_eglSignalSyncKHR(char* src)
+PUBLIC void retrace_eglSignalSyncKHR(char* src)
 {
     int dpy;
     int sync;
@@ -1010,7 +1028,7 @@ static void retrace_eglSignalSyncKHR(char* src)
     (void)new_result; // ignore
 }
 
-static void retrace_eglSetDamageRegionKHR(char* _src)
+PUBLIC void retrace_eglSetDamageRegionKHR(char* _src)
 {
     int dpy;
     int surface;
@@ -1028,7 +1046,7 @@ static void retrace_eglSetDamageRegionKHR(char* _src)
     gRetracer.mState.GetDrawable(surface)->setDamage(rects.v, n_rects);
 }
 
-static void retrace_eglQuerySurface(char* _src)
+PUBLIC void retrace_eglQuerySurface(char* _src)
 {
     int dpy;
     int surface;
@@ -1075,6 +1093,7 @@ const common::EntryMap retracer::egl_callbacks = {
     {"eglSetDamageRegionKHR", (void*)retrace_eglSetDamageRegionKHR},
     {"eglCreateWindowSurface", (void*)retrace_eglCreateWindowSurface},
     {"eglCreateWindowSurface2", (void*)retrace_eglCreateWindowSurface2},
+    {"eglCreatePlatformWindowSurface", (void*)retrace_eglCreateWindowSurface},
     {"eglCreatePbufferSurface", (void*)retrace_eglCreatePbufferSurface},
     //{"eglCreatePixmapSurface", (void*)ignore},
     {"eglDestroySurface", (void*)retrace_eglDestroySurface},
@@ -1104,4 +1123,5 @@ const common::EntryMap retracer::egl_callbacks = {
     {"eglCreateImageKHR", (void*)retrace_eglCreateImageKHR},
     {"eglDestroyImageKHR", (void*)retrace_eglDestroyImageKHR},
     {"glEGLImageTargetTexture2DOES", (void*)retrace_glEGLImageTargetTexture2DOES},
+    {"glEGLImageTargetTexStorageEXT", (void*)retrace_glEGLImageTargetTexStorageEXT},
 };

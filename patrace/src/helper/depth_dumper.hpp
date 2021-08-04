@@ -18,15 +18,18 @@ public:
     ~DepthDumper();
     static const GLchar *depthCopyVSCode;
     static const GLchar *depthCopyFSCode;
+    static const GLchar *depthArrayCopyFSCode;
     static const GLchar *depthCopyCubeVSCode;
     static const GLchar *depthCopyCubeFSCode;
     static const GLchar *DS_dFSCode;
     static const GLchar *DS_sFSCode;
     GLint depthCopyVS, depthCopyCubeVS, depthCopyFS, depthCopyCubeFS, depthCopyCubeProgram, depthCopyProgram;
     GLint DSCopy_dFS, DSCopy_sFS, depthDSCopyProgram, stencilDSCopyProgram;
+    GLint depthArrayCopyFS, depthArrayCopyProgram;
     GLuint depthFBO, depthTexture;
     GLuint depthVertexBuf, depthIndexBuf;
     GLint cubemapIdLocation;
+    GLint layerIdxLocation;
 
     void initializeDepthCopyer();
     void get_depth_texture_image(GLuint sourceTexture, int width, int height, GLvoid *pixels, GLint internalFormat, TexType texType, int id);

@@ -5,7 +5,9 @@ import setuptools
 
 here = os.path.abspath(os.path.dirname(__file__))
 
-# Since build_py (which copies python sources to the build directory) comes before build_ex (which calls swig to generate patrace.py), we have to manually call swig;
+# Since build_py (which copies python sources to the build directory) comes
+# before build_ex (which calls swig to generate patrace.py), we have to
+# manually call swig;
 # This should only be called in the distribution side.
 if not os.path.exists(os.path.join(here, 'patrace.py')):
     input_file = os.path.join(here, 'patrace.i')
@@ -51,6 +53,23 @@ if not os.path.exists(os.path.join(here, 'PKG-INFO')):
 def version():
     from version import version
     return version
+
+
+def generate_sources():
+    sources = [
+        {'output': 'src/common/call_parser.cpp',
+         'script': 'src/common/call_parser.py'},
+        {'output': 'src/common/api_info_auto.cpp',
+         'script': 'src/common/api_info.py'},
+    ]
+
+    for i in sources:
+        if not os.path.exists(i['output']):
+            print("Running {}...".format(i['script']))
+            subprocess.call(['python', i['script']])
+
+
+generate_sources()
 
 
 patrace_extension = setuptools.Extension(

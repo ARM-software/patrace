@@ -19,7 +19,7 @@
 #include <android/log.h>
 #define DBG_LOG(...) __android_log_print(ANDROID_LOG_INFO, "LIBCOLLECTOR", __VA_ARGS__)
 #else
-#define DBG_LOG(...) do { fprintf(stdout, "LIBCOLLECTOR DEBUG :: FILE: %s, LINE: %d, INFO: ", __FILE__, __LINE__);printf(__VA_ARGS__); } while(0)
+#define DBG_LOG(...) do { fprintf(stdout, "LIBCOLLECTOR :: FILE: %s, LINE: %d, INFO: ", __FILE__, __LINE__);printf(__VA_ARGS__); } while(0)
 #endif
 #endif
 

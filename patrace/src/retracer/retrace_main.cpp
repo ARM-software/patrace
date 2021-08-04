@@ -28,7 +28,8 @@ usage(const char *argv0) {
         "  -snapshotprefix PREFIX Prepend this label to every snapshot. Useful for automation.\n"
         "  -step use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call (not supported on all platforms)\n"
         "  -ores W H override the resolution of the final onscreen rendering (FBOs used in earlier renderpasses are not affected!)\n"
-        "  -msaa SAMPLES enable multi sample anti alias\n"
+        "  -msaa SAMPLES enable multi sample anti alias for the final framebuffer\n"
+        "  -msaa_override SAMPLES override any existing MSAA setting for intermediate framebuffers with MSAA\n"
         "  -preload START STOP preload the trace file frames from START to STOP. START must be greater than zero.\n"
         "  -framerange FRAME_START FRAME_END start fps timer at frame start (inclusive), stop timer and playback before frame end (exclusive).\n"
         "  -loop TIMES repeat the preloaded frames at least the given number of times\n"
@@ -46,6 +47,7 @@ usage(const char *argv0) {
         "  -overrideEGL Red Green Blue Alpha Depth Stencil, example: overrideEGL 5 6 5 0 16 8, for 16 bit color and 16 bit depth and 8 bit stencil\n"
         "  -strict Use strict EGL mode (fail unless the specified EGL configuration is valid)\n"
         "  -strictcolor Same as -strict, but only checks color channels (RGBA). Useful for dumping when we want to be sure returned EGL is same as requested\n"
+        "  -forceVRS VALUE Force the use of VRS for all framebuffers. Valid values: 38566 (1x1), 38567 (1x2), 38568 (2x1), 38569 (2x2), 38572 (4x2) and 38574 (4x4).\n"
         "  -collect Collect performance counters\n"
         "  -perfmon Collect performance counters in the built-in perfmon interface\n"
         "  -flush Before starting running the defined measurement range, make sure we flush all pending driver work\n"
@@ -147,6 +149,8 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             DBG_LOG("WARNING: Please think twice before using -ores - it is usually a mistake!\n");
         } else if (!strcmp(arg, "-msaa")) {
             mOptions.mOverrideConfig.msaa_samples = readValidValue(argv[++i]);
+        } else if (!strcmp(arg, "-msaa_override")) {
+            mOptions.mOverrideMSAA = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-callstats")) {
             mOptions.mCallStats = true;
         } else if (!strcmp(arg, "-perf")) {
@@ -258,6 +262,12 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             mOptions.mStrictEGLMode = true;
         } else if (!strcmp(arg, "-strictcolor")) {
             mOptions.mStrictColorMode = true;
+        } else if (!strcmp(arg, "-forceVRS")) {
+            mOptions.mForceVRS = readValidValue(argv[++i]);
+            if (mOptions.mForceVRS < 0x96A6 || mOptions.mForceVRS > 0x96AE)
+            {
+                gRetracer.reportAndAbort("Bad value for option forceVRS %d - must be between %d and %d", (int)mOptions.mForceVRS, (int)0x96A6, (int)0x96AE);
+            }
         } else if (strstr(arg, "-lib")) {
             const char* strEGL = "-libEGL_path=";
             const char* strGLES1 = "-libGLESv1_path=";

@@ -23,10 +23,11 @@ public:
     int ShaderStorageBufferOffsetAlignment = 256;   // As above
     int MaximumAnisotropicFiltering = 0;            // Anisotropic support. Must also add GL_EXT_texture_filter_anisotropic to SupportedExtensions
     bool ErrorOutOnBinaryShaders = true;            // Return an error if a program attempts to upload a binary shader
-    bool DisableErrorReporting = false;             // Disable GLES error reporting callbacks
+    bool DisableErrorReporting = true;             // Disable GLES error reporting callbacks
     bool EnableRandomVersion = true;               //  Enable to append a random to GL_VERSION
     std::string RandomVersion = "";
-    bool CloseTraceFileByTerminate = true;          // close current trace and create new on when calling  eglTerminate
+    bool CloseTraceFileByTerminate = false;         // close current trace and create new on when calling  eglTerminate
+    bool Support2xMSAA = false;                     // Pretend to support 2x MSAA even if the underlying system does not
 
     std::string _tmp_extensions;
 

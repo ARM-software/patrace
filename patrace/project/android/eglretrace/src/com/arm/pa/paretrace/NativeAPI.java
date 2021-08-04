@@ -21,7 +21,7 @@ public class NativeAPI
         msgHandler  = handler;
     }
 
-    public static void requestNewSurfaceAndWait(int width, int height, int format) {
+    public static void requestNewSurfaceAndWait(int width, int height, int format, int win) {
         Log.i(TAG, "requestNewSurfaceAndWait");
         synchronized(msgHandler) {
             mWidth = width;
@@ -32,6 +32,9 @@ public class NativeAPI
             Message msg = new Message();
             msg.arg1 = width;
             msg.arg2 = height;
+            Bundle data = new Bundle();
+            data.putInt("win", win);
+            msg.setData(data);
             msg.what = 1;
             msgHandler.sendMessage(msg);
             while (!mHasSurface || surfHolder == null) {
@@ -45,7 +48,7 @@ public class NativeAPI
         }
     }
 
-    public static void resizeNewSurfaceAndWait(int width, int height, int format, int viewId) {
+    public static void resizeNewSurfaceAndWait(int width, int height, int format, int win) {
         Log.i(TAG, "resizeNewSurfaceAndWait");
         synchronized(msgHandler) {
             mWidth = width;
@@ -57,7 +60,7 @@ public class NativeAPI
             msg.arg1 = width;
             msg.arg2 = height;
             Bundle data = new Bundle();
-            data.putInt("viewId", viewId);
+            data.putInt("win", win);
             msg.setData(data);
             msg.what = 2;
             msgHandler.sendMessage(msg);
@@ -72,7 +75,7 @@ public class NativeAPI
         }
     }
 
-    public static void destroySurfaceAndWait(int viewId) {
+    public static void destroySurfaceAndWait(int win) {
         Log.i(TAG, "destroySurfaceAndWait");
         synchronized(msgHandler) {
             mHasSurface = true;
@@ -80,7 +83,7 @@ public class NativeAPI
             msg.arg1 = 0;
             msg.arg2 = 0;
             Bundle data = new Bundle();
-            data.putInt("viewId", viewId);
+            data.putInt("win", win);
             msg.setData(data);
             msg.what = 3;
             msgHandler.sendMessage(msg);
@@ -107,7 +110,7 @@ public class NativeAPI
     public static void onSurfaceDestroyed(Surface holder, int viewSize) {
         synchronized(msgHandler) {
             Log.i(TAG, "onSurfaceDestroyed " + holder);
-            setSurface(null, 0);
+            setSurface(holder, 0);
             surfHolder = null;
             mHasSurface= false;
             msgHandler.notifyAll();

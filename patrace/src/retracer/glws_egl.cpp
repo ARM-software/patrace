@@ -59,9 +59,9 @@ EglDrawable::~EglDrawable()
 {
     eglDestroySurface(mEglDisplay, mSurface);
 
+    close();
     GLWS::instance().ReleaseDrawable(mNativeWindow);
     eglWaitNative(EGL_CORE_NATIVE_ENGINE);
-    close();
 }
 
 
@@ -100,8 +100,7 @@ void EglDrawable::close(void)
         return;
     }
 
-    if (mNativeWindow)
-        mNativeWindow->close();
+    mNativeWindow->close();
     Drawable::close();
 }
 

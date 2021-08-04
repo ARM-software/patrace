@@ -1016,6 +1016,9 @@ gles_functions = [
 
     # GL_EXT_external_buffer
     GlFunction(Void, "glBufferStorageExternalEXT", [(GLenum, "target"), (GLintptr, "offset"), (GLsizeiptr, "size"), (OpaquePointer(Void), "clientBuffer"), (GLbitfield, "flags")]),
+
+    # QCOM_shading_rate
+    GlFunction(Void, "glShadingRateQCOM", [(GLenum, "rate")]),
 ]
 
 glesapi = API('GLES')

@@ -29,6 +29,9 @@
             android:screenOrientation="landscape"
             android:exported="true"
             android:configChanges="keyboardHidden|orientation">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+            </intent-filter>
         </activity>
         <receiver android:name=".StartTraceReceiver">
 		   <intent-filter>

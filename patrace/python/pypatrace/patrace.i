@@ -116,6 +116,16 @@ public:
     void SetAsClientSideBufferReference(unsigned int name, unsigned int offset);
     %extend {
 
+        ValueTM* _getAsPointer() const
+        {
+            return $self->mPointer;
+        }
+
+        void _setAsPointer(ValueTM* value)
+        {
+            $self->mPointer = value;
+        }
+
         short _getAsByte() const
         {
             assert($self->IsIntegral());
@@ -232,7 +242,7 @@ public:
                 elif self.IsVoid():
                     return None
                 elif self.IsPointer():
-                    return self.asUInt
+                    return self.asPointer
                 elif self.IsArray():
                     ret = []
                     for index in range(len(self)):
@@ -241,6 +251,8 @@ public:
                 elif self.IsClientSideBufferReference():
                     name, offset = self.asClientSideBufferReference
                     return ClientSideBufferObjectReference(name, offset)
+                elif self.mType == Opaque_Type and self.mOpaqueType == NoopType:
+                    return 'Ignored'
                 else:
                     print('Unexpected value type : %d' % self.mType)
                     return None
@@ -256,8 +268,10 @@ public:
                     self.asUShort = value
                 elif self.mType == Int_Type:
                     self.asInt = value
-                elif self.mType == Uint_Type or self.mType == Enum_Type or self.mType == Pointer_Type:
+                elif self.mType == Uint_Type or self.mType == Enum_Type:
                     self.asUInt = value
+                elif self.mType == Pointer_Type:
+                    self.asPointer = value
                 elif self.mType == Int64_Type:
                     self.asLongLong = value
                 elif self.mType == Uint64_Type:
@@ -280,6 +294,7 @@ public:
                     print('Unexpected value type : %d' % self.mType)
                     raise PyPATraceException(self.mType)
 
+            asPointer = property(_getAsPointer, _setAsPointer)
             asByte = property(_getAsByte, _setAsByte)
             asUByte = property(GetAsUByte, SetAsUByte)
             asShort = property(_getAsShort, _setAsShort)

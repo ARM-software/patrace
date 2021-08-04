@@ -490,44 +490,6 @@ void Retracer::CloseTraceFile()
     mFile.Close();
     mFileFormatVersion = INVALID_VERSION;
     mStateLogger.close();
-
-    if (mOptions.mCallStats)
-    {
-        // First generate some info on no-op calls as a baseline
-        int c = 0;
-        for (int i = 0; i < 1000; i++)
-        {
-            auto pre = gettime();
-            c = noop(c);
-            auto post = gettime();
-            mCallStats["NO-OP"].count++;
-            mCallStats["NO-OP"].time += post - pre;
-            usleep(c); // just to use c for something, to make 100% sure it is not optimized away
-        }
-#if ANDROID
-        const char *filename = "/sdcard/callstats.csv";
-#else
-        const char *filename = "callstats.csv";
-#endif
-        DBG_LOG("Writing callstats to %s\n", filename);
-        FILE *fp = fopen(filename, "w");
-        if (fp)
-        {
-            fprintf(fp, "Function,Calls,Time\n");
-            for (const auto& pair : mCallStats)
-            {
-                fprintf(fp, "%s,%" PRIu64 ",%" PRIu64 "\n", pair.first.c_str(), pair.second.count, pair.second.time);
-            }
-            fsync(fileno(fp));
-            fclose(fp);
-        }
-        else
-        {
-            DBG_LOG("Failed to open output callstats in %s: %s\n", filename, strerror(errno));
-        }
-        mCallStats.clear();
-    }
-
     mState.Reset();
     mCSBuffers.clear();
     mSnapshotPaths.clear();
@@ -1416,8 +1378,12 @@ void Retracer::OnFrameComplete()
 
 void Retracer::StartMeasuring()
 {
-    if (mCollectors)
+    if (mOptions.mCollectorEnabled)
     {
+        DBG_LOG("libcollector enabled.\n");
+        mOptions.mCollectorEnabled = false;
+        mCollectors = new Collection(mOptions.mCollectorValue);
+        mCollectors->initialize();
         mCollectors->start();
     }
     mRollbackCallNo = curCallNo;
@@ -1594,6 +1560,61 @@ void Retracer::saveResult(Json::Value& result)
     {
         mCollectors->stop();
     }
+
+    if (mOptions.mCallStats)
+    {
+        // First generate some info on no-op calls as a baseline
+        int c = 0;
+        for (int i = 0; i < 1000; i++)
+        {
+            auto pre = gettime();
+            c = noop(c);
+            auto post = gettime();
+            mCallStats["NO-OP"].count++;
+            mCallStats["NO-OP"].time += post - pre;
+            usleep(c); // just to use c for something, to make 100% sure it is not optimized away
+        }
+#if ANDROID
+        const char *filename = "/sdcard/callstats.csv";
+#else
+        const char *filename = "callstats.csv";
+#endif
+        FILE *fp = fopen(filename, "w");
+        if (fp)
+        {
+            uint64_t total = 0;
+            float noop_avg = (float)mCallStats["NO-OP"].time / mCallStats["NO-OP"].count;
+            fprintf(fp, "Function,Calls,Time,Calibrated_Time\n");
+            for (const auto& pair : mCallStats)
+            {
+                uint64_t noop = (uint64_t)(pair.second.count*noop_avg);
+                uint64_t calibrated_time = (pair.second.time > noop) ? (pair.second.time - noop) : 0;
+                fprintf(fp, "%s,%" PRIu64 ",%" PRIu64 ",%" PRIu64 "\n", pair.first.c_str(), pair.second.count, pair.second.time, calibrated_time);
+                // exclude APIs introduced from patrace
+                if (strcmp(pair.first.c_str(), "glClientSideBufferData")   && strcmp(pair.first.c_str(), "glClientSideBufferSubData") &&
+                    strcmp(pair.first.c_str(), "glCreateClientSideBuffer") && strcmp(pair.first.c_str(), "glDeleteClientSideBuffer") &&
+                    strcmp(pair.first.c_str(), "glCopyClientSideBuffer")   && strcmp(pair.first.c_str(), "glPatchClientSideBuffer") &&
+                    strcmp(pair.first.c_str(), "glGenGraphicBuffer_ARM")   && strcmp(pair.first.c_str(), "glGraphicBufferData_ARM") &&
+                    strcmp(pair.first.c_str(), "glDeleteGraphicBuffer_ARM")&& strcmp(pair.first.c_str(), "NO-OP"))
+                    total += calibrated_time;
+            }
+            fsync(fileno(fp));
+            fclose(fp);
+
+            const float ddk_fps = ((float)numOfFrames * std::max(1, mLoopTimes)) / ticksToSeconds(total);
+            const float ddk_mspf = (1000 * ticksToSeconds(total)) / (float)numOfFrames;
+            result["fps_ddk"] = ddk_fps;
+            result["ms/frame_ddk"] = ddk_mspf;
+            DBG_LOG("DDK FPS = %f, ms/frame = %f\n", ddk_fps, ddk_mspf);
+            DBG_LOG("Writing callstats to %s\n", filename);
+        }
+        else
+        {
+            DBG_LOG("Failed to open output callstats in %s: %s\n", filename, strerror(errno));
+        }
+        mCallStats.clear();
+    }
+
     DBG_LOG("Saving results...\n");
     if (!TraceExecutor::writeData(result, numOfFrames, duration))
     {
@@ -2007,6 +2028,11 @@ void hardcode_glBindFramebuffer(int target, unsigned int framebuffer)
     else
     {
         glBindFramebuffer(target, framebuffer);
+    }
+
+    if (gRetracer.mOptions.mForceVRS != -1)
+    {
+        _glShadingRateQCOM(gRetracer.mOptions.mForceVRS);
     }
 }
 

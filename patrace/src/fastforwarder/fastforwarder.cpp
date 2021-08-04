@@ -1042,9 +1042,12 @@ public:
         // To download textures, we need GL_PIXEL_PACK_BUFFER to be unbound.
         // To upload textures in the trace, we need GL_PIXEL_UNPACK_BUFFER to be unbound.
 
-        // Find currently bound GL_PIXEL_UNPACK_BUFFER in the tracefile
+        // Find currently bound GL_PIXEL_UNPACK_BUFFER
         GLint oldUnpackBuffer = 0;
         _glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &oldUnpackBuffer);
+
+        // Clear bingding locally
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
         // Find corresponding buffer-id in the trace-file
         GLint oldUnpackBufferTrace = 0;
@@ -1153,8 +1156,9 @@ public:
         // Rebind previously bound UNPACK-buffer in trace
         traceCommandEmitter.emitBindBuffer(GL_PIXEL_UNPACK_BUFFER, oldUnpackBufferTrace);
 
-        // Bind previously bound PACK-buffer locally
+        // Bind previously bound PACK-buffer and UNPACK-buffer locally
         glBindBuffer(GL_PIXEL_PACK_BUFFER, oldPackBuffer);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, oldUnpackBuffer);
 
         checkError("TextureSaver::run end");
     }
@@ -2331,7 +2335,7 @@ private:
             Ret = getRGBAInternalFormat();
             break;
         case GL_RGB:
-            Ret = getRGBAInternalFormat();
+            Ret = getRGBInternalFormat();
             break;
         default:
             DBG_LOG("Frame buffer format is not supported yet\n");
@@ -2725,7 +2729,7 @@ static void injectClear(retracer::Context& retracerContext, common::OutFile& out
     _glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &oldBoundFramebuffer);
     const auto revFramebuffers = retracerContext.getFramebufferRevMap().GetCopy();
     GLint oldBoundFramebufferTrace = 0;
-    auto search = revFramebuffers.find(oldBoundFramebufferTrace);
+    auto search = revFramebuffers.find(oldBoundFramebuffer);
     if (search != revFramebuffers.end())
         oldBoundFramebufferTrace = search->second;
     GLint oldColors[4];
@@ -2739,7 +2743,7 @@ static void injectClear(retracer::Context& retracerContext, common::OutFile& out
 
     if (!oldColorMask[0] || !oldColorMask[1] || !oldColorMask[2] || !oldColorMask[3])
     {
-        DBG_LOG("ERROR: Color mask will prevent initial glClear\n");
+        DBG_LOG("WARNING: Color mask will prevent initial glClear\n");
     }
 
     // Inject glClear
@@ -2839,7 +2843,7 @@ static void replay_thread(common::OutFile &out, const int threadidx, const int o
     const bool isFrameTarget = (0 != ffOptions.mTargetFrame);
     bool arriveTarget = false;
 
-    for (;;)
+    while (!retracer.mFinish.load(std::memory_order_consume))
     {
         const char *funcName = retracer.mFile.ExIdToName(retracer.mCurCall.funcId);
         const bool isSwapBuffers = (retracer.mCurCall.funcId == retracer.mFile.NameToExId("eglSwapBuffers") ||
@@ -2948,7 +2952,7 @@ static void replay_thread(common::OutFile &out, const int threadidx, const int o
 
         if (retracer.GetCurFrameId() > ffOptions.mEndFrame)
         {
-            retracer.mFinish = true;
+            retracer.mFinish.store(true);
         }
 
         // ---------------------------------------------------------------------------
@@ -2957,7 +2961,7 @@ skip_call:
         retracer.curCallNo++;
         if (!retracer.mFile.GetNextCall(retracer.fptr, retracer.mCurCall, retracer.src))
         {
-            retracer.mFinish = true;
+            retracer.mFinish.store(true);
             for (auto &cv : retracer.conditions) cv.notify_one(); // Wake up all other threads
             break;
         }
@@ -2976,7 +2980,7 @@ skip_call:
                 retracer.thread_remapping[retracer.mCurCall.tid] = retracer.threads.size();
                 int newthreadidx = retracer.threads.size();
                 retracer.conditions.emplace_back();
-                retracer.threads.emplace_back(replay_thread, std::ref(out), newthreadidx, (int)retracer.mCurCall.tid, std::ref(ffOptions), std::ref(ffJson));
+                retracer.threads.emplace_back(&replay_thread, std::ref(out), newthreadidx, (int)retracer.mCurCall.tid, std::ref(ffOptions), std::ref(ffJson));
             }
             else // Wake up existing thread
             {
@@ -2987,7 +2991,7 @@ skip_call:
             // to wake up again, so keep waking up to check if that is indeed the case.
             bool success = false;
             do {
-                success = retracer.conditions.at(threadidx).wait_for(lk, std::chrono::milliseconds(50), [&]{ return our_tid == retracer.latest_call_tid || retracer.mFinish; });
+                success = retracer.conditions.at(threadidx).wait_for(lk, std::chrono::milliseconds(50), [&]{ return our_tid == retracer.latest_call_tid || retracer.mFinish.load(std::memory_order_consume); });
             } while (!success);
         }
     }
@@ -3014,10 +3018,12 @@ static bool retraceAndTrim(common::OutFile &out, const FastForwardOptions& ffOpt
         os::abort();
     }
 
+    retracer.mFile.GetNextCall(retracer.fptr, retracer.mCurCall, retracer.src);
     gRetracer.threads.resize(1);
     gRetracer.conditions.resize(1);
-    retracer.mFile.GetNextCall(retracer.fptr, retracer.mCurCall, retracer.src);
+    gRetracer.thread_remapping[retracer.mCurCall.tid] = 0;
     replay_thread(out, 0, gRetracer.mCurCall.tid, ffOptions, ffJson);
+
     for (std::thread &t : gRetracer.threads)
     {
         if (t.joinable()) t.join();

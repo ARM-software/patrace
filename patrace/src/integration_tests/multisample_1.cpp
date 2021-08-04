@@ -106,6 +106,13 @@ static int setupGraphics(PADEMO *handle, int w, int h, void *user_data)
 	glBindRenderbuffer(GL_RENDERBUFFER, rb);
 	glObjectLabel(GL_RENDERBUFFER, rb, -1, "Multisample RB");
 	glRenderbufferStorageMultisample(GL_RENDERBUFFER, max_samples, internalformat, width, height);
+	GLint numSamples = 0;
+	glGetInternalformativ(GL_RENDERBUFFER, internalformat, GL_NUM_SAMPLE_COUNTS, 1, &numSamples);
+	std::vector<GLint> samplev(numSamples);
+	glGetInternalformativ(GL_RENDERBUFFER, internalformat, GL_SAMPLES, numSamples, samplev.data());
+	printf("%d MSAA settings:", numSamples);
+	for (int i = 0; i < numSamples; i++) printf(" %d", samplev[i]);
+	printf("\n");
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, rb);
 	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, tex, 0);
 	GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);

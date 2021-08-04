@@ -32,6 +32,7 @@ X11_PATRACE_BIN="${X11_PATRACE_ROOT}/bin"
 TESTTRACE1=$OUT/indirectdraw_1.1.pat
 TESTTRACE2=$OUT/khr_blend_equation_advanced.1.pat
 TESTTRACE3=$OUT/geometry_shader_1.1.pat
+TESTTRACE_MSAA=$OUT/multisample_1.1.pat
 ASANLIB=$(ldd ${FB_PATRACE_BIN}/paretrace | grep libasan | sed 's#.* \(/usr.*\) .*#\1#')
 export LSAN_OPTIONS="detect_leaks=0"
 export ASAN_OPTIONS="symbolize=1,abort_on_error=1"
@@ -338,6 +339,13 @@ function replayer_test()
 {
 	echo "*** Testing REPLAYER FEATURES"
 
+	echo "Testing MSAAx2 injection"
+	set -x
+	PATRACE_SUPPORT2XMSAA=true trace multisample_1 >out.txt
+	cat out.txt | grep "MSAA settings" | grep -e "2"
+	set +x
+
+	echo "Testing paretrace options"
 	set -x
 	${X11_PATRACE_BIN}/paretrace -overrideEGL 8 8 8 8 24 8 -noscreen $TESTTRACE2
 	LD_LIBRARY_PATH=$DDK_PATH:. ${FB_PATRACE_BIN}/paretrace -offscreen $TESTTRACE2
@@ -346,6 +354,7 @@ function replayer_test()
 	${X11_PATRACE_BIN}/paretrace -infojson $TESTTRACE2
 	${X11_PATRACE_BIN}/paretrace -info $TESTTRACE2
 	${X11_PATRACE_BIN}/paretrace -overrideEGL 8 8 8 8 24 8 -noscreen -debug -framerange 3 9 -flush -collect $TESTTRACE3
+	${X11_PATRACE_BIN}/paretrace -noscreen -debug -framerange 3 9 -msaa_override 2 $TESTTRACE_MSAA
 	set +x
 }
 

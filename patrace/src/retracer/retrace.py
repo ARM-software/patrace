@@ -788,7 +788,7 @@ class Retracer(object):
             print('    unsigned int name = old_ret;')
 
         print('    // ------------- retrace ------------------')
-        if func.name == 'glBindFramebuffer':
+        if func.name in bind_framebuffer_function_names:
             print('    hardcode_glBindFramebuffer(target, framebufferNew);')
             return
         if func.name == 'glDeleteBuffers':
@@ -870,6 +870,10 @@ class Retracer(object):
             print('        }')
             print('    }')
 
+        if func.name in ['glRenderbufferStorageMultisampleEXT', 'glRenderbufferStorageMultisample', 'glFramebufferTexture2DMultisampleEXT', 'glTexStorage2DMultisample',
+                         'glTexStorage3DMultisample']:
+            print('if (gRetracer.mOptions.mOverrideMSAA != -1) samples = gRetracer.mOptions.mOverrideMSAA;')
+
         if func.name == 'glLinkProgram2' or func.name == 'glLinkProgram':
             if func.name == 'glLinkProgram':
                 print('    const int status = -1;')
@@ -946,7 +950,7 @@ class Retracer(object):
         print()
 
     def retraceFunction(self, func):
-        print('static void retrace_%s(char* _src) {' % func.name)
+        print('PUBLIC void retrace_%s(char* _src) {' % func.name)
         if func.name in notSupportedFuncs:
             print('    DBG_LOG("%s is not supported\\n");' % func.name)
         elif func.name in ignored_funcs:

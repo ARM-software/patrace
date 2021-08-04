@@ -1,4 +1,5 @@
 #include <cassert>
+#include <algorithm>
 #include "common/memory.hpp"
 
 #include "parse_interface.h"
@@ -9,6 +10,7 @@
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
 static const bool print_dupes = false;
+Position current_pos = { 0, 0 };
 
 void ParseInterfaceBase::setEglConfig(StateTracker::EglConfig& config, int attribute, int value)
 {
@@ -158,6 +160,7 @@ bool ParseInterface::open(const std::string& input, const std::string& output)
     jsonConfig.stencil = eglconfig["stencil"].asInt();
     jsonConfig.samples = eglconfig.get("msaaSamples", -1).asInt();
     if (header.isMember("multiThread")) only_default = !header.get("multiThread", false).asBool();
+    if (mForceMultithread) only_default = false;
     return true;
 }
 
@@ -204,6 +207,7 @@ common::CallTM* ParseInterface::next_call()
         interpret_call(mCall);
     }
     mCallNo++;
+    current_pos.call = mCallNo;
     return mCall;
 }
 
@@ -454,6 +458,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         {
             context_index = context_remapping.at(context);
             current_context[call->mTid] = context_index;
+            contexts[context_index].swaps.insert(frames);
         }
 
         if (surface == (int64_t)EGL_NO_SURFACE)
@@ -465,6 +470,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         {
             surface_index = surface_remapping.at(surface);
             current_surface[call->mTid] = surface_index;
+            surfaces[surface_index].swaps.insert(frames);
         }
 
         // "The first time a OpenGL or OpenGL ES context is made current the viewport
@@ -492,9 +498,9 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 share_idx = context_remapping.at(share_id);
                 share_id = contexts.at(share_idx).share_context;
             } while (share_id != 0);
-            contexts.emplace_back(mret, display, contexts.size(), share, call->mCallNo, frames, &contexts.at(share_idx));
+            contexts.emplace_back(mret, display, contexts.size(), share, &contexts.at(share_idx));
         } else {
-            contexts.emplace_back(mret, display, contexts.size(), call->mCallNo, frames);
+            contexts.emplace_back(mret, display, contexts.size());
         }
     }
     else if (call->mCallName == "eglGetConfigAttrib")
@@ -574,15 +580,14 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             }
         }
         surface_remapping[mret] = surfaces.size(); // generate id<->idx table
-        surfaces.emplace_back(mret, display, surfaces.size(), call->mCallNo, frames, type, attribs, width, height, config);
+        surfaces.emplace_back(mret, display, surfaces.size(), type, attribs, width, height, config);
     }
     else if (call->mCallName == "eglDestroySurface")
     {
         // "surface is destroyed when it becomes not current to any thread"
         int surface = call->mArgs[1]->GetAsInt();
         int target_surface_index = surface_remapping.at(surface);
-        surfaces[target_surface_index].call_destroyed = call->mCallNo;
-        surfaces[target_surface_index].frame_destroyed = frames;
+        surfaces[target_surface_index].destroyed = current_pos;
     }
     else if (call->mCallName == "eglDestroyContext")
     {
@@ -592,16 +597,32 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         if (context_remapping.count(context) > 0)
         {
             const int target_context_index = context_remapping.at(context);
-            contexts[target_context_index].call_destroyed = call->mCallNo;
-            contexts[target_context_index].frame_destroyed = frames;
+            contexts[target_context_index].destroyed = current_pos;
         }
     }
     else if (call->mCallName.compare(0, 14, "eglSwapBuffers") == 0)
     {
         const int surface = call->mArgs[1]->GetAsInt();
         const int target_surface_index = surface_remapping.at(surface);
-        surfaces[target_surface_index].swap_calls.push_back(call->mCallNo);
+        // check all resources for dependencies here, if they have any
+        const auto dep_fb = contexts[context_index].framebuffers.most_recent_frame_dependency();
+        const auto dep_tx = contexts[context_index].textures.most_recent_frame_dependency();
+        const auto dep_rb = contexts[context_index].renderbuffers.most_recent_frame_dependency();
+        const auto dep_sp = contexts[context_index].samplers.most_recent_frame_dependency();
+        const auto dep_qr = contexts[context_index].queries.most_recent_frame_dependency();
+        const auto dep_tf = contexts[context_index].transform_feedbacks.most_recent_frame_dependency();
+        const auto dep_bf = contexts[context_index].buffers.most_recent_frame_dependency();
+        const auto dep_pr = contexts[context_index].programs.most_recent_frame_dependency();
+        const auto dep_sh = contexts[context_index].shaders.most_recent_frame_dependency();
+        const auto dep_va = contexts[context_index].vaos.most_recent_frame_dependency();
+        const auto dep_pp = contexts[context_index].program_pipelines.most_recent_frame_dependency();
+        const auto dep = std::max({ dep_fb, dep_tx, dep_rb, dep_sp, dep_qr, dep_tf, dep_bf, dep_pr, dep_sh, dep_va, dep_pp });
+        dependencies.push_back({ dep, dep_fb, dep_tx, dep_rb, dep_sp, dep_qr, dep_tf, dep_bf, dep_pr, dep_sh, dep_va, dep_pp });
+        // record which surface and context that used this frame
+        if (surface_index != UNBOUND) surfaces[target_surface_index].swaps.insert(frames);
+        if (context_index != UNBOUND) contexts[context_index].swaps.insert(frames);
         if (call->mTid == defaultTid) frames++;
+        current_pos.frame = frames;
         contexts[context_index].renderpasses_per_frame[frames] = 0;
         if (context_index != UNBOUND)
         {
@@ -656,7 +677,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         for (unsigned i = 0; i < count; i++)
         {
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
-            contexts[context_index].vaos.add(id, call->mCallNo, frames);
+            contexts[context_index].vaos.add(id);
         }
     }
     else if (call->mCallName == "glDeleteVertexArrays" || call->mCallName == "glDeleteVertexArraysOES")
@@ -670,7 +691,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             // "Unused names in framebuffers are silently ignored, as is the value zero."
             if (id != 0 && contexts[context_index].vaos.contains(id))
             {
-                contexts[context_index].vaos.remove(id, call->mCallNo, frames);
+                contexts[context_index].vaos.remove(id);
             }
             // "If a vertex array object that is currently bound is deleted, the binding for that object
             // reverts to zero and the default vertex array becomes current."
@@ -684,15 +705,26 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     else if (call->mCallName == "glBindVertexArray" || call->mCallName == "glBindVertexArrayOES")
     {
         contexts[context_index].state_change(frames);
-        const GLuint vao = call->mArgs[0]->GetAsUInt();
-        if (vao != 0 && !contexts[context_index].vaos.contains(vao))
+        const GLuint vao_id = call->mArgs[0]->GetAsUInt();
+        if (vao_id != 0 && !contexts[context_index].vaos.contains(vao_id))
         {
             // It is legal to create objects with a call to this function.
-            contexts[context_index].vaos.add(vao, call->mCallNo, frames);
+            contexts[context_index].vaos.add(vao_id);
         }
-        if (vao != 0)
+        if (vao_id != 0)
         {
-            contexts[context_index].vao_index = contexts[context_index].vaos.remap(vao);
+            contexts[context_index].vao_index = contexts[context_index].vaos.remap(vao_id);
+            StateTracker::VertexArrayObject& vao = contexts[context_index].vaos.at(contexts[context_index].vao_index);
+            // Touch all bound buffers
+            for (auto& target : vao.boundBufferIds)
+            {
+                for (auto& buffer : target.second)
+                {
+                    const int buffer_index = contexts[context_index].buffers.remap(buffer.second.buffer);
+                    StateTracker::Buffer& buf = contexts[context_index].buffers.at(buffer_index);
+                    (void)buf; // compiler: do not complain
+                }
+            }
         }
         else
         {
@@ -758,7 +790,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         for (unsigned i = 0; i < count; i++)
         {
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
-            contexts[context_index].framebuffers.add(id, call->mCallNo, frames);
+            contexts[context_index].framebuffers.add(id);
         }
     }
     else if (call->mCallName == "glDeleteFramebuffers" || call->mCallName == "glDeleteFramebuffersOES")
@@ -772,7 +804,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             // "Unused names in framebuffers are silently ignored, as is the value zero."
             if (id != 0 && contexts[context_index].framebuffers.contains(id))
             {
-                contexts[context_index].framebuffers.remove(id, call->mCallNo, frames);
+                contexts[context_index].framebuffers.remove(id);
             }
             // "If a framebuffer that is currently bound to one or more of the targets DRAW_FRAMEBUFFER
             // or READ_FRAMEBUFFER is deleted, it is as though BindFramebuffer had been executed with the
@@ -816,7 +848,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         if (fb != 0 && !contexts[context_index].framebuffers.contains(fb))
         {
             // It is legal to create objects with a call to this function.
-            contexts[context_index].framebuffers.add(fb, call->mCallNo, frames);
+            contexts[context_index].framebuffers.add(fb);
         }
         if (writetarget)
         {
@@ -926,7 +958,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         for (unsigned i = 0; i < count; i++)
         {
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
-            contexts[context_index].renderbuffers.add(id, call->mCallNo, frames);
+            contexts[context_index].renderbuffers.add(id);
         }
     }
     else if (call->mCallName == "glDeleteRenderbuffers" || call->mCallName == "glDeleteRenderbuffersOES")
@@ -939,7 +971,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
             if (id != 0 && contexts[context_index].renderbuffers.contains(id))
             {
-                contexts[context_index].renderbuffers.remove(id, call->mCallNo, frames);
+                contexts[context_index].renderbuffers.remove(id);
                 // "If a renderbuffer object is attached to one or more attachment points in the currently
                 // bound framebuffer, then it as if glFramebufferRenderbuffer had been called, with a renderbuffer
                 // of zero for each attachment point to which this image was attached in the currently bound framebuffer."
@@ -1011,7 +1043,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         if (rb != 0 && !contexts[context_index].renderbuffers.contains(rb))
         {
             // It is legal to create renderbuffers with a call to this function.
-            contexts[context_index].renderbuffers.add(rb, call->mCallNo, frames);
+            contexts[context_index].renderbuffers.add(rb);
         }
         if (rb != 0)
         {
@@ -1065,7 +1097,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         for (unsigned i = 0; i < call->mArgs[1]->mArrayLen; i++)
         {
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
-            contexts[context_index].samplers.add(id, call->mCallNo, frames);
+            contexts[context_index].samplers.add(id);
         }
     }
     else if (call->mCallName == "glDeleteSamplers")
@@ -1078,7 +1110,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
             if (id != 0 && contexts[context_index].samplers.contains(id) > 0)
             {
-                contexts[context_index].samplers.remove(id, call->mCallNo, frames);
+                contexts[context_index].samplers.remove(id);
             }
         }
     }
@@ -1102,7 +1134,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         for (unsigned i = 0; i < call->mArgs[1]->mArrayLen; i++)
         {
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
-            contexts[context_index].queries.add(id, call->mCallNo, frames);
+            contexts[context_index].queries.add(id);
         }
     }
     else if (call->mCallName == "glDeleteQueries" || call->mCallName == "glDeleteQueriesEXT")
@@ -1115,7 +1147,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
             if (id != 0 && contexts[context_index].queries.contains(id))
             {
-                contexts[context_index].queries.remove(id, call->mCallNo, frames);
+                contexts[context_index].queries.remove(id);
             }
         }
     }
@@ -1141,7 +1173,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         for (unsigned i = 0; i < call->mArgs[1]->mArrayLen; i++)
         {
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
-            contexts[context_index].transform_feedbacks.add(id, call->mCallNo, frames);
+            contexts[context_index].transform_feedbacks.add(id);
         }
     }
     else if (call->mCallName == "glDeleteTransformFeedbacks")
@@ -1154,7 +1186,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
             if (id != 0 && contexts[context_index].transform_feedbacks.contains(id))
             {
-                contexts[context_index].transform_feedbacks.remove(id, call->mCallNo, frames);
+                contexts[context_index].transform_feedbacks.remove(id);
             }
         }
     }
@@ -1166,7 +1198,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         if (id != 0 && !contexts[context_index].transform_feedbacks.contains(id))
         {
             // It is legal to create objects with a call to this function.
-            contexts[context_index].transform_feedbacks.add(id, call->mCallNo, frames);
+            contexts[context_index].transform_feedbacks.add(id);
         }
         contexts[context_index].transform_feedback_binding = id;
     }
@@ -1207,7 +1239,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         for (unsigned i = 0; i < call->mArgs[1]->mArrayLen; i++)
         {
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
-            contexts[context_index].buffers.add(id, call->mCallNo, frames);
+            contexts[context_index].buffers.add(id);
         }
     }
     else if (call->mCallName == "glDeleteBuffers")
@@ -1220,7 +1252,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
             if (id != 0 && contexts[context_index].buffers.contains(id))
             {
-                contexts[context_index].buffers.remove(id, call->mCallNo, frames);
+                contexts[context_index].buffers.remove(id);
             }
         }
         // TBD: "When a buffer, texture, or renderbuffer object is deleted, it is unbound from any
@@ -1240,15 +1272,25 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             StateTracker::Buffer &buffer = contexts[context_index].buffers[index];
             buffer.usages.insert(call->mArgs[3]->GetAsUInt());
             buffer.size = size;
+            buffer.updated();
         }
     }
     else if (call->mCallName == "glBufferSubData")
     {
+        const GLenum target = call->mArgs[0]->GetAsUInt();
+        StateTracker::VertexArrayObject& vao = contexts[context_index].vaos.at(contexts[context_index].vao_index);
+        const GLuint id = vao.boundBufferIds[target][0].buffer;
+        if (id != 0)
+        {
+            const int index = contexts[context_index].buffers.remap(id);
+            contexts[context_index].buffers.at(index).partial_update();
+        }
         contexts[context_index].state_change(frames);
     }
     else if (call->mCallName == "glMapBufferRange" || call->mCallName == "glMapBufferOES" || call->mCallName == "glMapBuffer")
     {
         contexts[context_index].state_change(frames);
+        // TBD - check flags, set the appropriate update status
     }
     else if (call->mCallName == "glCopyClientSideBuffer")
     {
@@ -1308,13 +1350,17 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         if (id != 0 && !contexts[context_index].buffers.contains(id))
         {
             // It is legal to create objects with a call to this function.
-            contexts[context_index].buffers.add(id, call->mCallNo, frames);
+            contexts[context_index].buffers.add(id);
         }
-        vao.boundBufferIds[target][0] = { id, 0, 0 };
         if (id != 0)
         {
-            const int index = contexts[context_index].buffers.remap(id);
-            contexts[context_index].buffers[index].bindings.insert(target);
+            vao.boundBufferIds[target][0] = { id, 0, 0 };
+            const int buffer_index = contexts[context_index].buffers.remap(id);
+            contexts[context_index].buffers[buffer_index].bindings.insert(target);
+        }
+        else
+        {
+            vao.boundBufferIds.erase(target);
         }
     }
     else if (call->mCallName == "glBindBufferBase")
@@ -1333,9 +1379,18 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         if (id != 0 && !contexts[context_index].buffers.contains(id))
         {
             // It is legal to create objects with a call to this function.
-            contexts[context_index].buffers.add(id, call->mCallNo, frames);
+            contexts[context_index].buffers.add(id);
         }
-        vao.boundBufferIds[target][index] = { id, 0, 0 };
+        if (id != 0)
+        {
+            vao.boundBufferIds[target][index] = { id, 0, 0 };
+            const int buffer_index = contexts[context_index].buffers.remap(id);
+            contexts[context_index].buffers[buffer_index].bindings.insert(target);
+        }
+        else
+        {
+            vao.boundBufferIds.erase(target);
+        }
     }
     else if (call->mCallName == "glBindBufferRange")
     {
@@ -1359,9 +1414,18 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         if (id != 0 && !contexts[context_index].buffers.contains(id))
         {
             // It is legal to create objects with a call to this function.
-            contexts[context_index].buffers.add(id, call->mCallNo, frames);
+            contexts[context_index].buffers.add(id);
         }
-        vao.boundBufferIds[target][index] = { id, offset, size };
+        if (id != 0)
+        {
+            const int buffer_index = contexts[context_index].buffers.remap(id);
+            contexts[context_index].buffers[buffer_index].bindings.insert(target);
+            vao.boundBufferIds[target][index] = { id, offset, size };
+        }
+        else
+        {
+            vao.boundBufferIds.erase(target);
+        }
     }
     else if (call->mCallName == "glVertexAttribPointer" || call->mCallName == "glVertexAttribIPointer")
     {
@@ -1418,7 +1482,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         for (unsigned i = 0; i < call->mArgs[1]->mArrayLen; i++)
         {
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
-            contexts[context_index].textures.add(id, call->mCallNo, frames);
+            contexts[context_index].textures.add(id);
         }
     }
     else if (call->mCallName == "glDeleteTextures")
@@ -1431,7 +1495,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
             if (id != 0 && contexts[context_index].textures.contains(id))
             {
-                contexts[context_index].textures.remove(id, call->mCallNo, frames);
+                contexts[context_index].textures.remove(id);
                 // "When a buffer, texture, or renderbuffer object is deleted, it is unbound from any
                 // bind points it is bound to in the current context, and detached from any attachments
                 // of container objects that are bound to the current context"
@@ -1487,6 +1551,25 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 tex.height = call->mArgs[4]->GetAsInt();
                 tex.depth = call->mArgs[5]->GetAsInt();
             }
+            tex.updated();
+        }
+        else
+        {
+            DBG_LOG("API ERROR [%d]: Cannot find texture id %u for %s on context %d\n", (int)call->mCallNo, tex_id, call->mCallName.c_str(), context_index);
+        }
+    }
+    else if (call->mCallName == "glTexSubImage1D" || call->mCallName == "glTexSubImage2D" || call->mCallName == "glTexSubImage3D"
+             || call->mCallName == "glCompressedTexSubImage2D" || call->mCallName == "glCompressedTexSubImage3D")
+    {
+        const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt());
+        const GLuint unit = contexts[context_index].activeTextureUnit;
+        const GLuint tex_id = contexts[context_index].textureUnits[unit][target];
+        contexts[context_index].state_change(frames);
+        if (contexts[context_index].textures.contains(tex_id) && tex_id != 0)
+        {
+            const int target_texture_index = contexts[context_index].textures.remap(tex_id);
+            StateTracker::Texture& tex = contexts[context_index].textures[target_texture_index];
+            tex.partial_update();
         }
         else
         {
@@ -1508,6 +1591,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         tex.width = call->mArgs[3]->GetAsInt();
         tex.height = call->mArgs[4]->GetAsInt();
         tex.levels = 0;
+        tex.updated();
     }
     else if (call->mCallName == "glBindTexture")
     {
@@ -1526,7 +1610,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         if (tex_id != 0 && !contexts[context_index].textures.contains(tex_id))
         {
             // It is legal to create objects with a call to this function.
-            contexts[context_index].textures.add(tex_id, call->mCallNo, frames);
+            contexts[context_index].textures.add(tex_id);
         }
     }
     else if (call->mCallName == "glActiveTexture")
@@ -1547,6 +1631,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         contexts[context_index].state_change(frames);
         const int texture_index = contexts[context_index].textures.remap(texture_id);
         adjust_sampler_state(call, pname, contexts[context_index].textures[texture_index].state, call->mArgs[2]);
+        contexts[context_index].textures.at(texture_index).updated();
     }
     else if (call->mCallName == "glSamplerParameterf" || call->mCallName == "glSamplerParameteri" || call->mCallName == "glSamplerParameterfv" || call->mCallName == "glSamplerParameteriv")
     {
@@ -1560,6 +1645,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         const GLenum pname = call->mArgs[1]->GetAsUInt();
         const GLuint sampler_idx = contexts[context_index].samplers.remap(sampler);
         adjust_sampler_state(call, pname, contexts[context_index].samplers[sampler_idx].state, call->mArgs[2]);
+        contexts[context_index].samplers.at(sampler_idx).updated();
     }
     else if (call->mCallName == "glCreateShaderProgramv")
     {
@@ -1576,7 +1662,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     else if (call->mCallName == "glCreateProgram")
     {
         GLuint id = call->mRet.GetAsUInt();
-        contexts[context_index].programs.add(id, call->mCallNo, frames);
+        contexts[context_index].programs.add(id);
     }
     else if (call->mCallName == "glUseProgram")
     {
@@ -1613,7 +1699,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         // ignore invalid values, even though the standard does not guarantee this.
         if (id != 0)
         {
-            contexts[context_index].programs.remove(id, call->mCallNo, frames);
+            contexts[context_index].programs.remove(id);
         }
     }
     else if (call->mCallName == "glAttachShader")
@@ -1645,7 +1731,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     {
         GLuint id = call->mRet.GetAsUInt();
         GLenum type = call->mArgs[0]->GetAsInt();
-        StateTracker::Shader& s = contexts[context_index].shaders.add(id, call->mCallNo, frames);
+        StateTracker::Shader& s = contexts[context_index].shaders.add(id);
         s.shader_type = type;
     }
     else if (call->mCallName == "glDeleteShader")
@@ -1655,7 +1741,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         // ignore invalid values, even though the standard does not guarantee this.
         if (id != 0)
         {
-            contexts[context_index].shaders.remove(id, call->mCallNo, frames);
+            contexts[context_index].shaders.remove(id);
         }
     }
     else if (call->mCallName == "glLinkProgram")
@@ -1664,6 +1750,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         int target_program_index = contexts[context_index].programs.remap(program);
         std::string code;
         StateTracker::Program& p = contexts[context_index].programs[target_program_index];
+        p.updated();
         // These need to be concatenated in the right order
         GLenum types[] = { GL_COMPUTE_SHADER, GL_VERTEX_SHADER, GL_FRAGMENT_SHADER, GL_GEOMETRY_SHADER, GL_TESS_EVALUATION_SHADER, GL_TESS_CONTROL_SHADER };
         for (GLenum type : types)
@@ -1798,6 +1885,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                     }
                 }
                 contexts[context_index].programs[program_index].uniformLastChanged[location] = call->mCallNo;
+                contexts[context_index].programs[program_index].updated();
             }
         }
     }
@@ -1816,6 +1904,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 contexts[context_index].programs[program_index].uniformValues[location].resize(1);
                 contexts[context_index].programs[program_index].uniformValues[location][0] = value;
                 contexts[context_index].programs[program_index].uniformLastChanged[location] = call->mCallNo;
+                contexts[context_index].programs[program_index].updated();
                 const std::string& name = contexts[context_index].programs[program_index].uniformNames.at(location);
                 if (contexts[context_index].programs[program_index].texture_bindings.count(name))
                 {
@@ -1849,6 +1938,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                     }
                 }
                 contexts[context_index].programs[program_index].uniformLastChanged[location] = call->mCallNo;
+                contexts[context_index].programs[program_index].updated();
             }
         }
     }
@@ -1879,6 +1969,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         if (program_index != UNBOUND)
         {
             contexts[context_index].programs[program_index].uniformLastChanged[location] = call->mCallNo;
+            contexts[context_index].programs[program_index].updated();
             // special dupe check
             if (call->mCallName == "glUniform1f" || call->mCallName == "glUniform2f" || call->mCallName == "glUniform3f" || call->mCallName == "glUniform4f")
             {
@@ -1903,7 +1994,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         for (unsigned i = 0; i < count; i++)
         {
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
-            contexts[context_index].program_pipelines.add(id, call->mCallNo, frames);
+            contexts[context_index].program_pipelines.add(id);
         }
     }
     else if (call->mCallName == "glDeleteProgramPipelines" || call->mCallName == "glDeleteProgramPipelinesEXT")
@@ -1917,7 +2008,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             // "Unused names in pipelines are silently ignored, as is the value zero."
             if (id != 0 && contexts[context_index].program_pipelines.contains(id))
             {
-                contexts[context_index].program_pipelines.remove(id, call->mCallNo, frames);
+                contexts[context_index].program_pipelines.remove(id);
             }
             // "If a program pipeline object that is currently bound is deleted, the binding for that object
             // reverts to zero and no program pipeline becomes current."
@@ -1936,7 +2027,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         {
             if (!contexts[context_index].program_pipelines.contains(id)) // then create it
             {
-                const auto& p = contexts[context_index].program_pipelines.add(id, call->mCallNo, frames);
+                const auto& p = contexts[context_index].program_pipelines.add(id);
                 contexts[context_index].program_pipeline_index = p.index;
             }
             else
@@ -2172,6 +2263,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                        contexts[context_index].fillstate.call_stored = call->mCallNo - 1;
                        find_duplicate_clears(contexts[context_index].fillstate, at, GL_COLOR, fbo, call->mCallName);
                        at.clears.push_back(contexts[context_index].fillstate);
+                       contexts[context_index].updated_fbo_attachment(index, attachment);
                    }
                }
            }
@@ -2186,6 +2278,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                contexts[context_index].fillstate.call_stored = call->mCallNo - 1;
                find_duplicate_clears(contexts[context_index].fillstate, at, GL_DEPTH, fbo, call->mCallName);
                at.clears.push_back(contexts[context_index].fillstate);
+               contexts[context_index].updated_fbo_attachment(index, GL_DEPTH_ATTACHMENT);
            }
        }
        if ((mask & GL_STENCIL_BUFFER_BIT) && (contexts[context_index].fillstate.stencilwritemask[GL_BACK] || contexts[context_index].fillstate.stencilwritemask[GL_FRONT]))
@@ -2198,6 +2291,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                contexts[context_index].fillstate.call_stored = call->mCallNo - 1;
                find_duplicate_clears(contexts[context_index].fillstate, at, GL_STENCIL, fbo, call->mCallName);
                at.clears.push_back(contexts[context_index].fillstate);
+               contexts[context_index].updated_fbo_attachment(index, GL_STENCIL_ATTACHMENT);
            }
        }
     }
@@ -2219,12 +2313,14 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
            StateTracker::Attachment& stencil = fbo.attachments.at(GL_STENCIL_ATTACHMENT);
            find_duplicate_clears(fillstate, stencil, GL_STENCIL, fbo, call->mCallName);
            stencil.clears.push_back(fillstate);
+           contexts[context_index].updated_fbo_attachment(index, GL_STENCIL_ATTACHMENT);
        }
        if (fbo.attachments.count(GL_DEPTH_ATTACHMENT) > 0)
        {
            StateTracker::Attachment& depth = fbo.attachments.at(GL_DEPTH_ATTACHMENT);
            find_duplicate_clears(fillstate, depth, GL_DEPTH, fbo, call->mCallName);
            depth.clears.push_back(fillstate);
+           contexts[context_index].updated_fbo_attachment(index, GL_DEPTH_ATTACHMENT);
        }
     }
     else if (call->mCallName.compare(0, 13, "glClearBuffer") == 0) // except glClearBufferfi which is handled above
@@ -2242,8 +2338,10 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
        }
        const int index = contexts[context_index].framebuffers.remap(contexts[context_index].drawframebuffer);
        StateTracker::Framebuffer& fbo = contexts[context_index].framebuffers.at(index);
+       fbo.updated();
        if (fbo.attachments.count(attachment) > 0)
        {
+           contexts[context_index].updated_fbo_attachment(index, attachment);
            StateTracker::Attachment& at = fbo.attachments.at(attachment);
            StateTracker::FillState& fillstate = contexts[context_index].fillstate;
            fillstate.call_stored = call->mCallNo - 1;
@@ -2382,6 +2480,8 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 continue; // buggy
             }
             fbo.attachments.at(attachment).invalidated = true;
+            fbo.updated();
+            contexts[context_index].updated_fbo_attachment(fb_index, attachment);
             if (call->mCallName == "glInvalidateFramebuffer" || attachment != GL_COLOR_ATTACHMENT0) continue; // using the sane version - don't need the test below
             for (GLenum e : contexts[context_index].draw_buffers)
             {
@@ -2389,6 +2489,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 if (e != GL_NONE && e >= GL_COLOR_ATTACHMENT0 && e <= GL_COLOR_ATTACHMENT0 + GL_MAX_COLOR_ATTACHMENTS && fbo.attachments.count(e) > 0)
                 {
                     fbo.attachments.at(e).invalidated = true;
+                    contexts[context_index].updated_fbo_attachment(fb_index, e);
                 }
             }
         }
@@ -2426,7 +2527,6 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         }
         const int fb_index = contexts[context_index].framebuffers.remap(contexts[context_index].drawframebuffer);
         contexts[context_index].framebuffers[fb_index].used++;
-        contexts[context_index].framebuffers[fb_index].last_used = frames;
         // resuse does happen in the NBA games... need to handle this somehow
         //assert(rp.attachments.size() == 0 || contexts[context_index].framebuffers[fb_index].attachments.size() == rp.attachments.size()); // no resizing!
         rp.attachments.resize(contexts[context_index].framebuffers[fb_index].attachments.size());
@@ -2579,6 +2679,12 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
              || call->mCallName == "glVertexAttribDivisorEXT")
     {
         contexts[context_index].state_change(frames);
+    }
+    else if (mDebug)
+    {
+        static std::set<std::string> handled;
+        if (handled.count(call->mCallName) == 0) DBG_LOG("Not handled: %s\n", call->mCallName.c_str());
+        handled.insert(call->mCallName);
     }
 }
 

@@ -35,13 +35,13 @@ public class RetraceActivity extends Activity
                     super.handleMessage(msg);
                     switch (msg.what) {
                         case 1:
-                            addNewView(msg.arg1, msg.arg2);
+                            addNewView(msg.arg1, msg.arg2, msg.getData().getInt("win"));
                             break;
                         case 2:
-                            resizeView(msg.arg1, msg.arg2, msg.getData().getInt("viewId"));
+                            resizeView(msg.arg1, msg.arg2, msg.getData().getInt("win"));
                             break;
                         case 3:
-                            removeOneView(msg.getData().getInt("viewId"));
+                            removeOneView(msg.getData().getInt("win"));
                             break;
                         default:
                             break;
@@ -112,27 +112,27 @@ public class RetraceActivity extends Activity
         getWindow().getDecorView().setSystemUiVisibility(oldVisibility);
     }
 
-    private void addNewView(int width, int height) {
+    private void addNewView(int width, int height, int win) {
         if (force_single_window) {
             GLSurfaceView view = new GLSurfaceView(this, width, height);
             Log.i(TAG, "Create a new surface view:" + " width:" + width + " height:" + height);
             mViewContainer.addView(view, view.getLayout());
-            viewIdToViewMap.put(mViewContainer.getChildCount()-1, view);
+            viewIdToViewMap.put(win, view);
         }
         else if (mViewContainer != null) {
             GLTextureView view = new GLTextureView(this, width, height);
             Log.i(TAG, "Create a new texture view:" + " width:" + width + " height:" + height);
             mViewContainer.addView(view, view.getLayout());
-            viewIdToViewMap.put(mViewContainer.getChildCount()-1, view);
+            viewIdToViewMap.put(win, view);
         }
         else {
             Log.w(TAG, "View container has been destroyed!");
         }
     }
 
-    private void resizeView(int width, int height, int viewId) {
+    private void resizeView(int width, int height, int win) {
         if (mViewContainer != null) {
-            View view = viewIdToViewMap.get(viewId);
+            View view = viewIdToViewMap.get(win);
             LayoutParams params = view.getLayoutParams();
             params.width = width;
             params.height = height;
@@ -144,13 +144,13 @@ public class RetraceActivity extends Activity
         }
     }
 
-    private void removeOneView(int viewId) {
+    private void removeOneView(int win) {
         if (mViewContainer != null)
             {
                 Log.i(TAG, "Remove one view");
-                View view = viewIdToViewMap.get(viewId);
+                View view = viewIdToViewMap.get(win);
                 mViewContainer.removeView(view);
-                viewIdToViewMap.remove(viewId);
+                viewIdToViewMap.remove(win);
             }
         else
             Log.w(TAG, "View container has been destroyed!");
@@ -201,7 +201,6 @@ public class RetraceActivity extends Activity
         if (mGLThread != null) {
             mGLThread.requestExitAndWait();
         }
-        mGLThread = null;
 
         // Release wakelock
         if (mWl != null && mWl.isHeld()) {
@@ -231,6 +230,8 @@ public class RetraceActivity extends Activity
         {
             showSystemUI();
         }
+
+		mGLThread = null;
     }
 
     private class GLSurfaceView extends SurfaceView implements SurfaceHolder.Callback {
@@ -259,7 +260,7 @@ public class RetraceActivity extends Activity
 
         @Override public void surfaceDestroyed(SurfaceHolder holder) {
             Surface surface = holder.getSurface();
-            Log.i(TAG, "SurfaceTextureListener: surfaceDestroyed:" + surface);
+            Log.i(TAG, "SurfaceHolder.Callback: surfaceDestroyed:" + surface);
             if (mGLThread != null) {
                 mGLThread.onWindowDestroyed(surface);
             }
@@ -267,7 +268,7 @@ public class RetraceActivity extends Activity
 
         @Override public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
             Surface surface = holder.getSurface();
-            Log.i(TAG, "SurfaceTextureListener: surfaceSizeChanged: " + surface + " " + w + " " + h);
+            Log.i(TAG, "SurfaceHolder.Callback: surfaceChanged:" + surface + " " + w + " " + h);
             if (mGLThread != null) {
                 mGLThread.setViewSize(mViewContainer.getChildCount());
                 mGLThread.onWindowResize(surface, w, h);
@@ -321,7 +322,7 @@ public class RetraceActivity extends Activity
         }
 
         public void onSurfaceTextureSizeChanged(SurfaceTexture surface, int w, int h) {
-            Log.i(TAG, "SurfaceTextureListener: surfaceSizeChanged: " + surface + " " + w + " " + h);
+            Log.i(TAG, "SurfaceTextureListener: surfaceSizeChanged:" + surface + " " + w + " " + h);
             if (mGLThread != null) {
                 mGLThread.setViewSize(mViewContainer.getChildCount());
                 mGLThread.onWindowResize(surface, w, h);

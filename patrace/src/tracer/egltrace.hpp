@@ -238,8 +238,10 @@ void pre_eglSwapBuffers();
 void after_eglSwapBuffers();
 void after_eglDestroySurface(EGLSurface surf);
 GLuint pre_eglCreateImageKHR(EGLImageKHR image, EGLenum target, EGLClientBuffer buffer, const EGLint *attrib_list);
+GLuint pre_eglCreateImage(EGLImageKHR image, EGLenum target, EGLClientBuffer buffer, const EGLAttrib *attrib_list);
 GLuint pre_glEGLImageTargetTexture2DOES(EGLImageKHR image, EGLint *&attrib_list);
 void after_eglDestroyImageKHR(EGLDisplay dpy, EGLImageKHR image);
+void after_eglDestroyImage(EGLDisplay dpy, EGLImageKHR image);
 
 // The purpose of this funciton is to keep track of what functionality
 // that the application uses. This is a better way than testing for GLES

@@ -6,6 +6,20 @@
 #include <string>
 #include <algorithm>
 
+static bool get_env_bool(const char* name, int fallback)
+{
+    const char *tmpstr = getenv(name);
+    if (tmpstr && strcasecmp(tmpstr, "true") == 0)
+    {
+       return true;
+    }
+    else if (tmpstr && strcasecmp(tmpstr, "false") == 0)
+    {
+       return false;
+    }
+    return fallback;
+}
+
 TracerParams::TracerParams()
 {
 #ifdef ANDROID
@@ -13,6 +27,8 @@ TracerParams::TracerParams()
 #else
     const char *strFilePath = "tracerparams.cfg";
 #endif
+
+    Support2xMSAA = (get_env_bool("PATRACE_SUPPORT2XMSAA", Support2xMSAA));
 
     m_file.open(strFilePath);
 
@@ -32,6 +48,7 @@ TracerParams::TracerParams()
         DBG_LOG("RendererName: %s\n", RendererName.c_str());
         DBG_LOG("EnableRandomVersion: %s\n", EnableRandomVersion ? "true": "false");
         DBG_LOG("CloseTraceFileByTerminate: %s\n", CloseTraceFileByTerminate ? "true": "false");
+        if (Support2xMSAA) DBG_LOG("Support2xMSAA: true\n");
         if (DisableErrorReporting) DBG_LOG("DisableErrorReporting: true\n");
         if (StateDumpAfterSnapshot) DBG_LOG("StateDumpAfterSnapshot: true\n");
         if (StateDumpAfterDrawCall) DBG_LOG("StateDumpAfterDrawCall: true\n");
@@ -80,7 +97,6 @@ void TracerParams::LoadParams()
 {
     std::string strParamName;
     std::string strParamValue;
-
     std::string line;
     while (std::getline(m_file, line))
     {
@@ -133,6 +149,8 @@ void TracerParams::LoadParams()
             EnableRandomVersion = (strParamValue.compare("true") == 0);
         } else if(strParamName.compare("CloseTraceFileByTerminate") == 0) {
             CloseTraceFileByTerminate = (strParamValue.compare("true") == 0);
+        } else if(strParamName.compare("Support2xMSAA") == 0) {
+            Support2xMSAA = (strParamValue.compare("true") == 0);
         } else if (strParamName.compare("SupportedExtension") == 0) {
             SupportedExtensions.push_back(strParamValue);
             if (SupportedExtensionsString.length() != 0)

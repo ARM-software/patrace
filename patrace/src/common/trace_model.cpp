@@ -1170,139 +1170,6 @@ void CallTM::Stylize()
     }
 }
 
-std::string CallTM::ToCppCall()
-{
-    std::string arrayDeclarations; // float* arrNameXXXX[] = {0,1,2,3,4,5};
-    std::vector<std::string> arrayVariableNames; // arrNameXXXX
-
-    for (unsigned i = 0; i < mArgs.size(); i++)
-    {
-        ValueTM& arg = *mArgs[i];
-        if (arg.mType == Array_Type)
-        {
-            if (!arg.mArrayLen)
-            {
-                continue;
-            }
-            else
-            {
-                std::string arrayValues = arg.ToC(this, true);
-                // Shaders often span multiple lines, add quotes to line start and end
-                if (arg.mEleType == String_Type)
-                {
-                    replaceString(arrayValues, "\r\n", "\n");
-                    replaceString(arrayValues, "\r", "\n");
-                    replaceString(arrayValues, "\n", "\\n\"\n    \""); //replace newlines with  quote, literalnewline,  newline, indent quote
-                }
-
-                std::stringstream sstream;
-                sstream << "array_" << mArgs[i]->mId;
-                arrayVariableNames.push_back(sstream.str());
-
-                std::string arrayDecl = mArgs[i]->TypeNameToStr() + " " + arrayVariableNames.back() + "[]=" + arrayValues + ";\n";
-                arrayDeclarations = arrayDeclarations + arrayDecl;
-            }
-        }
-    }
-
-    // special case for annoying "cameleon" variable. The Opaque Value
-    std::string opaqueArgDecl = "";
-
-    for (unsigned int i = 0; i < mArgs.size(); ++i)
-    {
-        ValueTM& arg = *mArgs[i];
-        if (arg.mType == Opaque_Type)
-        {
-            std::stringstream sstream;
-
-            sstream << "common::OpaqueArg params;\n";
-
-            switch(arg.mOpaqueType)
-            {
-                case BufferObjectReferenceType:
-                    sstream<<"    params.pointer_raw = "<<arg.mOpaqueIns->mUint<<";\n";
-                    break;
-                case BlobType:
-                    //sstream<<"    params.pointer_blob = "<<arg.mOpaqueIns->mBlob<<";\n";
-                    break;
-                case ClientSideBufferObjectReferenceType:
-                    sstream<<"    params.mClientSideBufferName = "<<arg.mOpaqueIns->mClientSideBufferName<<";\n";
-                    sstream<<"    params.mClientSideBufferOffset = "<<arg.mOpaqueIns->mClientSideBufferOffset<<";\n";
-                    break;
-                case NoopType:
-                    break;
-            };
-
-            opaqueArgDecl = sstream.str();
-            break;
-        }
-    }
-
-    // convert function parameters to a long string
-    std::string strArgs = "";
-    int numArrays = 0;
-    for (unsigned int i = 0; i < mArgs.size(); ++i) {
-        ValueTM& arg = *mArgs[i];
-        switch (arg.mType) {
-            case Array_Type:
-            if ( arg.mArrayLen > 0 ) {
-                strArgs += "&" + arrayVariableNames[numArrays++]+"[0]";
-                } else {
-                    // NULL's are stored as arrays, dont skip them, but use ToC()
-                    strArgs += arg.ToC(this, true);
-                }
-                break;
-
-            default:
-                strArgs += arg.ToC(this, true);
-        }
-
-        if (i != mArgs.size()-1)
-        strArgs += ", ";
-    }
-
-    // special case for functions where we need to know old return value
-    typedef std::list<std::string> StringList;
-    StringList pass_old_ret_list;
-    pass_old_ret_list.push_back("glCreateProgram");
-    pass_old_ret_list.push_back("glCreateShader");
-    pass_old_ret_list.push_back("glGetAttribLocation");
-    pass_old_ret_list.push_back("glGetUniformLocation");
-    pass_old_ret_list.push_back("glCreateShaderProgramv");
-    pass_old_ret_list.push_back("glCreateShaderProgramvEXT");
-    StringList::iterator it = std::find( pass_old_ret_list.begin(), pass_old_ret_list.end(), std::string(mCallName) );
-    if ( it != pass_old_ret_list.end() ) {
-        if ( strArgs == "" ) {
-            strArgs = mRet.ToC(this, true) + "/*old_ret*/";
-        } else {
-            strArgs = mRet.ToC(this, true) + "/*old_ret*/, " + strArgs;
-        }
-    }
-
-    // special case. need to map return value from eglCreateContext
-    if (mCallName == "eglCreateContext" || mCallName == "eglCreateWindowSurface")
-    {
-        strArgs = mRet.ToC(this, true) + ", " + strArgs;
-    }
-
-    std::string callWithParams = std::string(mCallName) + "(" + strArgs + ");";
-
-    // Need a better solution...
-    if (numArrays)
-    {
-        // since any declared literals are only used by this call, surround with braces to avoid name-crashes
-        return "{ " + arrayDeclarations + callWithParams + " }";
-    }
-    else if (opaqueArgDecl != "")
-    {
-        std::string callWithParams = std::string(mCallName) + "(" + strArgs + ", params);";
-        return "{ " + opaqueArgDecl + callWithParams + " }";
-    } else {
-        return callWithParams;
-    }
-    return "dummy";
-}
-
 void FrameTM::LoadCalls(InFileRA *infile, bool loadQuery, const std::string &loadFilter)
 {
     if (mIsLoaded)
@@ -1443,6 +1310,7 @@ bool TraceFileTM::Open(const char* name, bool readHeaderAndExit, const std::stri
     newFrame->mReadPos = mpInFileRA->GetReadPos();
     newFrame->mFirstCallOfThisFrame = 0;
     const int tid = mpInFileRA->getDefaultThreadID();
+    const bool multithread = mpInFileRA->getMultithread();
 
     std::streamoff lastReadPos = 0;
 
@@ -1451,7 +1319,7 @@ bool TraceFileTM::Open(const char* name, bool readHeaderAndExit, const std::stri
     {
         // separate into frames according to eglSwapBuffers or
         // eglDestroySurface call of retraced thread
-        if (curCall.tid == tid &&
+        if ((curCall.tid == tid || multithread) &&
             (curCall.funcId == eglSwapBuffers_id ||
              curCall.funcId == eglSwapBuffersWithDamage_id)) {
                 newFrame->SetCallCount(callNo-newFrame->mFirstCallOfThisFrame+1);

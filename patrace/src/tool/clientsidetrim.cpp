@@ -89,7 +89,7 @@ int main(int argc, char **argv)
         return 1;
     }
     std::string source_trace_filename = argv[argIndex++];
-    ParseInterface *inputFile = new ParseInterface(true);
+    ParseInterface *inputFile = new ParseInterface();
     inputFile->setQuickMode(true);
     inputFile->setScreenshots(false);
     if (!inputFile->open(source_trace_filename))
@@ -119,7 +119,7 @@ int main(int argc, char **argv)
     const auto client_side_last_use_reason = inputFile->client_side_last_use_reason;
     inputFile->close();
     delete inputFile;
-    inputFile = new ParseInterface(true);
+    inputFile = new ParseInterface();
     if (!inputFile->open(source_trace_filename))
     {
         std::cerr << "Failed to open for reading again: " << source_trace_filename << std::endl;

@@ -42,6 +42,7 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
     options.mOverrideResW = value.get("overrideWidth", -1).asInt();
     options.mOverrideResH = value.get("overrideHeight", -1).asInt();
     options.mFailOnShaderError = value.get("overrideFailOnShaderError", options.mFailOnShaderError).asBool();
+    options.mOverrideMSAA = value.get("overrideMSAA", options.mOverrideMSAA).asInt();
     options.mLoopTimes = value.get("loopTimes", options.mLoopTimes).asInt();
     if (value.isMember("loopSeconds"))
     {
@@ -61,6 +62,12 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
     if (value.get("flushWork", false).asBool())
     {
         options.mFlushWork = true;
+    }
+
+    options.mForceVRS = value.get("forceVRS", options.mForceVRS).asInt();
+    if (options.mForceVRS != -1 && (options.mForceVRS < 0x96A6 || options.mForceVRS > 0x96AE))
+    {
+        gRetracer.reportAndAbort("Bad value for option forceVRS");
     }
 
     if (options.mDoOverrideResolution && (options.mOverrideResW < 0 || options.mOverrideResH < 0))
@@ -245,9 +252,8 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
 
     if (value.isMember("collectors"))
     {
-        gRetracer.mCollectors = new Collection(value["collectors"]);
-        gRetracer.mCollectors->initialize();
-        DBG_LOG("libcollector instrumentation enabled through JSON.\n");
+        options.mCollectorEnabled = true;
+        options.mCollectorValue = value["collectors"];
     }
 
     if (value.get("dmaSharedMem", false).asBool())

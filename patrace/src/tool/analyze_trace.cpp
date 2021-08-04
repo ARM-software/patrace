@@ -207,6 +207,7 @@ static void printHelp()
         "  -f <f> <l>    Define frame interval, inclusive\n"
         "  -h            Print help\n"
         "  -v            Print version\n"
+        "  -m            Force multithreading on for trace file\n"
         "  -D            Add debug information to stderr\n"
         "  -d            Dump trace log to stdout (similar to trace_to_txt)\n"
         "  -o <basename> Dump metrics in CSV and JSON format to given base filename\n"
@@ -910,7 +911,7 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *cust
             const int fbo_idx = input.contexts[context_index].framebuffers.remap(input.contexts[context_index].drawframebuffer);
             const StateTracker::Framebuffer& framebuffer = input.contexts[context_index].framebuffers[fbo_idx];
             // If the framebuffer attachments are modified in the same frame as they have been drawn to, then we consider it 'reused'.
-            if (framebuffer.used && framebuffer.last_used == input.frames)
+            if (framebuffer.used && framebuffer.last_used.frame == input.frames)
             {
                 az->features[FEATURE_FBO_REUSE]++;
             }
@@ -1458,7 +1459,7 @@ void AnalyzeTrace::analyze(ParseInterfaceBase& input)
         std::string filename = dump_csv_filename.empty() ? "frame_info" : dump_csv_filename;
         filename += "_f" + std::to_string(frame) + ".json";
         std::fstream fs;
-        fs.open(filename, std::fstream::out |  std::fstream::trunc);
+        fs.open(filename, std::fstream::out | std::fstream::trunc);
         fs << result.toStyledString();
         fs.close();
     }
@@ -1466,12 +1467,29 @@ void AnalyzeTrace::analyze(ParseInterfaceBase& input)
     Json::Value result = trace_json(input);
     std::fstream fs;
     std::string filename = dump_csv_filename.empty() ? "trace" : dump_csv_filename;
-    fs.open(filename + ".json", std::fstream::out |  std::fstream::trunc);
+    fs.open(filename + ".json", std::fstream::out | std::fstream::trunc);
     fs << result.toStyledString();
     fs.close();
-    // CSV
+    // API stats CSV
     write_CSV(dump_csv_filename.empty() ? "trace" : dump_csv_filename, perframe, true);
-    // Dump out callstats
+    // Dependencies CSV
+    FILE* fp = fopen(dump_csv_filename.empty() ? "dependencies.csv" : std::string(dump_csv_filename + "_deps.csv").c_str(), "w");
+    if (fp)
+    {
+        fprintf(fp, "frame,min:frame,min:call,fb:frame,fb:call,tx:frame,tx:call,rb:frame,rb:call,samp:frame,sampl:call,query:"
+                    "frame,query:call,tf:frame,tf:call,buf:frame,buf:call,prog:frame,prog:call,shader:frame,"
+                    "shader:call,vao:frame,vao:call,pp:frame,pp:call\n");
+        int frame = 0;
+        for (const auto& d : input.dependencies)
+        {
+            fprintf(fp, "%d", frame);
+            for (const auto& i : d) fprintf(fp, ",%d,%d", i.frame, i.call);
+            fprintf(fp, "\n");
+            frame++;
+        }
+        fclose(fp);
+    }
+    // Dump out callstats CSV
     write_callstats(input, dump_csv_filename.empty() ? "trace" : dump_csv_filename);
 }
 
@@ -1574,15 +1592,15 @@ static Json::Value json_base(const StateTracker::Resource& base)
     Json::Value json;
     json["name"] = base.id;
     json["index"] = base.index;
-    if (!bareLog) json["frame_created"] = base.frame_created;
-    if (!bareLog) json["call_created"] = base.call_created;
-    if (base.frame_destroyed != -1 && !bareLog)
+    if (!bareLog) json["frame_created"] = base.created.frame;
+    if (!bareLog) json["call_created"] = base.created.call;
+    if (base.destroyed.frame != -1 && !bareLog)
     {
-        json["frame_destroyed"] = base.frame_destroyed;
+        json["frame_destroyed"] = base.destroyed.frame;
     }
-    if (base.call_destroyed != -1 && !bareLog)
+    if (base.destroyed.call != -1 && !bareLog)
     {
-        json["call_destroyed"] = base.call_destroyed;
+        json["call_destroyed"] = base.destroyed.call;
     }
     if (!base.label.empty())
     {
@@ -2314,6 +2332,7 @@ int main(int argc, char **argv)
     bool display_mode = false;
     bool no_screenshots = false;
     bool renderpassjson = false;
+    bool multithread = false;
     int argIndex = 1;
     for (; argIndex < argc; ++argIndex)
     {
@@ -2364,6 +2383,10 @@ int main(int argc, char **argv)
         else if (arg == "-b")
         {
             bareLog = true;
+        }
+        else if (arg == "-m")
+        {
+            multithread = true;
         }
         else if (arg == "-j")
         {
@@ -2430,6 +2453,7 @@ int main(int argc, char **argv)
     inputFile.setOutputName(dump_csv_filename);
     inputFile.setRenderpassJSON(renderpassjson);
     inputFile.setDebug(debug);
+    if (multithread) inputFile.forceMultithread();
     if (!inputFile.open(source_trace_filename))
     {
         std::cerr << "Failed to open for reading: " << source_trace_filename << std::endl;

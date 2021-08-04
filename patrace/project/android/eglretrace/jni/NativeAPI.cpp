@@ -85,7 +85,7 @@ JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_stop(JNIEnv *env, jcl
     Json::Reader reader;
     if (!reader.parse(cjs, results))
     {
-        gRetracer.reportAndAbort("JSON parse error: %s\n", reader.getFormattedErrorMessages().c_str());
+        gRetracer.reportAndAbort("JSON parse error: %s", reader.getFormattedErrorMessages().c_str());
     }
     gRetracer.saveResult(results);
 }
@@ -105,7 +105,7 @@ JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_setSurface(JNIEnv* en
     DBG_LOG("nativeSetSurface\n");
     static ANativeWindow* sWindow = 0;
 
-    if (surface)
+    if (viewSize > 0)
     {
         sWindow = ANativeWindow_fromSurface(env, surface);
         DBG_LOG("Got window %p\n", sWindow);
@@ -114,7 +114,8 @@ JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_setSurface(JNIEnv* en
     }
     else
     {
-        DBG_LOG("Releasing window\n");
+        sWindow = ANativeWindow_fromSurface(env, surface);
+        DBG_LOG("Releasing window %p\n", sWindow);
         ANativeWindow_release(sWindow);
     }
 }

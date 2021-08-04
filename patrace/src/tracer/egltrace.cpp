@@ -1237,6 +1237,11 @@ GLuint pre_eglCreateImageKHR(EGLImageKHR image, EGLenum target, EGLClientBuffer 
     return textureId;
 }
 
+GLuint pre_eglCreateImage(EGLImageKHR image, EGLenum target, EGLClientBuffer buffer, const EGLAttrib *attrib_list)
+{
+    return pre_eglCreateImageKHR(image, target, buffer, (const EGLint*)attrib_list);
+}
+
 GLuint pre_glEGLImageTargetTexture2DOES(EGLImageKHR image, EGLint *&attrib_list)
 {
     // Fetch EGLImage as a texture
@@ -1321,6 +1326,11 @@ void after_eglDestroyImageKHR(EGLDisplay dpy, EGLImageKHR image)
         inject_glDeleteTextures(1, &textureId);
     }
     map.erase(it);
+}
+
+void after_eglDestroyImage(EGLDisplay dpy, EGLImageKHR image)
+{
+    after_eglDestroyImageKHR(dpy, image);
 }
 
 void updateUsage(GLenum target)
