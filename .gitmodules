@@ -10,3 +10,7 @@
 [submodule "thirdparty/hwcpipe"]
 	path = thirdparty/hwcpipe
 	url = https://github.com/ARM-software/HWCPipe.git
+[submodule "thirdparty/libcollector"]
+	path = thirdparty/libcollector
+	url = https://github.com/ARM-software/libcollector.git
+	branch = main
