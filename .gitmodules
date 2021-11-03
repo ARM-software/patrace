@@ -1,3 +1,7 @@
+[submodule "thirdparty/libcollector"]
+	path = thirdparty/libcollector
+	url = https://github.com/ARM-software/libcollector.git
+	branch = main
 [submodule "thirdparty/opengl-registry"]
 	path = thirdparty/opengl-registry
 	url = https://github.com/KhronosGroup/OpenGL-Registry.git
@@ -10,7 +14,3 @@
 [submodule "thirdparty/hwcpipe"]
 	path = thirdparty/hwcpipe
 	url = https://github.com/ARM-software/HWCPipe.git
-[submodule "thirdparty/libcollector"]
-	path = thirdparty/libcollector
-	url = https://github.com/ARM-software/libcollector.git
-	branch = main

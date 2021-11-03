@@ -6,7 +6,7 @@ set (PYTHON_EXECUTABLE python)
 message(STATUS "main ar: ${CMAKE_AR}")
 
 set (PATRACE_VERSION_MAJOR 3)
-set (PATRACE_VERSION_MINOR 2)
+set (PATRACE_VERSION_MINOR 3)
 set (PATRACE_VERSION_PATCH 0)
 
 IF(DEFINED ENV{SVN_REVISION})
@@ -49,8 +49,8 @@ set (SPECS_SCRIPTS
 )
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fPIC -fvisibility=hidden -Werror")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -std=c++11 -fvisibility=hidden -Werror")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fPIC -fvisibility=hidden -Werror -Wno-deprecated-declarations")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -std=c++11 -fvisibility=hidden -Werror -Wno-deprecated-declarations")
     set(CMAKE_C_FLAGS_RELEASE "-Os")
     set(CMAKE_CXX_FLAGS_RELEASE "-Os")
     if (SANITIZELIB)
@@ -103,6 +103,7 @@ include_directories(BEFORE
     ${THIRDPARTY_INCLUDE_DIRS}/egl-registry/api
     ${THIRDPARTY_INCLUDE_DIRS}/opengl-registry/api
     ${THIRDPARTY_INCLUDE_DIRS}/opencl-headers
+    ${THIRDPARTY_INCLUDE_DIRS}/libcollector/external/jsoncpp/include
 )
 include_directories(${THIRDPARTY_INCLUDE_DIRS})
 include_directories(${SRC_INCLUDE_DIRS})
@@ -148,7 +149,10 @@ add_custom_target (eglproc_auto_src_generation
 )
 
 add_subdirectory(common)
-add_subdirectory(${THIRDPARTY_INCLUDE_DIRS}/jsoncpp ${CMAKE_CURRENT_BINARY_DIR}/jsoncpp EXCLUDE_FROM_ALL)
+add_library(jsoncpp STATIC
+        ${THIRDPARTY_INCLUDE_DIRS}/libcollector/external/jsoncpp/src/lib_json/json_reader.cpp
+        ${THIRDPARTY_INCLUDE_DIRS}/libcollector/external/jsoncpp/src/lib_json/json_value.cpp
+        ${THIRDPARTY_INCLUDE_DIRS}/libcollector/external/jsoncpp/src/lib_json/json_writer.cpp)
 add_subdirectory(${THIRDPARTY_INCLUDE_DIRS}/md5 ${CMAKE_CURRENT_BINARY_DIR}/md5 EXCLUDE_FROM_ALL)
 
 add_custom_target(retrace_gles_auto_src_generation

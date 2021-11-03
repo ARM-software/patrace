@@ -4,8 +4,8 @@
 #include <vector>
 #include "retracer/eglconfiginfo.hpp"
 #include "common/trace_callset.hpp"
-#include "jsoncpp/include/json/writer.h"
-#include "jsoncpp/include/json/reader.h"
+#include "json/writer.h"
+#include "json/reader.h"
 
 namespace retracer
 {
@@ -114,6 +114,9 @@ struct RetraceOptions
 
     bool                mCollectorEnabled = false;
     Json::Value         mCollectorValue;
+
+    std::string         mScriptPath;
+    int                 mScriptFrame = -1;
 private:
     // Noncopyable because of owned CallSet pointer members
     RetraceOptions(const RetraceOptions&);

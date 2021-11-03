@@ -89,8 +89,7 @@ OffscreenManager::OffscreenManager(
 
     mOffscreenTex[0] = 0;
     mOffscreenTex[1] = 0;
-    mDepthBuffer[0] = 0;
-    mDepthBuffer[1] = 0;
+    mDepthBuffer = 0;
     mOffscreenFBO[0] = 0;
     mOffscreenFBO[1] = 0;
 
@@ -399,11 +398,11 @@ void OffscreenManager::CreateFBOs()
     _glGenTextures(2, mOffscreenTex);
     if (mDepth)
     {
-        glGenRenderbuffers12(2, mDepthBuffer);
+        glGenRenderbuffers12(1, &mDepthBuffer);
     }
     if (mStencil && !mDepthStencil)
     {
-        glGenRenderbuffers12(2, mStencilBuffer);
+        glGenRenderbuffers12(1, &mStencilBuffer);
     }
 
     framebufferTexture(mOffscrFboW, mOffscrFboH);
@@ -463,27 +462,27 @@ void OffscreenManager::framebufferTexture(int w, int h)
 
         if (mDepth)
         {
-            glBindRenderbuffer12(GL_RENDERBUFFER, mDepthBuffer[i]);
+            glBindRenderbuffer12(GL_RENDERBUFFER, mDepthBuffer);
             if (mMsaaSamples == 0)
                 glRenderbufferStorage12(GL_RENDERBUFFER, mRenderbufferStorage_depth_format, mOffscrFboW, mOffscrFboH);
             else
                 _glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, mMsaaSamples, mRenderbufferStorage_depth_format, mOffscrFboW, mOffscrFboH);
-            glFramebufferRenderbuffer12(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, mDepthBuffer[i]);
+            glFramebufferRenderbuffer12(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, mDepthBuffer);
             if (mDepthStencil)
             {
-                glFramebufferRenderbuffer12(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, mDepthBuffer[i]);
+                glFramebufferRenderbuffer12(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, mDepthBuffer);
             }
             glBindRenderbuffer12(GL_RENDERBUFFER, ON_SCREEN_FBO);
         }
 
         if (mStencil && !mDepthStencil)
         {
-            glBindRenderbuffer12(GL_RENDERBUFFER, mStencilBuffer[i]);
+            glBindRenderbuffer12(GL_RENDERBUFFER, mStencilBuffer);
             if (mMsaaSamples == 0)
                 glRenderbufferStorage12(GL_RENDERBUFFER, mRenderbufferStorage_stencil_format, mOffscrFboW, mOffscrFboH);
             else
                 _glRenderbufferStorageMultisampleEXT(GL_RENDERBUFFER, mMsaaSamples, mRenderbufferStorage_stencil_format, mOffscrFboW, mOffscrFboH);
-            glFramebufferRenderbuffer12(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, mStencilBuffer[i]);
+            glFramebufferRenderbuffer12(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, mStencilBuffer);
             glBindRenderbuffer12(GL_RENDERBUFFER, ON_SCREEN_FBO);
         }
 
@@ -515,9 +514,9 @@ void OffscreenManager::DeleteFBOs()
         glDeleteFramebuffers12(2, mOffscreenFBO);
         _glDeleteTextures(2, mOffscreenTex);
         if (mDepth)
-            glDeleteRenderbuffers12(2, mDepthBuffer);
+            glDeleteRenderbuffers12(1, &mDepthBuffer);
         if (mStencil && !mDepthStencil)
-            glDeleteRenderbuffers12(2, mStencilBuffer);
+            glDeleteRenderbuffers12(1, &mStencilBuffer);
 
         glDeleteFramebuffers12(1, &mMosaicFBO);
         _glDeleteTextures(1, &mMosaicTex);

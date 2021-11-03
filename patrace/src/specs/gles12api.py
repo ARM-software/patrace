@@ -470,7 +470,7 @@ gles_functions = [
     GlFunction(Void, "glBeginQueryEXT", [(GLenum, "target"), (GLquery, "id")]),
     GlFunction(Void, "glEndQueryEXT", [(GLenum, "target")]),
     GlFunction(Void, "glGetQueryivEXT", [(GLenum, "target"), (GLenum, "pname"), Out(Array(GLint, "_gl_param_size(pname)"), "params")], sideeffects=False),
-    GlFunction(Void, "glGetQueryObjectuivEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLuint, "_gl_param_size(pname)"), "params")], sideeffects=False),
+    GlFunction(Void, "glGetQueryObjectuivEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLuint, "_gl_param_size(pname)"), "params")]),
 
     # GL_EXT_separate_shader_objects
     GlFunction(Void, "glUseProgramStagesEXT", [(GLpipeline, "pipeline"), (GLbitfield_shader, "stages"), (GLprogram, "program")]),
@@ -665,9 +665,9 @@ gles_functions = [
     # GL_EXT_disjoint_timer_query
     # (functions not already in GL_EXT_occlusion_query_boolean)
     GlFunction(Void, "glQueryCounterEXT", [(GLuint, "id"), (GLenum, "target")]),
-    GlFunction(Void, "glGetQueryObjectivEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLint, "_gl_param_size(pname)"), "params")], sideeffects=False),
-    GlFunction(Void, "glGetQueryObjecti64vEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLint64, "_gl_param_size(pname)"), "params")], sideeffects=False),
-    GlFunction(Void, "glGetQueryObjectui64vEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLuint64, "_gl_param_size(pname)"), "params")], sideeffects=False),
+    GlFunction(Void, "glGetQueryObjectivEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLint, "_gl_param_size(pname)"), "params")]),
+    GlFunction(Void, "glGetQueryObjecti64vEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLint64, "_gl_param_size(pname)"), "params")]),
+    GlFunction(Void, "glGetQueryObjectui64vEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLuint64, "_gl_param_size(pname)"), "params")]),
 
     # GL_AMD_performance_monitor
     GlFunction(Void, "glGetPerfMonitorGroupsAMD", [Out(Pointer(GLint), "numGroups"), (GLsizei, "groupsSize"), Out(Array(GLuint, "groupsSize"), "groups")], sideeffects=False),
@@ -770,7 +770,7 @@ gles_functions = [
     GlFunction(GLint, "glGetProgramResourceLocation", [(GLprogram, "program"), (GLenum, "programInterface"), (Const(GLstring), "name")], sideeffects=False),
     GlFunction(Void, "glGetProgramResourceName", [(GLprogram, "program"), (GLenum, "programInterface"), (GLuint, "index"), (GLsizei, "bufSize"), (Pointer(GLsizei), "length"), (GLstring, "name")], sideeffects=False),
     GlFunction(Void, "glGetProgramResourceiv", [(GLprogram, "program"), (GLenum, "programInterface"), (GLuint, "index"), (GLsizei, "propCount"), (Array(Const(GLenum), "propCount"), "props"), (GLsizei, "bufSize"), (Pointer(GLsizei), "length"), (Array(GLint, "bufSize"), "params")], sideeffects=False),
-    GlFunction(Void, "glGetQueryObjectuiv", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLuint, "_gl_param_size(pname)"), "params")], sideeffects=False),
+    GlFunction(Void, "glGetQueryObjectuiv", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLuint, "_gl_param_size(pname)"), "params")]),
     GlFunction(Void, "glGetQueryiv", [(GLenum, "target"), (GLenum, "pname"), Out(Array(GLint, "_gl_param_size(pname)"), "params")], sideeffects=False),
     GlFunction(Void, "glGetSamplerParameterfv", [(GLsampler, "sampler"), (GLenum, "pname"), (Array(GLfloat, "_gl_param_size(pname)"), "params")], sideeffects=False),
     GlFunction(Void, "glGetSamplerParameteriv", [(GLsampler, "sampler"), (GLenum, "pname"), (Array(GLint, "_gl_param_size(pname)"), "params")], sideeffects=False),

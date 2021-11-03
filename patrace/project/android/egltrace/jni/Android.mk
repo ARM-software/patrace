@@ -52,11 +52,11 @@ include $(CLEAR_VARS)
 LOCAL_MODULE    	:= jsoncpp
 
 LOCAL_SRC_FILES 	:= \
-    ../../thirdparty/jsoncpp/src/lib_json/json_writer.cpp \
-    ../../thirdparty/jsoncpp/src/lib_json/json_reader.cpp \
-    ../../thirdparty/jsoncpp/src/lib_json/json_value.cpp
+    ../../thirdparty/libcollector/external/jsoncpp/src/lib_json/json_writer.cpp \
+    ../../thirdparty/libcollector/external/jsoncpp/src/lib_json/json_reader.cpp \
+    ../../thirdparty/libcollector/external/jsoncpp/src/lib_json/json_value.cpp
 
-LOCAL_C_INCLUDES 	:= $(LOCAL_PATH)/../../thirdparty/jsoncpp/include
+LOCAL_C_INCLUDES 	:= $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include
 LOCAL_CFLAGS 		:= -frtti -D__arm__ -D__gnu_linux__ -DJSON_USE_EXCEPTION=0 -Wno-attributes
 LOCAL_CFLAGS_arm   += -U__ARM_ARCH_5__ -U__ARM_ARCH_5T__ \
 	      -U__ARM_ARCH_5E__ -U__ARM_ARCH_5TE__ \
@@ -128,6 +128,7 @@ LOCAL_C_INCLUDES 	:= \
     $(LOCAL_PATH)/../../thirdparty/libpng \
     $(LOCAL_PATH)/../../thirdparty/egl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers \
+    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include \
     $(LOCAL_PATH)/../../thirdparty/opengl-registry/api
 
 LOCAL_CFLAGS 		:= -frtti -D__arm__ -D__gnu_linux__ $(PA_BUILD_64BIT) -Wno-attributes
@@ -155,6 +156,7 @@ LOCAL_C_INCLUDES 	:= \
     $(LOCAL_PATH)/../../thirdparty/libpng \
     $(LOCAL_PATH)/../../thirdparty/egl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers \
+    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include \
     $(LOCAL_PATH)/../../thirdparty/opengl-registry/api
 
 LOCAL_CFLAGS 		:= -frtti -D__arm__ -D__gnu_linux__ $(PA_BUILD_64BIT) -Wno-attributes
@@ -193,6 +195,7 @@ LOCAL_C_INCLUDES 	:= \
     $(LOCAL_PATH)/../../thirdparty/egl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers \
     $(LOCAL_PATH)/../../thirdparty/opengl-registry/api \
+    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include \
     $(LOCAL_PATH)/../../thirdparty/snappy
 
 LOCAL_CFLAGS 		:= -frtti -D__arm__ -D__gnu_linux__ -Wno-attributes

@@ -69,6 +69,8 @@ public:
     void OnNewFrame();
     void StartMeasuring();
 
+    void TriggerScript(const char* scriptPath);
+
     StateLogger& getStateLogger() { return mStateLogger; }
 
     common::HeaderVersion getFileFormatVersion() const { return mFileFormatVersion; }
@@ -120,6 +122,7 @@ public:
         std::vector<char> buffer;
     };
     FILE *shaderCacheFile = NULL;
+    std::string shaderCacheVersionMD5;
     std::unordered_map<std::string, uint64_t> shaderCacheIndex; // md5 of shader source to offset of cache file
     std::unordered_map<std::string, ProgramCache> shaderCache; // md5 of shader source to cache struct in mem
     int64_t frameBudget = INT64_MAX;

@@ -19,10 +19,13 @@
 static void printHelp()
 {
     std::cout <<
-        "Usage : rename_call <function to rename> <function to rename it to> <source trace> <target trace>\n"
+        "Usage : rename_call Options\n"
         "Options:\n"
-        "  -h            print help\n"
-        "  -v            print version\n"
+        "  -r <function to rename> <function to rename it to>, rename the function. It's exclusive with -s option.\n"
+        "  -s <singlesurface>, specify singlesurface. It will rename all swapbuffers on other surfaces to glFlush call.\n"
+        "  -f <source trace> <target trace>, required option.\n"
+        "  -h print help\n"
+        "  -v print version\n"
         ;
 }
 
@@ -35,12 +38,12 @@ static common::FrameTM* _curFrame = NULL;
 static unsigned _curFrameIndex = 0;
 static unsigned _curCallIndexInFrame = 0;
 
-static void writeout(common::OutFile &outputFile, common::CallTM *call)
+static void writeout(common::OutFile &outputFile, common::CallTM *call, bool injected)
 {
     const unsigned int WRITE_BUF_LEN = 150*1024*1024;
     static char buffer[WRITE_BUF_LEN];
     char *dest = buffer;
-    dest = call->Serialize(dest);
+    dest = call->Serialize(dest, -1, injected);
     outputFile.Write(buffer, dest-buffer);
 }
 
@@ -61,15 +64,34 @@ static common::CallTM* next_call(common::TraceFileTM &_fileTM)
     return call;
 }
 
+static int readValidValue(char* v)
+{
+    char* endptr;
+    errno = 0;
+    int val = strtol(v, &endptr, 10);
+    if(errno) {
+        perror("strtol");
+        exit(1);
+    }
+    if(endptr == v || *endptr != '\0') {
+        fprintf(stderr, "Invalid parameter value: %s\n", v);
+        exit(1);
+    }
+
+    return val;
+}
+
 int main(int argc, char **argv)
 {
     int argIndex = 1;
+    int surfaceIdx = -1;
+    std::string orig, dest;
+    char* source_trace_filename = NULL;
+    char* target_trace_filename = NULL;
+
     for (; argIndex < argc; ++argIndex)
     {
         const char *arg = argv[argIndex];
-
-        if (arg[0] != '-')
-            break;
 
         if (!strcmp(arg, "-h"))
         {
@@ -81,6 +103,22 @@ int main(int argc, char **argv)
             printVersion();
             return 0;
         }
+        else if (!strcmp(arg, "-s"))
+        {
+            surfaceIdx = readValidValue(argv[++argIndex]);
+            orig = "eglSwapBuffersxxx";
+            dest = "glFlush";
+        }
+        else if (!strcmp(arg, "-r"))
+        {
+            orig = argv[++argIndex];
+            dest = argv[++argIndex];
+        }
+        else if (!strcmp(arg, "-f"))
+        {
+            source_trace_filename = argv[++argIndex];
+            target_trace_filename = argv[++argIndex];
+        }
         else
         {
             printf("Error: Unknow option %s\n", arg);
@@ -88,16 +126,12 @@ int main(int argc, char **argv)
             return 1;
         }
     }
-
-    if (argIndex + 4 > argc)
+    if (source_trace_filename == NULL || target_trace_filename == NULL)
     {
+        printf("source_trace_file and target_trace_file is required.\n");
         printHelp();
         return 1;
     }
-    const char* orig = argv[argIndex++];
-    const char* dest = argv[argIndex++];
-    const char* source_trace_filename = argv[argIndex++];
-    const char* target_trace_filename = argv[argIndex++];
 
     common::TraceFileTM inputFile;
     common::gApiInfo.RegisterEntries(common::parse_callbacks);
@@ -118,6 +152,10 @@ int main(int argc, char **argv)
 
     Json::Value header = inputFile.mpInFileRA->getJSONHeader();
     Json::Value info;
+    if (surfaceIdx != -1)
+    {
+        header["singleSurface"] = surfaceIdx;
+    }
     info["renamed_from"] = orig;
     info["renamed_to"] = dest;
     addConversionEntry(header, "rename_call", source_trace_filename, info);
@@ -128,17 +166,49 @@ int main(int argc, char **argv)
 
     common::CallTM *call = NULL;
     int renamed = 0;
+
+    int surfcnt = 0;
+    int surface = 0;
+    bool injected = false;
     while ((call = next_call(inputFile)))
     {
-        if (call->mCallName == orig)
+        injected = false;
+        if (surfaceIdx != -1)
         {
-            call->mCallId = common::gApiInfo.NameToId(dest);
-            call->mCallName = dest;
+            if (call->mCallName == "eglCreateWindowSurface" || call->mCallName == "eglCreateWindowSurface2")
+            {
+                if (surfaceIdx == surfcnt)
+                {
+                    //get surface from call
+                    surface = call->mRet.GetAsInt();
+                }
+                surfcnt++;
+            }
+            else if (call->mCallName == "eglSwapBuffers" || call->mCallName == "eglSwapBuffersWithDamageKHR")
+            {
+                int swap_surf = call->mArgs[1]->GetAsInt();
+                if (swap_surf != surface)  // replacing swapbuffers with glFlush when specifying singlesurface
+                {
+                    call->mCallId = common::gApiInfo.NameToId(dest.c_str());
+                    call->mCallName = dest;
+                    call->mRet.Reset();
+                    call->ClearArguments();
+                    injected = true;
+                    renamed++;
+                }
+            }
         }
-        writeout(outputFile, call);
+        else if (call->mCallName == orig)
+        {
+            call->mCallId = common::gApiInfo.NameToId(dest.c_str());
+            call->mCallName = dest;
+            renamed++;
+        }
+        writeout(outputFile, call, injected);
     }
 
-    DBG_LOG("Renamed %d calls\n", renamed);
+    if (surfaceIdx != -1 && surface == 0)    DBG_LOG("WARNING: The given singlesurface does not match any surfaces.\n");
+    DBG_LOG("Renamed %d calls %s to %s\n", renamed, orig.c_str(), dest.c_str());
     inputFile.Close();
     outputFile.Close();
 

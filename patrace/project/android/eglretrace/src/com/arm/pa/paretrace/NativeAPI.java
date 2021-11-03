@@ -117,6 +117,7 @@ public class NativeAPI
         }
     }
 
+    public static native boolean launchFastforward(String[] argArray);
     public static native void init(boolean registerEntries);
     public static native boolean initFromJson(String jsonData, String traceDir, String resultFile);
     public static native void setSurface(Surface surface, int viewSize);

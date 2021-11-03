@@ -8,12 +8,14 @@ autoGenRetrace:
 	rm -f ../../../src/common/api_info_auto.cpp
 	rm -f ../../../src/dispatch/eglproc_auto.hpp
 	rm -f ../../../src/dispatch/eglproc_auto.cpp
+	rm -f ../../../src/helper/paramsize.cpp
 	rm -f ../../../src/retracer/retrace_gles_auto.cpp
 	rm -f ../../../src/specs/khronos_enums.hpp
 	@echo 'Auto-generate the retrace code...'
 	cd ../../../src/common && python api_info.py
 	cd ../../../src/common && python call_parser.py
 	cd ../../../src/dispatch && python eglproc.py
+	cd ../../../src/helper && python paramsize.py
 	cd ../../../src/retracer && python retrace.py
 	cd ../../../src/specs/ && python glxml_header.py
 .PHONY : autoGenRetrace

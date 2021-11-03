@@ -1,5 +1,5 @@
 #include "eglconfiginfo.hpp"
-#include "jsoncpp/include/json/reader.h"
+#include "json/reader.h"
 #include "common/os.hpp"
 #include "dispatch/eglproc_auto.hpp"
 

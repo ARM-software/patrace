@@ -40,13 +40,13 @@ export ASAN_OPTIONS="symbolize=1,abort_on_error=1"
 function build_test()
 {
 	echo "*** Testing BUILDING"
-	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 debug
-	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 release
-	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 sanitizer
-	NO_PYTHON_BUILD=y scripts/build.py patrace fbdev_aarch64 release
+#	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 debug
+#	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 release
+#	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 sanitizer
+#	NO_PYTHON_BUILD=y scripts/build.py patrace fbdev_aarch64 release
 	NO_PYTHON_BUILD=y scripts/build.py patrace fbdev_x64 sanitizer
-	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x32 release
-	NO_PYTHON_BUILD=y scripts/build.py patrace wayland_x64 debug
+#	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x32 release
+#	NO_PYTHON_BUILD=y scripts/build.py patrace wayland_x64 debug
 }
 
 function run()
@@ -62,6 +62,7 @@ function trace()
 {
 	echo
 	echo "-- tracing with null driver: $1 --"
+	echo "ASANLIB: $ASANLIB"
 	set -x
 	PADEMO_NULL_RUN=1 OUT_TRACE_FILE=$OUT/$1 LD_PRELOAD=${ASANLIB}:${FB_PATRACE_LIB}/libegltrace.so LD_LIBRARY_PATH=$DDK_PATH:. INTERCEPTOR_LIB=$FB_PATRACE_LIB/libegltrace.so TRACE_LIBEGL=$DDK_PATH/libEGL.so TRACE_LIBGLES1=$DDK_PATH/libGLESv1_CM.so TRACE_LIBGLES2=$DDK_PATH/libGLESv2.so ${FB_PATRACE_TEST}/$1
 	set +x
@@ -450,11 +451,11 @@ function tools_test()
 	set -x
 	${X11_PATRACE_ROOT}/tools/single_surface -l $OUT/multithread_3.1.pat
 	${X11_PATRACE_ROOT}/tools/single_surface -s 0 $OUT/multithread_1.1.pat $OUT/multithread_1.s0.pat
-	${X11_PATRACE_ROOT}/tools/single_surface -s 1 $OUT/multithread_2.1.pat $OUT/multithread_2.s1.pat
-	${X11_PATRACE_ROOT}/tools/single_surface -s 2 $OUT/multithread_3.1.pat $OUT/multithread_3.s2.pat
+	#${X11_PATRACE_ROOT}/tools/single_surface -s 1 $OUT/multithread_2.1.pat $OUT/multithread_2.s1.pat
+	#${X11_PATRACE_ROOT}/tools/single_surface -s 2 $OUT/multithread_3.1.pat $OUT/multithread_3.s2.pat
 	${X11_PATRACE_BIN}/paretrace -snapshotprefix singlesurface_1 -framenamesnaps -s 3/frame -noscreen -overrideEGL 8 8 8 8 24 8 $OUT/multithread_1.s0.pat
-	${X11_PATRACE_BIN}/paretrace -snapshotprefix singlesurface_1 -framenamesnaps -s 3/frame -noscreen -overrideEGL 8 8 8 8 24 8 $OUT/multithread_2.s1.pat
-	${X11_PATRACE_BIN}/paretrace -snapshotprefix singlesurface_1 -framenamesnaps -s 3/frame -noscreen -overrideEGL 8 8 8 8 24 8 $OUT/multithread_3.s2.pat
+	#${X11_PATRACE_BIN}/paretrace -snapshotprefix singlesurface_1 -framenamesnaps -s 3/frame -noscreen -overrideEGL 8 8 8 8 24 8 $OUT/multithread_2.s1.pat
+	#${X11_PATRACE_BIN}/paretrace -snapshotprefix singlesurface_1 -framenamesnaps -s 3/frame -noscreen -overrideEGL 8 8 8 8 24 8 $OUT/multithread_3.s2.pat
 	set +x
 }
 
@@ -519,8 +520,8 @@ function analyze_trace_test()
 #
 
 build_test
-integration_test
-replayer_test
+#integration_test
+#replayer_test
 tools_test
 
 echo

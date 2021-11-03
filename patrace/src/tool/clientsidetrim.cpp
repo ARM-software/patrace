@@ -23,15 +23,18 @@
 #include "tool/utils.hpp"
 
 static bool debug = false;
+static bool textures = false;
+static int texture_deletes_injected = 0;
 #define DEBUG_LOG(...) if (debug) DBG_LOG(__VA_ARGS__)
 
 static void printHelp()
 {
     std::cout <<
-        "Usage : deduplicator [OPTIONS] trace_file.pat new_file.pat\n"
+        "Usage : clientsidetrim [OPTIONS] trace_file.pat new_file.pat\n"
         "Options:\n"
         "  -h            Print help\n"
         "  -v            Print version\n"
+        "  -t            Also trim textures\n"
         "  -d            Print debug info\n"
         ;
 }
@@ -70,6 +73,10 @@ int main(int argc, char **argv)
         {
             debug = true;
         }
+        else if (arg == "-t")
+        {
+            textures = true;
+        }
         else if (arg == "-v")
         {
             printVersion();
@@ -105,18 +112,23 @@ int main(int argc, char **argv)
         std::cerr << "Failed to open for writing: " << target_trace_filename << std::endl;
         return 1;
     }
-    Json::Value header = inputFile->header;
-    Json::Value info;
-    addConversionEntry(header, "inject_client_side_delete", source_trace_filename, info);
-    Json::FastWriter writer;
-    const std::string json_header = writer.write(header);
-    outputFile.mHeader.jsonLength = json_header.size();
-    outputFile.WriteHeader(json_header.c_str(), json_header.size());
 
     common::CallTM *call = nullptr;
     while ((call = inputFile->next_call())) {}
     const auto client_side_last_use = inputFile->client_side_last_use;
     const auto client_side_last_use_reason = inputFile->client_side_last_use_reason;
+    std::map<int, std::map<int, int>> texture_deletes; // context -> (call, texture)
+    for (const auto& ctx : inputFile->contexts)
+    {
+        for (const auto& tx : ctx.textures.all())
+        {
+            if (tx.destroyed.call == -1 && textures)
+            {
+                if (debug) DBG_LOG("Texture %d on context %d was never deleted, last used in call %d\n", tx.id, ctx.id, tx.last_used.call);
+                texture_deletes[ctx.index][tx.last_used.call] = tx.id;
+            }
+        }
+    }
     inputFile->close();
     delete inputFile;
     inputFile = new ParseInterface();
@@ -132,7 +144,7 @@ int main(int argc, char **argv)
         for (const auto& pair : thread.second)
         {
             callno_to_client_side_last_use[pair.second] = pair.first;
-            DBG_LOG("\tt%d cs%d call%d endpoint=%s\n", thread.first, pair.first, pair.second, client_side_last_use_reason.at(thread.first).at(pair.first).c_str());
+            if (debug) DBG_LOG("\ttid=%d cs=%d call=%d endpoint=%s\n", thread.first, pair.first, pair.second, client_side_last_use_reason.at(thread.first).at(pair.first).c_str());
         }
     }
     int count = 0;
@@ -147,10 +159,32 @@ int main(int argc, char **argv)
             writeout(outputFile, &deletion);
             count++;
         }
+        if (inputFile->context_index != UNBOUND && texture_deletes.count(inputFile->context_index) && texture_deletes.at(inputFile->context_index).count(call->mCallNo)
+            && (call->mCallName == "eglDestroyImageKHR" || call->mCallName == "eglDestroyImage" || call->mCallName == "glDeleteFramebuffers"))
+        {
+            const unsigned tx_id = texture_deletes.at(inputFile->context_index).at(call->mCallNo);
+            common::CallTM deletion("glDeleteTextures");
+            deletion.mArgs.push_back(new common::ValueTM(1));
+            deletion.mArgs.push_back(common::CreateUInt32ArrayValue({ tx_id }));
+            deletion.mTid = call->mTid;
+            writeout(outputFile, &deletion);
+            texture_deletes_injected++;
+            if (debug) DBG_LOG("\tinjecting glDeleteTextures(1, %u) after %s context=%d call=%d\n", tx_id, call->mCallName.c_str(), inputFile->context_index, (int)call->mCallNo);
+        }
     }
-    inputFile->close();
 
+    Json::Value header = inputFile->header;
+    Json::Value info;
+    info["csb_deletes_injected"] = count;
+    if (texture_deletes_injected) info["texture_deletes_injected"] = texture_deletes_injected;
+    addConversionEntry(header, "inject_client_side_delete", source_trace_filename, info);
+    Json::FastWriter writer;
+    const std::string json_header = writer.write(header);
+    outputFile.mHeader.jsonLength = json_header.size();
+    outputFile.WriteHeader(json_header.c_str(), json_header.size());
+
+    inputFile->close();
     outputFile.Close();
-    printf("Injected %d deletion calls\n", count);
+    printf("Injected %d deletion calls\n", count + texture_deletes_injected);
     return 0;
 }

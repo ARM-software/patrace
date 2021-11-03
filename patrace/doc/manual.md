@@ -524,9 +524,9 @@ There are three different ways to tell the retracer which parameters that should
 | `-instr`                                     | Output the supported instrumentation modes as a JSON file. Do not play trace.                                                                                                                                                          |
 | `-overrideEGL`                               | Red Green Blue Alpha Depth Stencil, example: overrideEGL 5 6 5 0 16 8, for 16 bit color and 16 bit depth and 8 bit stencil                                                                                                             |
 | `-strict`                                    | Use strict EGL mode (fail unless the specified EGL configuration is valid)                                                                                                                                                             |
-| `-libEGL_path=`                              |                                                                                                                                                                                                                                        |
-| `-libGLESv1_path=`                           |                                                                                                                                                                                                                                        |
-| `-libGLESv2_path=`                           |                                                                                                                                                                                                                                        |
+| `-libEGL`                                    | Set the path to the EGL library to load |
+| `-libGLESv1`                                 | Set the path to the GLES 1 library to load |
+| `-libGLESv2`                                 | Set the path to the GLES 2+ library to load |
 | `-version`                                   | Output the version of this program                                                                                                                                                                                                     |
 | `-callstats`                                 | (since r2p4) Output GLES API call statistics to disk, time spent in API calls measured in nanoseconds.                                                                                                                                 |
 | `-collect`                                   | (since r2p4) Collect performance information and save it to disk. It enables some default libcollector collectors. For fine-grained control over libcollector behaviour, use the JSON interface instead.                               |
@@ -534,6 +534,7 @@ There are three different ways to tell the retracer which parameters that should
 | `-perfpath filepath`                         | (since r2p5) Path to your perf binary. Mostly useful on embedded systems.                                                                                                                                                              |
 | `-perffreq freq`                             | (since r2p5) Your perf polling frequency. The default is 1000. Can usually go up to 25000.                                                                                                                                             |
 | `-perfout filepath`                          | (since r2p5) Destination file for your -perf data                                                                                                                                                                                      |
+| `-script scriptPath Frame`                   | (since r3p3) trigger script on the specific frame                                                                                                                                                                                      |
 | `-noscreen`                                  | (since r2p4) Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.                                |
 | `-flush`                                     | (since r2p5) Will try hard to flush all pending CPU and GPU work before starting the selected framerange. This should usually not be necessary.                                                                                        |
 | `-flushonswap`                               | (since r2p15) Will try hard to flush all pending CPU and GPU work before starting the next frame. This should usually not be necessary. |
@@ -547,7 +548,7 @@ There are three different ways to tell the retracer which parameters that should
     interval = '*' | number | start_number '-' end_number
     frequency = divisor | "frame" | "draw"
 
-#### Command Line Parameters in ADB Shell
+#### Retrace Command Line Parameters in ADB Shell
 
 | Command                    | Description                                                                                                                                                                                                                                                                                                                                                                  |
 |----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -614,6 +615,8 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | perfpath                     | string     | yes      | Path to your perf binary. Mostly useful on embedded systems.   |
 | perffreq                     | int        | yes      | Your perf polling frequency. The default is 1000. Can usually go up to 25000.     |
 | perfout                      | string     | yes      | Destination file for your perf data      |
+| scriptpath                   | string     | yes      | (since r3p3) The script file with path to be executed.           |
+| scriptframe                  | int        | yes      | (since r3p3) The frame number when script begin to execute.      |
 | landscape                    | boolean    | yes      | Override the orientation                                                                                                                                                                                                               |
 | offscreen                    | boolean    | yes      | Render the trace offscreen                                                                                                                                                                                                             |
 | noscreen                     | boolean    | yes      | Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.                             |
@@ -678,6 +681,46 @@ For trace made by yourself, if wanting to enable multithread, you could edit fil
 The looping functionality in the replayer is very basic. Do not simply assume that it will work, always test the frame range first. One simple way to test it
 is to loop twice with the screenshot option set to snap the first frame of the frame range. In this case it will capture two screenshots, of the initial run and
 of the loop run, and then you can compare the two to see if looping works properly.
+
+### Fastforwarding on Android
+
+Fastforward is a function to generate a trace that skips a range of unnecessary frames. It is integrated as an activity of paretrace application on Android and can be launched with the following command:
+
+    adb shell am start -n com.arm.pa.paretrace/.Activities.FastforwardActivity --es input /absolute/path/to/original/tracefile.pat --es output /absolute/path/to/modified/tracefile.pat --ei targetFrame 100
+
+### Parameter Options
+
+On Android, you can set parameter of fastforward by ADB shell or a JSON file.
+
+#### Fastforward Command Line Parameters in ADB Shell
+
+| Command                    | Optional |Description                                                                                                                                                                                                                                                                                                                                                                   |
+|----------------------------|----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| --es input                 | no       | Target trace to fastforward                                                                                                                                                                                                                                                                                                                                                 |
+| --es output                | no       | Where to write fastforwarded trace file                                                                                                                                                                                                                                                                                                                                                        |
+| --ei targetFrame           | no       | The frame number that should be fastforwarded to                                                                                                                                                                                                                                                                                                                                                          |
+| --ei targetDrawCallNo      | no       | The draw call number that should be fastforwarded to                                                                                                                                                                                                                                                                                                                                                          |
+| --ei endFrame              | yes      | The frame number that should be ended (by default fastforward to the last frame)                                                                                                                                                                                                                                                                                                                                                      |
+| --ez multithread           | yes      | Run in multithread mode                                                                                                                                                                                                                                                                                                                                                        |
+| --ez offscreen             | yes      | Run in offscreen mode                                                                                                                                                                                                                                                                                                                                                        |
+| --ez noscreen              | yes      | Run in pbuffer output mode                                                                                                                                                                                                                                                                                                                                                        |
+| --ez norestoretex          | yes      | When generating a fastforward trace, don't inject commands to restore the contents of textures to what the would've been when retracing the original. (NOTE: NOT RECOMMEND)                                                                                                                                                                            |
+| --ez version               | yes      | Output the version of this program                                                                                                                                                                                                                                                                                                                                                     |
+| --ei restorefbo0           | yes      | Repeat to inject a draw call commands and swapbuffer the given number of times to restore the last default FBO. Suggest repeating 3~4 times if set DamageRegionKHR, else repeating 1 time.                                                                                                                                                                                 |
+
+#### Example of a JSON file
+
+    {
+        "input": "data/example_trace.pat",
+        "output": "data/example_trace_ff.pat",
+        "targetFrame": 1000,
+        "endFrame": 1100,
+        "multithread": false,
+        "offscreen": false,
+        "noscreen": false,
+        "norestoretex": false,
+        "restorefbo0": 0
+    }
 
 Other
 -----

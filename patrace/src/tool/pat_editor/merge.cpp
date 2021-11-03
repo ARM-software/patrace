@@ -128,7 +128,7 @@ void setValueTM(common::ValueTM *&pValue, const string &type_string, const Json:
             pValue = new common::ValueTM(json_value.asUInt());
             break;
         case common::Int64_Type:
-            pValue = new common::ValueTM(json_value.asInt64());
+            pValue = new common::ValueTM((long long)json_value.asInt64());
             break;
         case common::Uint64_Type:
             pValue = new common::ValueTM();
@@ -153,7 +153,7 @@ void setValueTM(common::ValueTM *&pValue, const string &type_string, const Json:
             pValue = new common::ValueTM(json_value.asString());
             break;
         case common::Array_Type: {
-            Json::ValueIterator only_value = json_value.begin();
+            auto only_value = json_value.begin();
             string array_element_type = only_value.key().asString();
             pValue = new common::ValueTM();
             pValue->mType = common::Array_Type;
@@ -210,7 +210,7 @@ void setValueTM(common::ValueTM *&pValue, const string &type_string, const Json:
         case common::Opaque_Type: {
             pValue = new common::ValueTM();
             pValue->mType = common::Opaque_Type;
-            Json::ValueIterator only_value = json_value.begin();
+            auto only_value = json_value.begin();
             if (only_value.key().asString() == opaque_value_type[0]) {      // BufferObjectReferenceType
                 pValue->mOpaqueType = common::BufferObjectReferenceType;
                 setValueTM(pValue->mOpaqueIns, "Uint", *only_value, func_name);
@@ -232,7 +232,7 @@ void setValueTM(common::ValueTM *&pValue, const string &type_string, const Json:
                 pValue->mPointer = 0;
             }
             else {
-                Json::ValueIterator only_value = json_value.begin();
+                auto only_value = json_value.begin();
                 setValueTM(pValue->mPointer, only_value.key().asString(), *only_value, func_name);
             }
             break;
@@ -388,7 +388,7 @@ int merge_to_pat(const string &source_name_, const string &target_name)
                 setValueTM(ret_value, return_type, json_value["4 return_value"], func_name);
                 func.mRet = *ret_value;
 
-                Json::ValueIterator vi = json_value["6 arg_value"].begin();
+                auto vi = json_value["6 arg_value"].begin();
                 for (unsigned int j = 0; j < json_value["5 arg_type"].size(); ++j)
                 {
                     common::ValueTM *pValueTM;

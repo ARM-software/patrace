@@ -392,13 +392,9 @@ unsigned long long ValueTM::GetAsUInt64() const
     case Enum_Type: return static_cast<unsigned long long>(mEnum);
     case Float_Type: return static_cast<unsigned long long>(mFloat);
     case Opaque_Type:
-        switch (mOpaqueType)
-        {
-        case BufferObjectReferenceType:
-            return mOpaqueIns->GetAsUInt64();
-        default:
-            break;
-        }
+        if (mOpaqueType == BufferObjectReferenceType) return mOpaqueIns->GetAsUInt64();
+        else if (mOpaqueType == ClientSideBufferObjectReferenceType) return (uint64_t)mOpaqueIns->mClientSideBufferName + (((uint64_t)mOpaqueIns->mClientSideBufferOffset) << 32);
+        DBG_LOG("Unexpected opaque type %d in GetAsUInt64()\n", mOpaqueType);
         // fall through
     default:
         DBG_LOG("Unexpected value type %d in GetAsUInt64()\n", mType);
@@ -1201,15 +1197,13 @@ void FrameTM::LoadCalls(InFileRA *infile, bool loadQuery, const std::string &loa
     mIsLoaded = true;
 }
 
-void FrameTM::LoadCallsForTraceToTxt(InFileRA *infile, bool loadQuery, const std::string &loadFilter, unsigned int callNum, unsigned int fromFirstCall, unsigned int max_cycle)
+void FrameTM::LoadCalls(InFileRA *infile, bool loadQuery, const std::string &loadFilter, unsigned int callOffsetInFrame, unsigned int numCallsToLoad)
 {
     infile->SetReadPos(mReadPos);
 
     common::BCall       curCall;
 
-    unsigned int cycleNum = callNum;
-
-    for (unsigned int i = 0; i < cycleNum; ++i) {
+    for (unsigned int i = 0; i < numCallsToLoad; ++i) {
         CallTM*             newCallTM = new CallTM;
 
         if (!newCallTM->Load(infile)) {
@@ -1218,7 +1212,7 @@ void FrameTM::LoadCallsForTraceToTxt(InFileRA *infile, bool loadQuery, const std
             break;
         }
 
-        newCallTM->mCallNo = mFirstCallOfThisFrame + (fromFirstCall * max_cycle) + i;//1000000 equals MAX_CYCLE in trace_to_txt/main.cpp
+        newCallTM->mCallNo = mFirstCallOfThisFrame + callOffsetInFrame + i;
 
         if (!loadQuery && IsQueryCall(newCallTM->mCallName))
             delete newCallTM;
@@ -1243,12 +1237,15 @@ void FrameTM::UnloadCalls()
     mIsLoaded = false;
 }
 
-TraceFileTM::TraceFileTM()
+TraceFileTM::TraceFileTM(size_t callBatchSize)
 : mpInFileRA(new InFileRA),
   mCurFrameIndex(0),
   mCurCallIndexInFrame(0),
   mLoadQueryCalls(false),
-  mLoadFilterStr(DEFAULT_LOAD_FILTER_STRING)
+  mLoadFilterStr(DEFAULT_LOAD_FILTER_STRING),
+  mCallBatchIndex(0),
+  mCallBatchSize(callBatchSize)
+
 {
 }
 
@@ -1263,12 +1260,14 @@ void TraceFileTM::Close()
     mpInFileRA->Close();
 }
 
-TraceFileTM::TraceFileTM(const char *name, bool readHeaderAndExit)
+TraceFileTM::TraceFileTM(const char *name, bool readHeaderAndExit, size_t callBatchSize)
 : mpInFileRA(new InFileRA),
   mCurFrameIndex(0),
   mCurCallIndexInFrame(0),
   mLoadQueryCalls(false),
-  mLoadFilterStr(DEFAULT_LOAD_FILTER_STRING)
+  mLoadFilterStr(DEFAULT_LOAD_FILTER_STRING),
+  mCallBatchIndex(0),
+  mCallBatchSize(callBatchSize)
 {
     Open(name, readHeaderAndExit);
 }
@@ -1357,26 +1356,49 @@ CallTM *TraceFileTM::NextCall() const
     if (mFrames.size() == 0)
         return NULL;
 
-    FrameTM *curFrame = mFrames[mCurFrameIndex];
-    curFrame->LoadCalls(mpInFileRA);
-    if (mCurCallIndexInFrame >= curFrame->GetLoadedCallCount())
+    FrameTM* curFrame = mFrames[mCurFrameIndex];
+    unsigned int numCallsInFrame = curFrame->GetCallCount();
+    if (mCurCallIndexInFrame >= numCallsInFrame)
     {
-        curFrame->UnloadCalls();
-        mCurCallIndexInFrame = 0;
-
+        // New frame
         ++mCurFrameIndex;
         if (mCurFrameIndex >= mFrames.size())
         {
-            // reset to the first frame
-            mCurFrameIndex = 0;
-            mFrames[mCurFrameIndex]->LoadCalls(mpInFileRA);
-            return NULL;
+            // No more frames or calls
+            return nullptr;
+        }
+        curFrame = mFrames[mCurFrameIndex];
+        numCallsInFrame = curFrame->GetCallCount();
+        mCurCallIndexInFrame = 0;
+        mCallBatchIndex = 0;
+    }
+
+    if(mCurCallIndexInFrame % mCallBatchSize == 0)
+    {
+        // if not first call in frame:
+        if(mCurCallIndexInFrame != 0)
+        {
+            // Unload the loaded calls
+            curFrame->UnloadCalls();
         }
 
-        mFrames[mCurFrameIndex]->LoadCalls(mpInFileRA);
-        curFrame = mFrames[mCurFrameIndex];
+        unsigned int remainingCallsInFrame = numCallsInFrame - mCurCallIndexInFrame;
+        unsigned int offset = mCallBatchIndex * mCallBatchSize;
+        if(remainingCallsInFrame > mCallBatchSize)
+        {
+            // More remaining calls to be loaded in the frame than the size of a batch,
+            // so load a full batch of calls.
+            curFrame->LoadCalls(mpInFileRA, offset, mCallBatchSize);
+            ++mCallBatchIndex;
+        }
+        else
+        {
+            // This will be the last batch to be loaded, so load all remaining calls.
+            curFrame->LoadCalls(mpInFileRA, offset, remainingCallsInFrame);
+        }
     }
-    return curFrame->mCalls[mCurCallIndexInFrame++];
+
+    return curFrame->mCalls[mCurCallIndexInFrame++ % mCallBatchSize];
 }
 
 CallTM *TraceFileTM::NextCallInFrame(unsigned int frameIndex) const

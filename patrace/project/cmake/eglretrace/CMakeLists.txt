@@ -56,7 +56,7 @@ endif ()
 target_link_libraries(paretrace
     ${SANITIZER}
     common
-    ${CMAKE_BINARY_DIR}/libcollector/libcollector.a
+    collector
     ${SNAPPY_LIBRARIES}
     md5
     dl

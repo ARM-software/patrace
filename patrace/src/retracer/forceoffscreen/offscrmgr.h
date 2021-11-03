@@ -78,9 +78,9 @@ private:
     int             mMosaicY;
 
     bool         mOwnsGLObjects;
-    unsigned int mStencilBuffer[2];
+    unsigned int mStencilBuffer;
     unsigned int mOffscreenTex[2];
-    unsigned int mDepthBuffer[2];
+    unsigned int mDepthBuffer;
     unsigned int mOffscreenFBO[2];
     unsigned int mMosaicFBO;
     unsigned int mMosaicTex;

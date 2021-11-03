@@ -103,17 +103,61 @@ static void _eglCreateImageKHR_get_image_size(EGLImageKHR image, image_info *inf
 static void get_texture_external_image(image_info *info)
 {
     GLuint fbo = 0;
-    GLint prev_fbo = 0;
     GLint texture;
 
     _glGetIntegerv(GL_TEXTURE_BINDING_EXTERNAL_OES, &texture);
     if (!texture)
         return;
 
-    _glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prev_fbo);
+    GLint prev_read_fbo = 0, prev_draw_fbo = 0;
+    _glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prev_read_fbo);
+    _glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prev_draw_fbo);
     _glGenFramebuffers(1, &fbo);
     _glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
+    // pixel
+    GLint pre_pixel_pack = 0;
+    GLint pre_pixel_unpack = 0;
+    _glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &pre_pixel_pack);
+    _glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &pre_pixel_unpack);
+
+    GLint pack_row_len = 0;
+    GLint pack_skip_pixels = 0;
+    GLint pack_skip_rows = 0;
+    GLint pack_align = 0;
+
+    GLint unpack_row_len = 0;
+    GLint unpack_image_height = 0;
+    GLint unpack_skip_pixels = 0;
+    GLint unpack_skip_rows = 0;
+    GLint unpack_skip_images = 0;
+    GLint unpack_align = 0;
+    _glGetIntegerv(GL_PACK_ROW_LENGTH, &pack_row_len);
+    _glGetIntegerv(GL_PACK_SKIP_PIXELS,&pack_skip_pixels);
+    _glGetIntegerv(GL_PACK_SKIP_ROWS, &pack_skip_rows);
+    _glGetIntegerv(GL_PACK_ALIGNMENT, &pack_align);
+    _glGetIntegerv(GL_UNPACK_ROW_LENGTH, &unpack_row_len);
+    _glGetIntegerv(GL_UNPACK_IMAGE_HEIGHT, &unpack_image_height);
+    _glGetIntegerv(GL_UNPACK_SKIP_PIXELS, &unpack_skip_pixels);
+    _glGetIntegerv(GL_UNPACK_SKIP_ROWS, &unpack_skip_rows);
+    _glGetIntegerv(GL_UNPACK_SKIP_IMAGES, &unpack_skip_images);
+    _glGetIntegerv(GL_UNPACK_ALIGNMENT, &unpack_align);
+    _glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    _glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    _glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+    _glPixelStorei(GL_PACK_SKIP_PIXELS,0);
+    _glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+    _glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    _glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    _glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
+    _glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+    _glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+    _glPixelStorei(GL_UNPACK_SKIP_IMAGES, 0);
+    _glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+    // tex 2d
+    GLint pre_active_tex;
+    _glGetIntegerv(GL_ACTIVE_TEXTURE, &pre_active_tex);
     GLint prev_texture_2d;
     _glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_texture_2d);
     GLuint texture_2d;
@@ -129,14 +173,41 @@ static void get_texture_external_image(image_info *info)
     GLint prev_viewport[4];
     _glGetIntegerv(GL_VIEWPORT, prev_viewport);
     _glViewport(0, 0, info->width, info->height);
-
-    GLboolean pre_use_scissor_test = false;
     GLboolean pre_color_mask[4] = {false, false, false, false};
-    _glGetBooleanv(GL_SCISSOR_TEST, &pre_use_scissor_test);
-    _glDisable(GL_SCISSOR_TEST);
+    GLboolean pre_depth_mask = false;
+    GLfloat pre_color[4];
+    GLfloat pre_depth;
+    GLint pre_stencil;
+    GLint pre_sampler;
     _glGetBooleanv(GL_COLOR_WRITEMASK, pre_color_mask);
     _glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    _glGetBooleanv(GL_DEPTH_WRITEMASK, &pre_depth_mask);
+    _glDepthMask(GL_TRUE);
+    _glGetFloatv(GL_COLOR_CLEAR_VALUE, pre_color);
+    _glGetFloatv(GL_DEPTH_CLEAR_VALUE, &pre_depth);
+    _glGetIntegerv(GL_STENCIL_CLEAR_VALUE, &pre_stencil);
+    _glGetIntegerv(GL_SAMPLER_BINDING, &pre_sampler);
 
+    GLboolean pre_use_scissor_test = false;
+    _glGetBooleanv(GL_SCISSOR_TEST, &pre_use_scissor_test);
+    _glDisable(GL_SCISSOR_TEST);
+    GLboolean pre_blend = false;
+    _glGetBooleanv(GL_BLEND, &pre_blend);
+    _glDisable(GL_BLEND);
+    GLboolean pre_depth_test = false;
+    _glGetBooleanv(GL_DEPTH_TEST, &pre_depth_test);
+    _glDisable(GL_DEPTH_TEST);
+    GLint pre_frontface;
+    _glGetIntegerv(GL_FRONT_FACE, &pre_frontface);
+    _glFrontFace(GL_CCW);
+    GLboolean pre_cull_test = false;
+    _glGetBooleanv(GL_CULL_FACE, &pre_cull_test);
+    _glDisable(GL_CULL_FACE);
+    GLboolean pre_stencil_test = false;
+    _glGetBooleanv(GL_STENCIL_TEST, &pre_stencil_test);
+    _glDisable(GL_STENCIL_TEST);
+
+    // vao
     GLint pre_va = 0;
     _glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &pre_va);
     _glBindVertexArray(0);
@@ -224,12 +295,15 @@ static void get_texture_external_image(image_info *info)
 
     //////////////////////////////////////////////////////////////////////////////////////
 
+    // draw
     _glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
     _glEnableVertexAttribArray(0);
     _glActiveTexture(GL_TEXTURE0);
     _glBindTexture(GL_TEXTURE_EXTERNAL_OES, texture);
+    _glBindSampler(0, 0);
     _glClearColor(0.0, 0.0, 0.0, 0.0);
     _glClearDepthf(1.0f);
+    _glClearStencil(0);
     _glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     _glDrawElements(GL_TRIANGLES, 2 * 3, GL_UNSIGNED_INT, 0);   // draw 2 triangles
     _glReadPixels(0, 0, info->width, info->height, info->format, info->type, info->pixels);
@@ -237,13 +311,17 @@ static void get_texture_external_image(image_info *info)
     /* Don't leak errors to the traced application. */
     (void)_glGetError();
 
-    _glBindFramebuffer(GL_FRAMEBUFFER, prev_fbo);
+    // restore
+    _glBindFramebuffer(GL_READ_FRAMEBUFFER, prev_read_fbo);
+    _glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prev_draw_fbo);
     _glDeleteFramebuffers(1, &fbo);
 
     _glViewport(prev_viewport[0], prev_viewport[1], prev_viewport[2], prev_viewport[3]);
 
+    _glActiveTexture(pre_active_tex);
     _glBindTexture(GL_TEXTURE_2D, prev_texture_2d);
     _glDeleteTextures(1, &texture_2d);
+    _glBindSampler(0, pre_sampler);
 
     _glUseProgram(prev_program_id);
     _glDeleteShader(vertex_shader_id);
@@ -255,8 +333,30 @@ static void get_texture_external_image(image_info *info)
     _glDeleteBuffers(1, &vertex_buffer_id);
     _glDeleteBuffers(1, &index_buffer_id);
 
+    _glBindBuffer(GL_PIXEL_PACK_BUFFER, pre_pixel_pack);
+    _glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pre_pixel_unpack);
+    _glPixelStorei(GL_PACK_ROW_LENGTH, pack_row_len);
+    _glPixelStorei(GL_PACK_SKIP_PIXELS,pack_skip_pixels);
+    _glPixelStorei(GL_PACK_SKIP_ROWS, pack_skip_rows);
+    _glPixelStorei(GL_PACK_ALIGNMENT, pack_align);
+    _glPixelStorei(GL_UNPACK_ROW_LENGTH, unpack_row_len);
+    _glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, unpack_image_height);
+    _glPixelStorei(GL_UNPACK_SKIP_PIXELS, unpack_skip_pixels);
+    _glPixelStorei(GL_UNPACK_SKIP_ROWS, unpack_skip_rows);
+    _glPixelStorei(GL_UNPACK_SKIP_IMAGES, unpack_skip_images);
+    _glPixelStorei(GL_UNPACK_ALIGNMENT, unpack_align);
+
     pre_use_scissor_test ? _glEnable(GL_SCISSOR_TEST) : _glDisable(GL_SCISSOR_TEST);
+    pre_blend ? _glEnable(GL_BLEND) : _glDisable(GL_BLEND);
+    pre_depth_test ? _glEnable(GL_DEPTH_TEST) : _glDisable(GL_DEPTH_TEST);
+    pre_cull_test ? _glEnable(GL_CULL_FACE) : _glDisable(GL_CULL_FACE);
+    pre_stencil_test ? _glEnable(GL_STENCIL_TEST) : _glDisable(GL_STENCIL_TEST);
+    _glFrontFace(pre_frontface);
     _glColorMask(pre_color_mask[0], pre_color_mask[1], pre_color_mask[2], pre_color_mask[3]);
+    _glDepthMask(pre_depth_mask);
+    _glClearColor(pre_color[0], pre_color[1], pre_color[2], pre_color[3]);
+    _glClearDepthf(pre_depth);
+    _glClearStencil(pre_stencil);
 
     _glBindVertexArray(pre_va);
 }

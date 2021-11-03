@@ -6,7 +6,7 @@
 #include "eglstate/context.hpp"
 #include "tool/trace_interface.hpp"
 #include "tool/config.hpp"
-#include "jsoncpp/include/json/json.h"
+#include "json/json.h"
 
 using namespace pat;
 

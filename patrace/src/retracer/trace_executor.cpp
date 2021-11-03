@@ -6,8 +6,8 @@
 #include <retracer/retrace_api.hpp>
 #include "retracer/value_map.hpp"
 
-#include "jsoncpp/include/json/writer.h"
-#include "jsoncpp/include/json/reader.h"
+#include "json/writer.h"
+#include "json/reader.h"
 
 #include <limits.h>
 #include <zlib.h>
@@ -155,6 +155,11 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         else {
             gRetracer.reportAndAbort("Invalid perf range parameter [ %s ]", perfrange.c_str());
         }
+    }
+
+    if (value.isMember("scriptpath")) {
+        options.mScriptPath = value.get("scriptpath", "").asString();
+        options.mScriptFrame = value.get("scriptframe", -1).asInt();
     }
 
 #ifdef ANDROID
@@ -561,6 +566,8 @@ bool TraceExecutor::writeData(Json::Value result_data_value, int frames, float d
             fb_config["stencilBits"] = info.stencil;
         }
         result_data_value["fb_config"] = fb_config;
+
+        result_data_value["egl_info"] = GLWS::instance().getEglInfoJson();
 
         // Add to result list
         result_list_value.append(result_data_value);

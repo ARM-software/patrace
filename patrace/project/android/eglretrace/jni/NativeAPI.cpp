@@ -7,7 +7,7 @@
 
 #include "common/os_time.hpp"
 #include "common/trace_callset.hpp"
-#include "jsoncpp/include/json/reader.h"
+#include "json/reader.h"
 
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
@@ -23,6 +23,45 @@ using namespace os;
 
 JavaVM* gJavaVM;
 jint    gJavaVersion; // used in retracer.cpp
+
+int ff_main(int argc, char** argv); // declaration of ff_main()
+
+JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_launchFastforward(JNIEnv * env, jclass, jobjectArray jstrArrayArgs)
+{
+    prctl(PR_SET_DUMPABLE, 1); // enable debugging
+
+    gJavaVersion = env->GetVersion();
+    if (env->GetJavaVM(&gJavaVM) != 0)
+    {
+        DBG_LOG("Failed to get JavaVM\n");
+    }
+
+    GlwsEglAndroid* g = dynamic_cast<GlwsEglAndroid*>(&GLWS::instance());
+
+    g->setupJAVAEnv(env);
+
+    int argc = env->GetArrayLength(jstrArrayArgs);
+    const char** strArray = new const char*[argc + 1];
+    strArray[0] = "fastforward";
+
+    for (int i = 0; i < argc; i++)
+    {
+        jstring str = (jstring) (env->GetObjectArrayElement(jstrArrayArgs, i));
+        strArray[i + 1] = env->GetStringUTFChars(str, 0);
+    }
+
+    env->DeleteLocalRef(jstrArrayArgs);
+
+    for (int i = 0; i < argc + 1; i++)
+    {
+        DBG_LOG("fastforward args: %s", strArray[i]);
+    }
+
+    char** argv = const_cast<char**>(strArray);
+
+    ff_main(argc, argv);
+    return JNI_TRUE;
+}
 
 JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_initFromJson(JNIEnv *env, jclass, jstring jstrJsonData, jstring jstrTraceDir, jstring jstrResultFile)
 {
@@ -119,3 +158,4 @@ JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_setSurface(JNIEnv* en
         ANativeWindow_release(sWindow);
     }
 }
+

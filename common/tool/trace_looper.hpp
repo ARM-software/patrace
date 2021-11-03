@@ -13,7 +13,7 @@
 #include <common/memory.hpp>
 #include <common/out_file.hpp>
 #include <common/trace_model.hpp>
-#include <jsoncpp/include/json/writer.h>
+#include <json/writer.h>
 
 #define TRACE_LOOPER_VERSION "r0p3"
 

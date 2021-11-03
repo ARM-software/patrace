@@ -1,7 +1,7 @@
 #include "helper/shadermod.hpp"
 #include "helper/eglstring.hpp"
 #include "dispatch/eglproc_auto.hpp"
-#include "jsoncpp/include/json/value.h"
+#include "json/value.h"
 #include "common/pa_exception.h"
 #include <sstream>
 
@@ -52,7 +52,7 @@ std::vector<VertexArrayInfo> ShaderMod::getUnusedAttributes(const Json::Value& o
     {
         VertexArrayInfo vai = mProgram.getActiveAttribute(i);
         bool found = false;
-        for (Json::Value::iterator it = originalAttributes.begin(); it != originalAttributes.end(); ++it)
+        for (auto it = originalAttributes.begin(); it != originalAttributes.end(); ++it)
         {
             //DBG_LOG("TESTING: %s == %s\n", (*it).asString().c_str(), vai.name.c_str());
             if ((*it).asString() == vai.name)

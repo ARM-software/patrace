@@ -46,7 +46,7 @@ endif ()
 target_link_libraries (fastforward
     dl
     common
-    ${CMAKE_BINARY_DIR}/libcollector/libcollector.a
+    collector
     ${SNAPPY_LIBRARIES}
     md5
     ${LIBRARY_FASTFORWARD_SYSTEM}

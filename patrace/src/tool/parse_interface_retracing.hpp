@@ -4,7 +4,7 @@
 #include "retracer/retracer.hpp"
 #include "retracer/retrace_api.hpp"
 #include "tool/parse_interface.h"
-#include "jsoncpp/json/json.h"
+#include "json/json.h"
 
 #include <unordered_set>
 #include <unordered_map>

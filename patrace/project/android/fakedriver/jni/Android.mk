@@ -25,6 +25,7 @@ LOCAL_SRC_FILES := \
 LOCAL_C_INCLUDES:= \
     $(LOCAL_PATH)/../../thirdparty/opengl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/egl-registry/api \
+    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers
 
 LOCAL_CFLAGS    := -O3 -D__arm__ -D__gnu_linux__ $(PA_BUILD_64BIT) -fvisibility=hidden -Wno-attributes
@@ -53,6 +54,7 @@ LOCAL_SRC_FILES := \
 LOCAL_C_INCLUDES:= \
     $(LOCAL_PATH)/../../thirdparty/opengl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/egl-registry/api \
+    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers
 
 LOCAL_CFLAGS    := -O3 -D__arm__ -D__gnu_linux__ $(PA_BUILD_64BIT) -fvisibility=hidden -Wno-attributes
@@ -81,6 +83,7 @@ LOCAL_SRC_FILES := \
 LOCAL_C_INCLUDES:= \
     $(LOCAL_PATH)/../../thirdparty/opengl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/egl-registry/api \
+    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers
 
 LOCAL_CFLAGS    := -O3 -D__arm__ -D__gnu_linux__ $(PA_BUILD_64BIT) -fvisibility=hidden -Wno-attributes
@@ -113,6 +116,7 @@ LOCAL_C_INCLUDES:= \
     $(LOCAL_PATH)/../../thirdparty/opengl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/egl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers \
+    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include \
     $(LOCAL_PATH)/fakedriver/egl
 
 LOCAL_CFLAGS    := -O3 -D__arm__ -D__gnu_linux__ $(PA_BUILD_64BIT) -fvisibility=hidden -Wno-attributes

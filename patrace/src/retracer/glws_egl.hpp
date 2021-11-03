@@ -37,6 +37,7 @@ public:
     void setNativeWindow(EGLNativeWindowType window);
 
 protected:
+    bool mAngle = false;
     EGLNativeDisplayType mEglNativeDisplay;
     EGLNativeWindowType mEglNativeWindow;
     EGLConfig mEglConfig;

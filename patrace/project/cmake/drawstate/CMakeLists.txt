@@ -31,7 +31,7 @@ target_link_libraries(drawstate
     dl
     common
     common_eglstate
-    ${CMAKE_BINARY_DIR}/libcollector/libcollector.a
+    collector
     ${SNAPPY_LIBRARIES}
     md5
     ${LIBRARY_MM_SYSTEM}

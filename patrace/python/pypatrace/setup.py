@@ -82,7 +82,7 @@ patrace_extension = setuptools.Extension(
         'thirdparty/snappy',
         'thirdparty/egl-registry/api',
         'thirdparty/opengl-registry/api',
-        'thirdparty/jsoncpp/include',
+        'thirdparty/libcollector/external/jsoncpp/include',
     ],
     sources=[
         'patrace_wrap.cpp',
@@ -100,9 +100,9 @@ patrace_extension = setuptools.Extension(
         'common/eglstate/common.cpp',
 
         # jsoncpp
-        'thirdparty/jsoncpp/src/lib_json/json_writer.cpp',
-        'thirdparty/jsoncpp/src/lib_json/json_reader.cpp',
-        'thirdparty/jsoncpp/src/lib_json/json_value.cpp',
+        'thirdparty/libcollector/external/jsoncpp/src/lib_json/json_writer.cpp',
+        'thirdparty/libcollector/external/jsoncpp/src/lib_json/json_reader.cpp',
+        'thirdparty/libcollector/external/jsoncpp/src/lib_json/json_value.cpp',
 
         # snappy
         'thirdparty/snappy/snappy.cc',

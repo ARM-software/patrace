@@ -5,7 +5,7 @@
 #include "common/memory.hpp"
 #include "common/gl_utility.hpp"
 #include "common/gl_extension_supported.hpp"
-#include "jsoncpp/include/json/value.h"
+#include "json/value.h"
 #include "specs/khronos_enums.hpp"
 
 #ifdef RETRACE

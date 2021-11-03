@@ -174,21 +174,21 @@ DLL_HANDLE OpenDllByType(enum DLLType t, const char *reqFunc)
 #else // (desktop/embedded Linux)
     switch(t) {
         case LibEGL:
-            if( !gCommandLineSettings.libGLESv2_path.empty() ) {
-                lib_filename = gCommandLineSettings.libGLESv2_path.c_str();
+            if (!gCommandLineSettings.libEGL_path.empty()) {
+                lib_filename = gCommandLineSettings.libEGL_path.c_str();
             } else {
                 lib_filename = EGL_LIB_NAME;
             }
             break;
         case LibGLESv1:
-            if( !gCommandLineSettings.libGLESv2_path.empty() ) {
-                lib_filename = gCommandLineSettings.libGLESv2_path.c_str();
+            if (!gCommandLineSettings.libGLESv1_path.empty()) {
+                lib_filename = gCommandLineSettings.libGLESv1_path.c_str();
             } else {
                 lib_filename = GLES1_LIB_NAME;
             }
             break;
         case LibGLESv2:
-            if( !gCommandLineSettings.libGLESv2_path.empty() ) {
+            if (!gCommandLineSettings.libGLESv2_path.empty()) {
                 lib_filename = gCommandLineSettings.libGLESv2_path.c_str();
             }
             else {

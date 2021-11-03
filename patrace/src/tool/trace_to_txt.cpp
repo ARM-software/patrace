@@ -6,7 +6,7 @@
 #include <common/trace_model.hpp>
 #include <tool/config.hpp>
 
-const unsigned int MAX_CYCLE = 1000000;
+const unsigned int CALL_BATCH_SIZE = 1000000;
 
 bool fileExists(const char* filename) {
     std::ifstream file(filename);
@@ -138,59 +138,39 @@ int main(int argc, const char* argv[])
         }
     }
     common::gApiInfo.RegisterEntries(common::parse_callbacks);
-    common::TraceFileTM inputFile;
+    common::TraceFileTM inputFile(CALL_BATCH_SIZE);
     inputFile.Open(filename, false);
-    int beginFrame = 0;
-    int endFrame = inputFile.mFrames.size();
     int drawCallNum = 0;
 
-    for (int fr = beginFrame; fr != endFrame; ++fr)
+    for (common::CallTM* curCall = inputFile.NextCall(); curCall != nullptr; curCall = inputFile.NextCall())
     {
-        if (startDumpFrame >= 0 && lastDumpFrame >= 0 &&
-            (startDumpFrame > fr || fr > lastDumpFrame))
+        if (tid >= 0 && (int)curCall->mTid != tid)
+            continue;
+
+        size_t curFrameIndex = inputFile.GetCurFrameIndex();
+        if (startDumpFrame >= 0 && curFrameIndex < static_cast<size_t>(startDumpFrame))
         {
             // skip to dump this frame.
             continue;
         }
-        common::FrameTM& curFrame = *(inputFile.mFrames[fr]);
 
-        unsigned int frameCallNum = curFrame.GetCallCount();
-        int cycleNum = 0;
-        for (unsigned int ca = 0; ca < frameCallNum; ++ca)
+        if (lastDumpFrame >= 0 && curFrameIndex > static_cast<size_t>(lastDumpFrame))
         {
-            if(ca % MAX_CYCLE == 0)
-            {
-                if(ca != 0)
-                {
-                    curFrame.UnloadCalls();
-                }
-
-                if(frameCallNum - ca > MAX_CYCLE)
-                {
-                    curFrame.LoadCallsForTraceToTxt(inputFile.mpInFileRA, MAX_CYCLE, cycleNum, MAX_CYCLE);
-                    cycleNum++;
-                }
-                else
-                {
-                    curFrame.LoadCallsForTraceToTxt(inputFile.mpInFileRA, frameCallNum - ca, cycleNum, MAX_CYCLE);
-                }
-            }
-
-            common::CallTM& curCall = *curFrame.mCalls[ca % MAX_CYCLE];
-            if (tid >= 0 && (int)curCall.mTid != tid)
-                continue;
-            fprintf(fp, "[%d]", curCall.mTid);
-            if (printFrameNum)
-            {
-                fprintf(fp, " [f:%d]", fr);
-            }
-            if (printDrawCallNum && isDrawCall(curCall.Name()))
-            {
-                fprintf(fp, " [d:%d]", drawCallNum++);
-            }
-            fprintf(fp, " %d : %s\n", curCall.mCallNo, curCall.ToStr(false).c_str());
+            break;
         }
-        curFrame.UnloadCalls();
+
+        fprintf(fp, "[%d]", curCall->mTid);
+        if (printFrameNum)
+        {
+            fprintf(fp, " [f:%zu]", curFrameIndex);
+        }
+
+        if (printDrawCallNum && isDrawCall(curCall->Name()))
+        {
+            fprintf(fp, " [d:%d]", drawCallNum++);
+        }
+        fprintf(fp, " %d : %s\n", curCall->mCallNo, curCall->ToStr(false).c_str());
     }
+
     fclose(fp);
 }

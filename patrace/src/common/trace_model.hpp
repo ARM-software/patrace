@@ -312,8 +312,8 @@ public:
     bool IsLoaded() const { return mIsLoaded; }
     void LoadCalls(InFileRA *infile) { LoadCalls(infile, true, ""); }
     void LoadCalls(InFileRA *infile, bool loadQuery, const std::string &loadFilter);
-    void LoadCallsForTraceToTxt(InFileRA *infile, unsigned int callNum, unsigned int fromFirstCall, unsigned int max_cycle) { LoadCallsForTraceToTxt(infile, true, "", callNum, fromFirstCall, max_cycle); }
-    void LoadCallsForTraceToTxt(InFileRA *infile, bool loadQuery, const std::string &loadFilter, unsigned int callNum, unsigned int fromFirstcall, unsigned int max_cycle);
+    void LoadCalls(InFileRA *infile, unsigned int callOffsetInFrame, unsigned int numCallsToLoad) { LoadCalls(infile, true, "", callOffsetInFrame, numCallsToLoad); }
+    void LoadCalls(InFileRA *infile, bool loadQuery, const std::string &loadFilter, unsigned int callOffsetInFrame, unsigned int numCallsToLoad);
     void UnloadCalls();
 
     // How many calls in the data of this frame, including loaded and non-loaded
@@ -341,8 +341,8 @@ private:
 class TraceFileTM
 {
 public:
-    TraceFileTM();
-    TraceFileTM(const char *name, bool readHeaderAndExit = false);
+    TraceFileTM(size_t callBatchSize = SIZE_MAX);
+    TraceFileTM(const char *name, bool readHeaderAndExit = false, size_t callBatchSize = SIZE_MAX);
 
     ~TraceFileTM();
 
@@ -353,6 +353,7 @@ public:
 
     // return -1 if failed to find the corresponding frame
     int GetFrameIdx(unsigned int callNo);
+    size_t GetCurFrameIndex() const { return mCurFrameIndex; }
 
     unsigned int FindNext(unsigned int callNo, const char* name);
     unsigned int FindPrevious(unsigned int callNo, const char* name);
@@ -377,6 +378,8 @@ private:
 
     bool mLoadQueryCalls;
     std::string mLoadFilterStr;
+    mutable unsigned int mCallBatchIndex;
+    size_t mCallBatchSize;
 };
 
 }

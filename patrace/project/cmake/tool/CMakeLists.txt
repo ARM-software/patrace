@@ -290,6 +290,37 @@ install(TARGETS deduplicator DESTINATION tools)
 
 ###
 
+add_executable(converter
+    ${SRC_ROOT}/tool/converter.cpp
+    ${SRC_ROOT}/common/analysis_utility.cpp
+    ${SRC_ROOT}/tool/parse_interface.cpp
+    ${SRC_ROOT}/specs/pa_func_to_version.cpp
+    ${SRC_ROOT}/tool/utils.cpp
+    ${SRC_ROOT}/tool/glsl_parser.cpp
+    ${SRC_ROOT}/tool/glsl_lookup.cpp
+    ${SRC_ROOT}/tool/glsl_utils.cpp
+    ${SRC_FOR_TOOLS}
+)
+target_compile_definitions(converter PRIVATE RETRACE GLES_CALLCONVENTION= TOOL_BUILD)
+target_link_libraries(converter
+    md5
+    dl
+    common
+    common_eglstate
+    ${SNAPPY_LIBRARIES}
+    md5
+    ${LIBRARY_MM_SYSTEM}
+    ${PNG_LIBRARIES}
+    ${ZLIB_LIBRARIES}
+    ${LIBRARIES_FOR_TOOLS}
+)
+add_dependencies(converter
+    call_parser_src_generation
+)
+install(TARGETS converter DESTINATION tools)
+
+###
+
 add_executable(clientsidetrim
     ${SRC_ROOT}/tool/clientsidetrim.cpp
     ${SRC_ROOT}/common/analysis_utility.cpp
@@ -408,7 +439,7 @@ target_link_libraries(analyze_trace
     jsoncpp
     hwcpipe
     ${LIBRARIES_FOR_TOOLS}
-    ${CMAKE_BINARY_DIR}/libcollector/libcollector.a
+    collector
 )
 set_target_properties(analyze_trace PROPERTIES LINK_FLAGS "-pthread" COMPILE_FLAGS "-pthread")
 if (${WINDOWSYSTEM} MATCHES "wayland")

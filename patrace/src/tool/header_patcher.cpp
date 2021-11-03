@@ -1,8 +1,8 @@
 #include <retracer/config.hpp> //version info
 #include <common/file_format.hpp>
 
-#include <jsoncpp/include/json/writer.h>
-#include <jsoncpp/include/json/reader.h>
+#include "json/writer.h"
+#include "json/reader.h"
 
 #include <fstream>
 #include <iostream>

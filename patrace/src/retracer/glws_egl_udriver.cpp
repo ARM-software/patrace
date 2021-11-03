@@ -76,7 +76,6 @@ void get_udriver_win_config(EglConfigInfo info, GFormats::ColorFormat &color_for
 Drawable* GlwsEglUdriver::CreateDrawable(int width, int height, int /*win*/, EGLint const* attribList)
 {
     Drawable* handler = NULL;
-    NativeWindowMutex.lock();
     // Choose different format according to selected EglConfig
     GFormats::ColorFormat color_format;
     GFormats::DepthStencilFormat ds_format;
@@ -107,7 +106,7 @@ GlwsEglUdriver::~GlwsEglUdriver()
 {
 }
 
-void GlwsEglFbdev::processStepEvent()
+void GlwsEglUdriver::processStepEvent()
 {
     const char cmd = getchar();
 

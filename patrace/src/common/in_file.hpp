@@ -4,10 +4,10 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include <jsoncpp/include/json/writer.h>
-#include <jsoncpp/include/json/reader.h>
 
-#include <common/file_format.hpp>
+#include "json/writer.h"
+#include "json/reader.h"
+#include "common/file_format.hpp"
 
 namespace common {
 
@@ -19,6 +19,8 @@ public:
     const Json::Value getJSONHeader() const { return mJsonHeader; }
     const Json::Value getJSONThreadById(int id) const;
     HeaderVersion getHeaderVersion() const;
+
+    const bool isFFTrace() const;
 
     const char* ExIdToName(unsigned short id) const { return mExIdToName.at(id).c_str(); }
     int getDefaultThreadID() const;

@@ -162,6 +162,14 @@ HeaderVersion InFileBase::getHeaderVersion() const
     return mHeaderVer;
 }
 
+const bool InFileBase::isFFTrace() const
+{
+    const Json::Value conv = mJsonHeader["conversions"];
+    for (const auto c : conv) if (c["tool"].asString() == "fastforward") { DBG_LOG("Is a fastforward trace\n"); return true; }
+    for (const auto c : conv) if (c.isMember("fastforwardInfo")) { DBG_LOG("Is a fastforward trace\n"); return true; }
+    return false;
+}
+
 void InFileBase::printHeaderInfo()
 {
     const int tid = mJsonHeader.get("defaultTid", 0).asInt();

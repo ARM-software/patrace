@@ -168,12 +168,12 @@ void setJsonValue(Json::Value &json_value, const string &s, const common::ValueT
             else        json_value[s] = value.mUint;
             break;
         case common::Int64_Type:
-            if (append) json_value[s].append(value.mInt64);
-            else        json_value[s] = value.mInt64;
+            if (append) json_value[s].append((Json::Value::Int64)value.mInt64);
+            else        json_value[s] = (Json::Value::Int64)value.mInt64;
             break;
         case common::Uint64_Type:
-            if (append) json_value[s].append(value.mUint64);
-            else        json_value[s] = value.mUint64;
+            if (append) json_value[s].append((Json::Value::UInt64)value.mUint64);
+            else        json_value[s] = (Json::Value::UInt64)value.mUint64;
             break;
         case common::Float_Type: {
             float v = value.mFloat;
@@ -380,6 +380,11 @@ int pat_extract(const string &source_name, const string &target_name_, int begin
     fout.close();
     fout.clear();
 
+    Json::FastWriter fastwriter;
+    string strFastWrite = fastwriter.write(header);
+    if (strFastWrite[strFastWrite.length() - 1] == '\n')
+            strFastWrite.pop_back();
+
     makeProgress(0, callNo, true);
     bool finished = false, file_beginning = true, no_frame_file_opened = true;
     common::OutFile outputFileBefore, outputFileAfter;
@@ -393,10 +398,10 @@ int pat_extract(const string &source_name, const string &target_name_, int begin
         PAT_DEBUG_LOG("Failed to open file %s for writing extracting result!\n", (target_name + "/not_interested_in/after.pat").c_str());
         return 1;
     }
-    outputFileBefore.mHeader.jsonLength = strWrite.size();
-    outputFileBefore.WriteHeader(strWrite.c_str(), strWrite.size());
-    outputFileAfter.mHeader.jsonLength = strWrite.size();
-    outputFileAfter.WriteHeader(strWrite.c_str(), strWrite.size());
+    outputFileBefore.mHeader.jsonLength = strFastWrite.size();
+    outputFileBefore.WriteHeader(strFastWrite.c_str(), strFastWrite.size());
+    outputFileAfter.mHeader.jsonLength = strFastWrite.size();
+    outputFileAfter.WriteHeader(strFastWrite.c_str(), strFastWrite.size());
     file_counter = 0;
     for (callId = 0; (call = source_file.NextCall()); ++callId)
     {

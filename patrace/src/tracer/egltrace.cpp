@@ -16,8 +16,8 @@
 #include <common/image.hpp>
 #include <common/gl_extension_supported.hpp>
 
-#include "jsoncpp/include/json/writer.h"
-#include "jsoncpp/include/json/reader.h"
+#include "json/writer.h"
+#include "json/reader.h"
 
 #include <stdio.h>
 #include <unistd.h>
@@ -948,7 +948,7 @@ void after_eglInitialize(EGLDisplay dpy)
 
 void after_eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLSurface surf, EGLint x, EGLint y, EGLint width, EGLint height)
 {
-    EGLint configId;
+    EGLint configId = 0;
     _eglQuerySurface(dpy, surf, EGL_CONFIG_ID, &configId);
     const MyEGLAttribs &e = configIdToConfigAttribsMap.at(configId);
 
@@ -965,7 +965,7 @@ void after_eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLSurface s
 
 void after_eglCreateContext(EGLContext ctx, EGLDisplay dpy, EGLConfig config, const EGLint * attrib_list)
 {
-    EGLint configId;
+    EGLint configId = 0;
     _eglQueryContext(dpy, ctx, EGL_CONFIG_ID, &configId);
     int profile = GetGLESVersion(attrib_list);
 

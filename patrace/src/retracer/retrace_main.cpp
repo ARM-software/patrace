@@ -54,6 +54,7 @@ usage(const char *argv0) {
         "  -multithread Run all threads in the trace\n"
         "  -shadercache FILENAME Save and load shaders to this cache FILE. Will add .bin and .idx to the given file name.\n"
         "  -strictshadercache Abort if a wanted shader was not found in the shader cache file.\n"
+        "  -script Script_PATH FRAME Trigger script on a specific frame.\n"
 #ifndef __APPLE__
         "  -perf START END run Linux perf on selected frame range and save it to disk\n"
         "  -perfpath PATH Set path to perf binary\n"
@@ -65,9 +66,9 @@ usage(const char *argv0) {
         "  -singlesurface SURFACE Render all surfaces except the given one to pbuffer render targets instead\n"
         "  -flushonswap Call explicit flush before every call to swap the backbuffer\n"
         "  -cpumask Set explicit CPU mask (written as a string of ones and zeroes)\n"
-        "  -libEGL_path=<path.to.libEGL.so>\n"
-        "  -libGLESv1_path=<path.to.libGLESv1_CM.so>\n"
-        "  -libGLESv2_path=<path.to.libGLESv2.so>\n"
+        "  -libEGL PATH Set path to libEGL.so\n"
+        "  -libGLESv1 PATH Set path to libGLESv1_CM.so\n"
+        "  -libGLESv2 PATH Set path to libGLESv2.so\n"
         "  -version Output the version of this program\n"
         "\n"
         "  CALL_SET = interval ( '/' frequency )\n"
@@ -268,25 +269,15 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             {
                 gRetracer.reportAndAbort("Bad value for option forceVRS %d - must be between %d and %d", (int)mOptions.mForceVRS, (int)0x96A6, (int)0x96AE);
             }
-        } else if (strstr(arg, "-lib")) {
-            const char* strEGL = "-libEGL_path=";
-            const char* strGLES1 = "-libGLESv1_path=";
-            const char* strGLES2 = "-libGLESv2_path=";
-
-            if (strstr(arg, strEGL)) {
-                std::string libPath = std::string(arg).substr( strlen(strEGL), strlen(arg) - strlen(strEGL) );
-                SetCommandLineEGLPath(libPath);
-            } else if (strstr(arg, strGLES1)) {
-                std::string libPath = std::string(arg).substr( strlen(strGLES1), strlen(arg) - strlen(strGLES1) );
-                SetCommandLineGLES2Path(libPath);
-            } else if (strstr(arg, strGLES2)) {
-                std::string libPath = std::string(arg).substr( strlen(strGLES2), strlen(arg) - strlen(strGLES2) );
-                SetCommandLineGLES2Path(libPath);
-            } else{
-                DBG_LOG("error: unknown option %s\n", arg);
-                usage(argv[0]);
-                return false;
-            }
+        } else if (!strcmp(arg, "-script")) {
+            mOptions.mScriptPath = argv[++i];
+            mOptions.mScriptFrame = readValidValue(argv[++i]);
+        } else if (strstr(arg, "-libEGL")) {
+            SetCommandLineEGLPath(argv[++i]);
+        } else if (strstr(arg, "-libGLESv1")) {
+            SetCommandLineGLES1Path(argv[++i]);
+        } else if (strstr(arg, "-libGLESv2")) {
+            SetCommandLineGLES2Path(argv[++i]);
         } else if(!strcmp(arg, "-instr")) {
             bool succ = printInstr();
             exit(succ ? 0 : 1);

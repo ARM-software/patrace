@@ -54,6 +54,7 @@ enum Value_Type_TM {
     Opaque_Type,
     Pointer_Type,
     MemRef_Type,
+    Unused_Pointer_Type,
 };
 
 enum Opaque_Type_TM {
@@ -87,6 +88,7 @@ public:
 
     bool IsVoid() const;
     bool IsPointer() const;
+    bool IsUnusedPointer() const;
     bool IsIntegral() const;
     bool IsFloatingPoint() const;
     bool IsNumerical() const;
@@ -126,6 +128,15 @@ public:
             $self->mPointer = value;
         }
 
+        long long _getAsUnusedPointer() const
+        {
+            return reinterpret_cast<long long>($self->mUnusedPointer);
+        }
+
+        void _setAsUnusedPointer(long long value)
+        {
+            $self->mUnusedPointer = reinterpret_cast<void*>(value);
+        }
         short _getAsByte() const
         {
             assert($self->IsIntegral());
@@ -243,6 +254,8 @@ public:
                     return None
                 elif self.IsPointer():
                     return self.asPointer
+                elif self.IsUnusedPointer():
+                    return self.asUnusedPointer
                 elif self.IsArray():
                     ret = []
                     for index in range(len(self)):
@@ -272,6 +285,8 @@ public:
                     self.asUInt = value
                 elif self.mType == Pointer_Type:
                     self.asPointer = value
+                elif self.mType == Unused_Pointer_Type:
+                    self.asUnusedPointer = value
                 elif self.mType == Int64_Type:
                     self.asLongLong = value
                 elif self.mType == Uint64_Type:
@@ -295,6 +310,7 @@ public:
                     raise PyPATraceException(self.mType)
 
             asPointer = property(_getAsPointer, _setAsPointer)
+            asUnusedPointer = property(_getAsUnusedPointer, _setAsUnusedPointer)
             asByte = property(_getAsByte, _setAsByte)
             asUByte = property(GetAsUByte, SetAsUByte)
             asShort = property(_getAsShort, _setAsShort)
@@ -436,8 +452,8 @@ public:
 class TraceFileTM
 {
 public:
-    TraceFileTM();
-    TraceFileTM(const char *name, bool readHeaderAndExit = false);
+    TraceFileTM(size_t callBatchSize = SIZE_MAX);
+    TraceFileTM(const char *name, bool readHeaderAndExit = false, size_t callBatchSize = SIZE_MAX);
     ~TraceFileTM();
 
     %rename(_next_call) NextCall;

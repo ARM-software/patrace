@@ -6,6 +6,7 @@
 #include "specs/pa_func_to_version.h"
 #include "glsl_parser.h"
 #include "glsl_utils.h"
+#include "gl_utility.hpp"
 
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
@@ -356,7 +357,7 @@ void ParseInterfaceBase::update_renderpass(common::CallTM *call, StateTracker::C
             rp.height = tx.height;
             rp.depth = tx.depth;
         }
-        else // backbuffer
+        else if (surface_index != UNBOUND) // backbuffer
         {
             rp.width = surfaces[surface_index].width;
             rp.height = surfaces[surface_index].height;
@@ -603,34 +604,40 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     else if (call->mCallName.compare(0, 14, "eglSwapBuffers") == 0)
     {
         const int surface = call->mArgs[1]->GetAsInt();
-        const int target_surface_index = surface_remapping.at(surface);
         // check all resources for dependencies here, if they have any
-        const auto dep_fb = contexts[context_index].framebuffers.most_recent_frame_dependency();
-        const auto dep_tx = contexts[context_index].textures.most_recent_frame_dependency();
-        const auto dep_rb = contexts[context_index].renderbuffers.most_recent_frame_dependency();
-        const auto dep_sp = contexts[context_index].samplers.most_recent_frame_dependency();
-        const auto dep_qr = contexts[context_index].queries.most_recent_frame_dependency();
-        const auto dep_tf = contexts[context_index].transform_feedbacks.most_recent_frame_dependency();
-        const auto dep_bf = contexts[context_index].buffers.most_recent_frame_dependency();
-        const auto dep_pr = contexts[context_index].programs.most_recent_frame_dependency();
-        const auto dep_sh = contexts[context_index].shaders.most_recent_frame_dependency();
-        const auto dep_va = contexts[context_index].vaos.most_recent_frame_dependency();
-        const auto dep_pp = contexts[context_index].program_pipelines.most_recent_frame_dependency();
-        const auto dep = std::max({ dep_fb, dep_tx, dep_rb, dep_sp, dep_qr, dep_tf, dep_bf, dep_pr, dep_sh, dep_va, dep_pp });
-        dependencies.push_back({ dep, dep_fb, dep_tx, dep_rb, dep_sp, dep_qr, dep_tf, dep_bf, dep_pr, dep_sh, dep_va, dep_pp });
+        if (context_index != UNBOUND)
+        {
+            const auto dep_fb = contexts[context_index].framebuffers.most_recent_frame_dependency();
+            const auto dep_tx = contexts[context_index].textures.most_recent_frame_dependency();
+            const auto dep_rb = contexts[context_index].renderbuffers.most_recent_frame_dependency();
+            const auto dep_sp = contexts[context_index].samplers.most_recent_frame_dependency();
+            const auto dep_qr = contexts[context_index].queries.most_recent_frame_dependency();
+            const auto dep_tf = contexts[context_index].transform_feedbacks.most_recent_frame_dependency();
+            const auto dep_bf = contexts[context_index].buffers.most_recent_frame_dependency();
+            const auto dep_pr = contexts[context_index].programs.most_recent_frame_dependency();
+            const auto dep_sh = contexts[context_index].shaders.most_recent_frame_dependency();
+            const auto dep_va = contexts[context_index].vaos.most_recent_frame_dependency();
+            const auto dep_pp = contexts[context_index].program_pipelines.most_recent_frame_dependency();
+            const auto dep = std::max({ dep_fb, dep_tx, dep_rb, dep_sp, dep_qr, dep_tf, dep_bf, dep_pr, dep_sh, dep_va, dep_pp });
+            dependencies.push_back({ dep, dep_fb, dep_tx, dep_rb, dep_sp, dep_qr, dep_tf, dep_bf, dep_pr, dep_sh, dep_va, dep_pp });
+        }
         // record which surface and context that used this frame
-        if (surface_index != UNBOUND) surfaces[target_surface_index].swaps.insert(frames);
+        if (surface_remapping.count(surface) > 0)
+        {
+            const int target_surface_index = surface_remapping.at(surface);
+            if (surface_index != UNBOUND) surfaces[target_surface_index].swaps.insert(frames);
+        }
         if (context_index != UNBOUND) contexts[context_index].swaps.insert(frames);
         if (call->mTid == defaultTid) frames++;
         current_pos.frame = frames;
-        contexts[context_index].renderpasses_per_frame[frames] = 0;
         if (context_index != UNBOUND)
         {
+            contexts[context_index].renderpasses_per_frame[frames] = 0;
             new_renderpass(call, contexts[context_index], true);
-        }
-        for (auto& pair : contexts[context_index].framebuffers[0].attachments)
-        {
-            pair.second.clears.clear(); // after swap you should probably repeat clears
+            for (auto& pair : contexts[context_index].framebuffers[0].attachments)
+            {
+                pair.second.clears.clear(); // after swap you should probably repeat clears
+            }
         }
     }
     /// --- end EGL ---
@@ -801,9 +808,22 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         for (unsigned i = 0; i < count; i++)
         {
             const unsigned id = call->mArgs[1]->mArray[i].GetAsUInt();
+
             // "Unused names in framebuffers are silently ignored, as is the value zero."
             if (id != 0 && contexts[context_index].framebuffers.contains(id))
             {
+                const int fb_index = contexts[context_index].framebuffers.remap(id);
+                for (auto& pair : contexts[context_index].framebuffers[fb_index].attachments) // touch all
+                {
+                    if (pair.second.type == GL_RENDERBUFFER)
+                    {
+                        StateTracker::Renderbuffer& rb = contexts[context_index].renderbuffers.at(pair.second.index);
+                    }
+                    else // texture
+                    {
+                        StateTracker::Texture& tx = contexts[context_index].textures.at(pair.second.index);
+                    }
+                }
                 contexts[context_index].framebuffers.remove(id);
             }
             // "If a framebuffer that is currently bound to one or more of the targets DRAW_FRAMEBUFFER
@@ -898,7 +918,11 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         {
             textarget = call->mArgs[2]->GetAsUInt();
             texture = call->mArgs[3]->GetAsUInt();
-            if (texture != 0) texture_index = contexts[context_index].textures.remap(texture);
+            if (texture != 0)
+            {
+                texture_index = contexts[context_index].textures.remap(texture);
+                (void)contexts[context_index].textures.at(texture_index);
+            }
         }
         else
         {
@@ -906,7 +930,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             if (texture != 0)
             {
                 texture_index = contexts[context_index].textures.remap(texture);
-                textarget = contexts[context_index].textures[texture_index].binding_point;
+                textarget = contexts[context_index].textures.at(texture_index).binding_point;
             }
         }
 
@@ -1612,6 +1636,45 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             // It is legal to create objects with a call to this function.
             contexts[context_index].textures.add(tex_id);
         }
+        else if (tex_id != 0)
+        {
+            const int index = contexts[context_index].textures.remap(tex_id);
+            (void)contexts[context_index].textures.at(index); // just touch it
+        }
+    }
+    else if (call->mCallName == "eglDestroyImageKHR" || call->mCallName == "eglDestroyImage")
+    {
+        const unsigned image_id = call->mArgs[1]->GetAsUInt();
+        if (contexts[context_index].textures.contains(image_id))
+        {
+            const int image_index = contexts[context_index].images.remap(image_id);
+            StateTracker::Image& image = contexts[context_index].images.at(image_index);
+            if (image.type == EGL_GL_TEXTURE_2D_KHR && image.value != 0)
+            {
+                const int index = contexts[context_index].textures.remap(image.value);
+                (void)contexts[context_index].textures.at(index); // just touch it
+            }
+            contexts[context_index].images.remove(image_id);
+        }
+    }
+    else if (call->mCallName == "eglCreateImageKHR" || call->mCallName == "eglCreateImage")
+    {
+        const unsigned our_context_id = call->mArgs[1]->GetAsUInt();
+        const int our_context_index = context_remapping.at(our_context_id);
+        const unsigned target = call->mArgs[2]->GetAsUInt();
+        const unsigned value = call->mArgs[3]->GetAsUInt();
+        const unsigned image_id = call->mRet.GetAsUInt();
+        if (target == EGL_GL_TEXTURE_2D_KHR && value != 0)
+        {
+            const int index = contexts[our_context_index].textures.remap(value);
+            (void)contexts[our_context_index].textures.at(index); // just touch it
+        }
+        if (value != 0)
+        {
+            StateTracker::Image& image = contexts[our_context_index].images.add(image_id);
+            image.type = target;
+            image.value = value;
+        }
     }
     else if (call->mCallName == "glActiveTexture")
     {
@@ -1853,10 +1916,13 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 contexts[context_index].programs[program_index].uniformValues[location][0] = value;
                 contexts[context_index].programs[program_index].uniformLastChanged[location] = call->mCallNo;
                 assert(contexts[context_index].programs[program_index].uniformValues[location].size() == 1);
-                const std::string& name = contexts[context_index].programs[program_index].uniformNames.at(location);
-                if (contexts[context_index].programs[program_index].texture_bindings.count(name))
+                if (contexts[context_index].programs[program_index].uniformNames.count(location))
                 {
-                    contexts[context_index].programs[program_index].texture_bindings[name].value = value;
+                    const std::string& name = contexts[context_index].programs[program_index].uniformNames.at(location);
+                    if (contexts[context_index].programs[program_index].texture_bindings.count(name))
+                    {
+                        contexts[context_index].programs[program_index].texture_bindings[name].value = value;
+                    }
                 }
             }
         }
@@ -2579,7 +2645,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 rp.height = tx.height;
                 rp.depth = tx.depth;
             }
-            else // backbuffer
+            else if (surface_index != UNBOUND) // backbuffer
             {
                 rp.width = surfaces[surface_index].width;
                 rp.height = surfaces[surface_index].height;
@@ -2648,6 +2714,24 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             contexts[context_index].last_index_count = params.vertices;
             contexts[context_index].last_index_type = params.value_type;
             contexts[context_index].last_index_buffer = params.index_buffer;
+        }
+        int program_idx = contexts[context_index].program_index;
+        if (program_idx == UNBOUND && contexts[context_index].program_pipeline_index != UNBOUND) // separate shader programs
+        {
+            program_idx = contexts[context_index].program_pipelines.at(contexts[context_index].program_pipeline_index).program_stages.at(GL_FRAGMENT_SHADER);
+        }
+        StateTracker::Program& p = contexts[context_index].programs.at(program_idx);
+        for (auto& pair : p.texture_bindings)
+        {
+            const StateTracker::Program::ProgramSampler& s = pair.second;
+            const GLenum binding = samplerTypeToBindingType(s.type);
+            if (binding != GL_NONE && contexts[context_index].textureUnits.count(s.value) > 0 && contexts[context_index].textureUnits[s.value].count(binding) > 0)
+            {
+                const GLuint texture_id = contexts[context_index].textureUnits.at(s.value).at(binding);
+                if (texture_id == 0) continue;
+                const int idx = contexts[context_index].textures.remap(texture_id);
+                StateTracker::Texture& tx = contexts[context_index].textures.at(idx); // touch it
+            }
         }
         // TBD the below does not take into account primitive restart
         for (const auto pair : program_stages)

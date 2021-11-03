@@ -28,12 +28,12 @@ include $(CLEAR_VARS)
 LOCAL_MODULE    	:= jsoncpp
 
 LOCAL_SRC_FILES 	:= \
-    ../../thirdparty/jsoncpp/src/lib_json/json_writer.cpp \
-    ../../thirdparty/jsoncpp/src/lib_json/json_reader.cpp \
-    ../../thirdparty/jsoncpp/src/lib_json/json_value.cpp
+    ../../thirdparty/libcollector/external/jsoncpp/src/lib_json/json_writer.cpp \
+    ../../thirdparty/libcollector/external/jsoncpp/src/lib_json/json_reader.cpp \
+    ../../thirdparty/libcollector/external/jsoncpp/src/lib_json/json_value.cpp
 
 
-LOCAL_C_INCLUDES 	:= $(LOCAL_PATH)/../../thirdparty/jsoncpp/include
+LOCAL_C_INCLUDES 	:= $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include
 LOCAL_CFLAGS 		:= -frtti -D__arm__ -D__gnu_linux__ -DJSON_USE_EXCEPTION=0
 
 include $(BUILD_STATIC_LIBRARY)
@@ -108,16 +108,12 @@ LOCAL_SRC_FILES         :=  \
                     ../../thirdparty/libcollector/collectors/power.cpp \
                     ../../thirdparty/libcollector/collectors/procfs_stat.cpp \
                     ../../thirdparty/libcollector/collectors/hwcpipe.cpp \
-                    ../../thirdparty/libcollector/collectors/mali_counters.cpp \
-                    ../../thirdparty/libcollector/thirdparty/jsoncpp/json_writer.cpp \
-                    ../../thirdparty/libcollector/thirdparty/jsoncpp/json_reader.cpp \
-                    ../../thirdparty/libcollector/thirdparty/jsoncpp/json_value.cpp
+                    ../../thirdparty/libcollector/collectors/mali_counters.cpp
 
 LOCAL_C_INCLUDES        := \
                     $(LOCAL_PATH)/../../thirdparty/libcollector \
                     $(LOCAL_PATH)/../../thirdparty/libcollector/collectors \
-                    $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty \
-                    $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty/jsoncpp
+                    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include
 
 LOCAL_CFLAGS            := -O3 -frtti -D__arm__ -D__gnu_linux__ -pthread
 LOCAL_CPPFLAGS          += -std=c++11
@@ -127,8 +123,8 @@ ifeq ($(TARGET_ARCH_ABI),x86)
 LOCAL_CFLAGS            += -Wno-attributes
 endif
 
-LOCAL_STATIC_LIBRARIES := android_native_app_glue
-LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty/
+LOCAL_STATIC_LIBRARIES := android_native_app_glue jsoncpp
+LOCAL_EXPORT_C_INCLUDES := $(LOCAL_PATH)/../../thirdparty/libcollector/external/include
 
 include $(BUILD_STATIC_LIBRARY)
 
@@ -137,8 +133,7 @@ LOCAL_MODULE_FILENAME := burrow
 LOCAL_SRC_FILES := ../../thirdparty/libcollector/burrow.cpp
 LOCAL_C_INCLUDES := \
                     $(LOCAL_PATH)/../../thirdparty/libcollector/collectors \
-                    $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty \
-                    $(LOCAL_PATH)/../../thirdparty/libcollector/thirdparty/jsoncpp \
+                    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include \
                     $(LOCAL_PATH)/../..
 
 LOCAL_LDLIBS    := -L$(SYSROOT)/usr/lib -nodefaultlibs -lc -lm -ldl -llog -latomic
@@ -180,6 +175,7 @@ LOCAL_C_INCLUDES    := \
     $(LOCAL_PATH)/../../thirdparty/opengl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers \
     $(LOCAL_PATH)/../../thirdparty/snappy \
+    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include \
     $(LOCAL_PATH)/../../thirdparty/libpng
 LOCAL_CFLAGS        := -frtti $(PA_BUILD_64BIT) -DRETRACE
 LOCAL_CPPFLAGS      += -std=c++11
@@ -203,6 +199,7 @@ LOCAL_C_INCLUDES 	:= \
     $(LOCAL_PATH)/../../thirdparty/libpng \
     $(LOCAL_PATH)/../../thirdparty/egl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers \
+    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include \
     $(LOCAL_PATH)/../../thirdparty/opengl-registry/api
 
 LOCAL_CFLAGS 		:= -frtti -D__arm__ -D__gnu_linux__ $(PA_BUILD_64BIT) -Wno-attributes
@@ -226,6 +223,7 @@ LOCAL_SRC_FILES     := \
     ../../thirdparty/hwcpipe/vendor/arm/pmu/pmu_profiler.cpp \
     dispatch/eglproc_retrace.cpp \
     dispatch/eglproc_auto.cpp \
+    fastforwarder/fastforwarder.cpp \
     retracer/retracer.cpp \
     retracer/retrace_api.cpp \
     retracer/retrace_gles_auto.cpp \
@@ -242,8 +240,10 @@ LOCAL_SRC_FILES     := \
     helper/states.cpp \
     helper/shaderutility.cpp \
     helper/depth_dumper.cpp \
+    helper/paramsize.cpp \
     common/gl_utility.cpp \
     helper/shadermod.cpp \
+    tool/utils.cpp \
     ../project/android/eglretrace/jni/NativeAPI.cpp
 
 LOCAL_C_INCLUDES    := \
@@ -256,6 +256,7 @@ LOCAL_C_INCLUDES    := \
     $(LOCAL_PATH)/../../thirdparty/egl-registry/api \
     $(LOCAL_PATH)/../../thirdparty/opencl-headers \
     $(LOCAL_PATH)/../../thirdparty/opengl-registry/api \
+    $(LOCAL_PATH)/../../thirdparty/libcollector/external/jsoncpp/include \
     $(LOCAL_PATH)/../../thirdparty/snappy
 
 LOCAL_CFLAGS        := -Wall -frtti -DRETRACE $(PA_BUILD_64BIT) -pthread

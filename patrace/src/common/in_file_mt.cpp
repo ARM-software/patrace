@@ -2,8 +2,8 @@
 #include <common/memoryinfo.hpp>
 #include <common/trace_limits.hpp>
 
-#include "jsoncpp/include/json/writer.h"
-#include "jsoncpp/include/json/reader.h"
+#include "json/writer.h"
+#include "json/reader.h"
 
 #include <unistd.h>
 #include <errno.h>

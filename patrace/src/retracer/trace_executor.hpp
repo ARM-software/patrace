@@ -1,7 +1,7 @@
 #ifndef _TRACE_EXECUTOR_HPP_
 #define _TRACE_EXECUTOR_HPP_
 
-#include "jsoncpp/include/json/value.h"
+#include "json/value.h"
 #include "helper/states.h"
 
 #include <stdint.h>

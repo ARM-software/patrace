@@ -13,8 +13,8 @@
 #include "helper/shaderutility.hpp"
 #include "helper/depth_dumper.hpp"
 
-#include "jsoncpp/include/json/reader.h"
-#include "jsoncpp/include/json/writer.h"
+#include "json/reader.h"
+#include "json/writer.h"
 
 #include "tool/utils.hpp"
 
@@ -117,6 +117,8 @@ public:
         , mGlDeleteBuffersId(getId("glDeleteBuffers"))
         , mGlBufferDataId(getId("glBufferData"))
         , mGlBindBufferId(getId("glBindBuffer"))
+        , mGlMapBufferRangeId(getId("glMapBufferRange"))
+        , mGlUnmapBufferId(getId("glUnmapBuffer"))
         , mGlBindVertexArrayId(getId("glBindVertexArray"))
         , mGlVertexAttribPointerId(getId("glVertexAttribPointer"))
         , mGlVertexAttribIPointerId(getId("glVertexAttribIPointer"))
@@ -810,6 +812,43 @@ public:
         mOutFile.Write(bufStart, dest - bufStart);
     }
 
+    void emitMapBufferRange(GLenum target, GLintptr offset, GLsizeiptr length, GLbitfield access, GLvoid *result)
+    {
+        DBG_LOG("emitMapBufferRange\n");
+        mScratchBuff.resizeToFit(sizeof(common::BCall_vlen) + sizeof(int)*3 + sizeof(unsigned int)*3 + 32);
+
+        char *const bufStart = mScratchBuff.bufferPtr();
+        char *dest = bufStart;
+
+        dest += sizeof(common::BCall_vlen);
+        dest = common::WriteFixed<int>(dest, target); // enum
+        dest = common::WriteFixed<int>(dest, offset); // literal
+        dest = common::WriteFixed<int>(dest, length); // literal
+        dest = common::WriteFixed<unsigned int>(dest, access); // literal
+        dest = common::WriteFixed<unsigned int>(dest, common::Opaque_Type_TM::BufferObjectReferenceType); // IS Simple Memory Offset
+        dest = common::WriteFixed<unsigned int>(dest, (uintptr_t)result);
+
+        int toNext = dest - bufStart;
+        writeBCall_vlen(bufStart, mGlMapBufferRangeId, toNext);
+
+        mOutFile.Write(bufStart, toNext);
+    }
+
+    void emitUnmapBuffer(GLenum target)
+    {
+        DBG_LOG("emitUnmapBuffer\n");
+        mScratchBuff.resizeToFit(sizeof(common::BCall) + sizeof(unsigned int) + sizeof(unsigned char) + 4);
+
+        char *const bufStart = mScratchBuff.bufferPtr();
+        char *dest = bufStart;
+
+        dest = writeBCall(dest, mGlUnmapBufferId);
+        dest = common::WriteFixed<int>(dest, target); // enum
+        dest = common::WriteFixed<unsigned char>(dest, 1); // result
+
+        mOutFile.Write(bufStart, dest - bufStart);
+    }
+
 private:
     ScratchBuffer mScratchBuff;
     common::OutFile& mOutFile;
@@ -818,6 +857,8 @@ private:
     int mGlDeleteBuffersId;
     int mGlBufferDataId;
     int mGlBindBufferId;
+    int mGlMapBufferRangeId;
+    int mGlUnmapBufferId;
     int mGlBindVertexArrayId;
     int mGlVertexAttribPointerId;
     int mGlVertexAttribIPointerId;
@@ -958,6 +999,8 @@ public:
                 glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_MAPPED, &pre_mapped);
                 if (pre_mapped)
                 {
+                    // Output glUnmapBuffer(GL_ARRAY_BUFFER) to new tracefile
+                    traceCommandEmitter.emitUnmapBuffer(GL_ARRAY_BUFFER);
                     _glGetBufferParameteri64v(GL_ARRAY_BUFFER, GL_BUFFER_MAP_OFFSET, &pre_offset);
                     _glGetBufferParameteri64v(GL_ARRAY_BUFFER, GL_BUFFER_MAP_LENGTH, &pre_mapLen);
                     _glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_ACCESS_FLAGS, &pre_access);
@@ -979,7 +1022,9 @@ public:
                 _glUnmapBuffer(GL_ARRAY_BUFFER);
                 if (pre_mapped)
                 {
-                   _glMapBufferRange(GL_ARRAY_BUFFER, pre_offset, pre_mapLen, pre_access);
+                    // Emit glMapBufferRange() to new tracefile
+                    traceCommandEmitter.emitMapBufferRange(GL_ARRAY_BUFFER, pre_offset, pre_mapLen, pre_access, retracerContext._bufferToData_map.at(retraceBufferId));
+                    _glMapBufferRange(GL_ARRAY_BUFFER, pre_offset, pre_mapLen, pre_access);
                 }
             }
         }
@@ -3279,4 +3324,9 @@ int main(int argc, char** argv)
     GLWS::instance().Cleanup();
 
     return 0;
+}
+
+int ff_main(int argc, char** argv)
+{
+    return main(argc, argv);
 }

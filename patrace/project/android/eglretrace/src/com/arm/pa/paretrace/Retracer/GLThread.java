@@ -238,6 +238,23 @@ public class GLThread extends Thread {
 
         Intent parentIntent = mRetraceActivity.getIntent();
 
+        // if fastforward arg is caught, then call ff_main
+        if (parentIntent.getStringExtra("fastforward") != null)
+        {
+            String str = parentIntent.getStringExtra("fastforward");
+            String delimeter = " ";
+            String[] args = str.split(delimeter);
+
+            try {
+                NativeAPI.launchFastforward(args);
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            return;
+        }
+
         String resultFile = parentIntent.getStringExtra("resultFile");
 
         String json_data = new String();
@@ -329,6 +346,11 @@ public class GLThread extends Thread {
                 }
                 if(parentIntent.hasExtra("perfout")){
                     js.put("perfout", parentIntent.getStringExtra("perfout"));
+                }
+
+                if(parentIntent.hasExtra("scriptpath")){
+                    js.put("scriptpath", parentIntent.getStringExtra("scriptpath"));
+                    js.put("scriptframe", parentIntent.getIntExtra("scriptframe", -1));
                 }
 
                 js.put("preload", parentIntent.getBooleanExtra("preload", false));

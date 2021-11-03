@@ -252,6 +252,13 @@ private:
     std::vector<T> store;
 };
 
+struct Image : public Resource
+{
+    GLenum type;
+    unsigned value;
+    Image(int _id, int _index) : Resource(_id, _index) {}
+};
+
 struct Sampler : public Resource
 {
     SamplerState state;
@@ -573,6 +580,7 @@ struct Context : public Resource
     ResourceStorage<Texture> textures;
     ResourceStorage<Renderbuffer> renderbuffers;
     ResourceStorage<Sampler> samplers;
+    ResourceStorage<Image> images; // egl images
     ResourceStorage<Query> queries;
     ResourceStorage<TransformFeedback> transform_feedbacks;
     ResourceStorage<Buffer> buffers;

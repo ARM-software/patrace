@@ -17,7 +17,7 @@
 #include "common/gl_utility.hpp"
 #include "common/trace_model_utility.hpp"
 
-#include "jsoncpp/include/json/writer.h"
+#include "json/writer.h"
 
 #include "tool/utils.hpp"
 

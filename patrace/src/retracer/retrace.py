@@ -50,6 +50,12 @@ shadercache_funcs = [
     'glCompileShader', 'glAttachShader', 'glShaderSource', 'glGetShaderInfoLog', 'glGetShaderiv'
 ]
 
+# Query Objcet
+get_query_object_funcs = [
+    'glGetQueryObjectuiv', 'glGetQueryObjectui64vEXT', 'glGetQueryObjecti64vEXT',
+    'glGetQueryObjectivEXT', 'glGetQueryObjectuivEXT'
+]
+
 # Filled out in main()
 reverse_lookup_maps = set(["program", "shader" ,"pipeline", "texture", "buffer"])
 
@@ -679,6 +685,13 @@ class Retracer(object):
         if func.name in ignored_ret_val_functions:
             print('    (void)ret;  // Ignored return value')
             return
+        if func.name in get_query_object_funcs:
+            print('    if (pname == GL_QUERY_RESULT_AVAILABLE && old_params[0] == 1 && params[0] == 0)')
+            print('    {')
+            print('        usleep(200);')
+            print('        goto loop;')
+            print('    }')
+            return
 
         has_handle = False
         if not hasattr(func, 'has_context'):
@@ -824,8 +837,7 @@ class Retracer(object):
             print('    if (!support_checked) { support_checked = true; supported = isGlesExtensionSupported("GL_OES_mapbuffer"); }')
             print('    if (supported) {')
             print('        ret = glMapBufferOES(target, access);')
-            print('        GLenum err = glGetError();')
-            print('        if (err != 0) DBG_LOG("glMapBufferOES(0x%04x, 0x%04x) failed: 0x%04x\\n", (unsigned)target, (unsigned)access, (unsigned)err);')
+            print('        if (ret == 0) DBG_LOG("glMapBufferOES(0x%04x, 0x%04x) failed: 0x%04x\\n", (unsigned)target, (unsigned)access, (unsigned)glGetError());')
             print('    }')
             print('    else')
             print('    {')
@@ -846,8 +858,7 @@ class Retracer(object):
             print('            access_bit = GL_MAP_WRITE_BIT | GL_MAP_READ_BIT;')
             print('        }')
             print('        ret = glMapBufferRange(target, 0, size, access_bit);')
-            print('        GLenum err = glGetError();')
-            print('        if (err != 0) DBG_LOG("glMapBufferOES -> glMapBufferRange(0x%04x, 0, %d, 0x%04x) failed: 0x%04x\\n", (unsigned)target, size, access_bit, (unsigned)err);')
+            print('        if (ret == 0) DBG_LOG("glMapBufferOES -> glMapBufferRange(0x%04x, 0, %d, 0x%04x) failed: 0x%04x\\n", (unsigned)target, size, access_bit, (unsigned)glGetError());')
             print('    }')
             return
         if func.name in ['glViewport']:
@@ -868,6 +879,13 @@ class Retracer(object):
             print('            else if (attachment == GL_STENCIL)')
             print('                attachments[i] = GL_STENCIL_ATTACHMENT;')
             print('        }')
+            print('    }')
+        if func.name in get_query_object_funcs:
+            print('loop:')
+        if func.name in ['glReadBuffer']:
+            print('    if (gRetracer.mOptions.mForceOffscreen)')
+            print('    {')
+            print('        if (src == GL_BACK || src == GL_FRONT)    src = GL_COLOR_ATTACHMENT0;')
             print('    }')
 
         if func.name in ['glRenderbufferStorageMultisampleEXT', 'glRenderbufferStorageMultisample', 'glFramebufferTexture2DMultisampleEXT', 'glTexStorage2DMultisample',
@@ -989,7 +1007,7 @@ strings = {
 #include "helper/states.h"
 #include "common/file_format.hpp"
 
-#include "jsoncpp/include/json/writer.h"
+#include "json/writer.h"
 
 using namespace common;
 using namespace retracer;

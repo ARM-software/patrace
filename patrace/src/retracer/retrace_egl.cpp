@@ -104,15 +104,16 @@ PUBLIC void retrace_eglCreateWindowSurface(char* src)
     int height = 0;
     getSurfaceDimensions(&width, &height);
 
-    DBG_LOG("Creating drawable for surface %d: w=%d, h=%d...\n", ret, width, height);
     retracer::Drawable* d;
     if (gRetracer.mOptions.mPbufferRendering || (gRetracer.mOptions.mSingleSurface != -1 && gRetracer.mOptions.mSingleSurface != gRetracer.mSurfaceCount))
     {
+        DBG_LOG("[%d] Creating Pbuffer drawable for surface %d: w=%d, h=%d...\n", gRetracer.getCurTid(), ret, width, height);
         EGLint const attribs[] = { EGL_WIDTH, width, EGL_HEIGHT, height, EGL_NONE, EGL_NONE };
         d = GLWS::instance().CreatePbufferDrawable(attribs);
     }
     else
     {
+        DBG_LOG("[%d] Creating drawable for surface %d: w=%d, h=%d...\n", gRetracer.getCurTid(), ret, width, height);
         d = GLWS::instance().CreateDrawable(width, height, win, attrib_list);
     }
     gRetracer.mSurfaceCount++;
@@ -208,15 +209,16 @@ PUBLIC void retrace_eglCreateWindowSurface2(char* src)
         getSurfaceDimensions(&surfWidth, &surfHeight);
     }
 
-    DBG_LOG("Creating drawable for surface %d: x=%d, y=%d, w=%d, h=%d...\n", ret, x, y, surfWidth, surfHeight);
     retracer::Drawable* d;
     if (gRetracer.mOptions.mPbufferRendering || (gRetracer.mOptions.mSingleSurface != -1 && gRetracer.mOptions.mSingleSurface != gRetracer.mSurfaceCount))
     {
+        DBG_LOG("[%d] Creating Pbuffer drawable for surface %d: x=%d, y=%d, w=%d, h=%d...\n", gRetracer.getCurTid(), ret, x, y, surfWidth, surfHeight);
         EGLint const attribs[] = { EGL_WIDTH, surfWidth, EGL_HEIGHT, surfHeight, EGL_NONE, EGL_NONE };
         d = GLWS::instance().CreatePbufferDrawable(attribs);
     }
     else
     {
+        DBG_LOG("[%d] Creating drawable for surface %d: x=%d, y=%d, w=%d, h=%d...\n", gRetracer.getCurTid(), ret, x, y, surfWidth, surfHeight);
         d = GLWS::instance().CreateDrawable(surfWidth, surfHeight, win, attrib_list);
     }
     gRetracer.mSurfaceCount++;
@@ -332,6 +334,9 @@ PUBLIC void retrace_eglCreateContext(char* src)
     src = ReadFixed(src, share_context);
     src = Read1DArray(src, attrib_list);
     src = ReadFixed(src, ret);
+
+    // If the original content failed to create a context here, avoid creating it in replay as well.
+    if (ret == 0) return; // ret == EGL_NO_CONTEXT
 
     //  ------------- retrace ---------------
     Context* pshare_context = gRetracer.mState.GetContext(share_context);
@@ -560,6 +565,16 @@ PUBLIC void retrace_eglMakeCurrent(char* src)
                 _glGetIntegerv(it->second, &value);
                 DBG_LOG("%s = %d\n", it->first.c_str(), value);
             }
+
+            std::string version = reinterpret_cast<const char*>(_glGetString(GL_VERSION));
+            MD5Digest version_md5(version);
+            std::string version_md5_str = version_md5.text();
+
+            if (gRetracer.shaderCacheVersionMD5.size() == 0)
+                gRetracer.shaderCacheVersionMD5 = version_md5_str;
+            if (gRetracer.shaderCacheVersionMD5 != version_md5_str)
+                gRetracer.reportAndAbort("Shader cache does not match current ddk version. Remove the existing one.");
+
             only_once_ever = false;
         }
     }
@@ -745,6 +760,12 @@ PUBLIC void retrace_eglDestroyImageKHR(char* src)
     src = ReadFixed(src, ret);
 
     //  ------------- retrace ---------------
+    EGLDisplay d = gRetracer.mState.mEglDisplay;
+    bool found = false;
+    EGLImageKHR imageNew = gRetracer.mState.GetEGLImage(image, found);
+    if (found) _eglDestroyImageKHR(d, imageNew);
+    else DBG_LOG("Could not find EGLImage %d (%ld) for destruction\n", image, (long)imageNew);
+
     gRetracer.mState.RemoveEGLImageMap(image);
 }
 

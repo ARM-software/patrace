@@ -24,8 +24,8 @@
 
 #include "hwcpipe/hwcpipe.h"
 
-#include "jsoncpp/include/json/writer.h"
-#include "jsoncpp/include/json/reader.h"
+#include "json/writer.h"
+#include "json/reader.h"
 
 #include <chrono>
 #include <errno.h>
@@ -1160,9 +1160,14 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
         if (fptr)
         {
             r.total++;
-            if (isSwapBuffers && mOptions.mFinishBeforeSwap)
+            if (isSwapBuffers)
             {
-                _glFinish();
+                // call glFinish() before eglSwapbuffers in every frame when mFinishBeforeSwap is true or in frame#0 of a FF trace
+                if (mOptions.mFinishBeforeSwap || (mCurFrameNo == 0 && mFile.isFFTrace()))
+                {
+                    _glFinish();
+                    DBG_LOG("glfinish() is called\n");
+                }
             }
             if (mOptions.mCallStats && mCurFrameNo >= mOptions.mBeginMeasureFrame && mCurFrameNo < mOptions.mEndMeasureFrame)
             {
@@ -1203,6 +1208,11 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
             else if (mOptions.mPerfStop == (int)mCurFrameNo) // last frame
             {
                 PerfEnd();
+            }
+
+            if (mOptions.mScriptFrame == (int)mCurFrameNo && mOptions.mScriptPath.size() > 0)  // trigger script at the begining of specific frame
+            {
+                TriggerScript(mOptions.mScriptPath.c_str());
             }
 
             if (mOptions.mDebug)
@@ -1317,6 +1327,12 @@ void Retracer::Retrace()
     mInitTimeMono = os::getTimeType(CLOCK_MONOTONIC);
     mInitTimeMonoRaw = os::getTimeType(CLOCK_MONOTONIC_RAW);
     mInitTimeBoot = os::getTimeType(CLOCK_BOOTTIME);
+
+    if (mOptions.mScriptFrame == 0 && mOptions.mScriptPath.size() > 0)
+    {
+        TriggerScript(mOptions.mScriptPath.c_str());
+    }
+
     if (mOptions.mBeginMeasureFrame == 0 && mCurFrameNo == 0)
     {
         StartMeasuring(); // special case, otherwise triggered by eglSwapBuffers()
@@ -1424,6 +1440,21 @@ void Retracer::OnNewFrame()
             mCollectors->collect();
         }
     }
+}
+
+void Retracer::TriggerScript(const char* scriptPath)
+{
+    char cmd[256];
+    memset(cmd, 0, sizeof(cmd));
+#ifdef ANDROID
+    sprintf(cmd, "/system/bin/sh %s", scriptPath);
+#else
+    sprintf(cmd, "/bin/sh %s", scriptPath);
+#endif
+
+    int ret = system(cmd);
+
+    DBG_LOG("Trigger script %s run result: %d\n", cmd, ret);
 }
 
 void Retracer::PerfStart()
@@ -1618,7 +1649,7 @@ void Retracer::saveResult(Json::Value& result)
     DBG_LOG("Saving results...\n");
     if (!TraceExecutor::writeData(result, numOfFrames, duration))
     {
-        reportAndAbort("Error writing result file!");
+        reportAndAbort("Error writing result file!\n");
     }
     mLoopResults.clear();
     TraceExecutor::clearResult();
@@ -1768,8 +1799,17 @@ void OpenShaderCacheFile()
         FILE *idx = fopen(ipath.c_str(), "rb");
         if (idx)
         {
+            std::vector<char> ver_md5;
+            ver_md5.resize(MD5Digest::DIGEST_LEN * 2);
+            int r = fread(ver_md5.data(), ver_md5.size(), 1, idx);
+            if (r != 1)
+            {
+                gRetracer.reportAndAbort("Failed to read shader cache version: %s", ipath.c_str(), strerror(ferror(idx)));
+            }
+            gRetracer.shaderCacheVersionMD5 = std::string(ver_md5.data(), ver_md5.size());
+
             uint32_t size = 0;
-            int r = fread(&size, sizeof(size), 1, idx);
+            r = fread(&size, sizeof(size), 1, idx);
             if (r != 1)
             {
                 gRetracer.reportAndAbort("Failed to read shader cache index size: %s", ipath.c_str(), strerror(ferror(idx)));
@@ -1970,16 +2010,21 @@ void post_glLinkProgram(GLuint program, GLuint originalProgramName, int status)
             {
                 gRetracer.reportAndAbort("Failed to open index file %s for writing: %s", ipath.c_str(), strerror(errno));
             }
+            if (fwrite(gRetracer.shaderCacheVersionMD5.c_str(), gRetracer.shaderCacheVersionMD5.size(), 1, fp ) != 1)
+            {
+                gRetracer.reportAndAbort("Failed to write ddk version MD5 to shader cache index: %s",strerror(ferror(fp)));
+            }
+
             uint32_t entries = shaderCacheIndex.size();
             if (fwrite(&entries, sizeof(entries), 1, fp) != 1)
             {
-                gRetracer.reportAndAbort("Failed to write first data to shader cache index: %s", strerror(ferror(gRetracer.shaderCacheFile)));
+                gRetracer.reportAndAbort("Failed to write size of data to shader cache index: %s", strerror(ferror(fp)));
             }
             for (const auto &pair : shaderCacheIndex)
             {
                 if (fwrite(pair.first.c_str(), pair.first.size(), 1, fp) != 1 || fwrite(&pair.second, sizeof(pair.second), 1, fp) != 1)
                 {
-                    gRetracer.reportAndAbort("Failed to write data to shader cache index: %s", strerror(ferror(gRetracer.shaderCacheFile)));
+                    gRetracer.reportAndAbort("Failed to write data to shader cache index: %s", strerror(ferror(fp)));
                 }
             }
             fclose(fp);

@@ -20,7 +20,7 @@
 
 #include "tool/parse_interface_retracing.hpp"
 
-#include "jsoncpp/include/json/writer.h"
+#include "json/writer.h"
 #include "common/in_file.hpp"
 #include "common/file_format.hpp"
 #include "common/out_file.hpp"

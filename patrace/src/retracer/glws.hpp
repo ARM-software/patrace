@@ -3,6 +3,7 @@
 
 #include "retracer/eglconfiginfo.hpp"
 #include "retracer/state.hpp"
+#include "json/value.h"
 #include "EGL/egl.h"
 #include <ostream>
 
@@ -54,12 +55,14 @@ public:
     virtual bool steppable() { return false; }
 
     void setSelectedEglConfig(const EglConfigInfo& config) { mEglConfigInfo = config; }
-    EglConfigInfo getSelectedEglConfig() { return mEglConfigInfo; }
+    EglConfigInfo getSelectedEglConfig() const { return mEglConfigInfo; }
+    Json::Value getEglInfoJson() const { return mEglJson; }
 
 protected:
     GLWS() : mEglConfigInfo() {}
     virtual ~GLWS() {}
     EglConfigInfo mEglConfigInfo;
+    Json::Value mEglJson;
 
 private:
     GLWS(const GLWS& other);

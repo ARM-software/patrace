@@ -1,3 +1,4 @@
+#include "common/gl_extension_supported.hpp"
 #include "retracer/state.hpp"
 #include "retracer/glws.hpp"
 #include "retracer/glws_egl.hpp"
@@ -260,32 +261,31 @@ GlwsEgl::~GlwsEgl()
 {
 }
 
+static void callback(EGLenum error, const char *command, EGLint messageType, EGLLabelKHR threadLabel, EGLLabelKHR objectLabel, const char* message)
+{
+    DBG_LOG("EGL callback : %s : %s\n", command, message);
+}
+
 void GlwsEgl::Init(Profile /*profile*/)
 {
     mEglNativeDisplay = getNativeDisplay();
     if (gRetracer.mOptions.mPbufferRendering)
     {
         mEglDisplay = EGL_NO_DISPLAY;
-
-        PFNEGLQUERYDEVICESEXTPROC eglQueryDevicesEXT = (PFNEGLQUERYDEVICESEXTPROC)eglGetProcAddress("eglQueryDevicesEXT");
-        if (eglQueryDevicesEXT)
+        PFNEGLQUERYDEVICESEXTPROC _eglQueryDevicesEXT = (PFNEGLQUERYDEVICESEXTPROC)eglGetProcAddress("eglQueryDevicesEXT");
+        if (_eglQueryDevicesEXT)
         {
-            static const int MAX_DEVICES = 10;
-            EGLDeviceEXT eglDevs[MAX_DEVICES];
-            EGLint numDevices;
-
-            if (eglQueryDevicesEXT(MAX_DEVICES, eglDevs, &numDevices) == EGL_TRUE)
+            EGLint numDevices = 0;
+            _eglQueryDevicesEXT(0, nullptr, &numDevices);
+            std::vector<EGLDeviceEXT> eglDevs(numDevices);
+            if (_eglQueryDevicesEXT(numDevices, eglDevs.data(), &numDevices) == EGL_TRUE)
             {
                 DBG_LOG("Detected %d devices -- choosing the first\n", numDevices);
-                PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT = (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
-                if (eglGetPlatformDisplayEXT)
+                PFNEGLGETPLATFORMDISPLAYEXTPROC _eglGetPlatformDisplayEXT = (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
+                if (_eglGetPlatformDisplayEXT)
                 {
-                    mEglDisplay = eglGetPlatformDisplayEXT(EGL_PLATFORM_DEVICE_EXT, eglDevs[0], 0);
+                    mEglDisplay = _eglGetPlatformDisplayEXT(EGL_PLATFORM_DEVICE_EXT, eglDevs.at(0), 0);
                 }
-            }
-            else
-            {
-                DBG_LOG("eglQueryDevicesEXT() failed: 0x%04x\n", eglGetError());
             }
         }
 
@@ -317,6 +317,15 @@ void GlwsEgl::Init(Profile /*profile*/)
         gRetracer.reportAndAbort("Unable to initialize EGL display: 0x%04x", error);
     }
     DBG_LOG("eglInitialize %d.%d\n", major, minor);
+
+    PFNEGLDEBUGMESSAGECONTROLKHRPROC _eglDebugMessageControlKHR = (PFNEGLDEBUGMESSAGECONTROLKHRPROC)eglGetProcAddress("eglDebugMessageControlKHR");
+    if (isEglExtensionSupported(mEglDisplay, "EGL_KHR_debug") && _eglDebugMessageControlKHR) _eglDebugMessageControlKHR(callback, nullptr);
+    mAngle = isEglExtensionSupported(mEglDisplay, "EGL_ANGLE_platform_angle");
+
+    mEglJson["egl_vendor"] = eglQueryString(mEglDisplay, EGL_VENDOR);
+    mEglJson["egl_version"] = eglQueryString(mEglDisplay, EGL_VERSION);
+    mEglJson["egl_APIs"] = eglQueryString(mEglDisplay, EGL_CLIENT_APIS);
+    if (mAngle) mEglJson["angle"] = true;
 
     RetraceOptions& o = gRetracer.mOptions;
     EGLint samples = o.mOnscreenConfig.msaa_samples;
@@ -419,21 +428,34 @@ Drawable* GlwsEgl::CreatePbufferDrawable(EGLint const* attribList)
 
 Context* GlwsEgl::CreateContext(Context* shareContext, Profile profile)
 {
-    EGLint attribs[] = {
-        EGL_CONTEXT_MAJOR_VERSION, profile, EGL_CONTEXT_MINOR_VERSION, 0,
-        EGL_NONE
-    };
+    std::vector<EGLint> attribs = { EGL_CONTEXT_MAJOR_VERSION };
 
     if (profile == PROFILE_ES31)
     {
-        attribs[1] = 3;
-        attribs[3] = 1;
+        attribs.push_back(3);
+        attribs.push_back(EGL_CONTEXT_MINOR_VERSION);
+        attribs.push_back(1);
     }
     else if (profile == PROFILE_ES32)
     {
-        attribs[1] = 3;
-        attribs[3] = 2;
+        attribs.push_back(3);
+        attribs.push_back(EGL_CONTEXT_MINOR_VERSION);
+        attribs.push_back(2);
     }
+    else
+    {
+        attribs.push_back(profile);
+        attribs.push_back(EGL_CONTEXT_MINOR_VERSION);
+        attribs.push_back(0);
+    }
+
+    if (mAngle) // see https://chromium.googlesource.com/angle/angle/+/refs/heads/main/extensions/EGL_ANGLE_program_cache_control.txt
+    {
+        attribs.push_back(0x3459); // EGL_CONTEXT_PROGRAM_BINARY_CACHE_ENABLED_ANGLE
+        attribs.push_back(EGL_FALSE);
+    }
+
+    attribs.push_back(EGL_NONE);
 
     EGLContext eglShareContext = EGL_NO_CONTEXT;
     if (shareContext)
@@ -441,7 +463,7 @@ Context* GlwsEgl::CreateContext(Context* shareContext, Profile profile)
         eglShareContext = static_cast<EglContext*>(shareContext)->mContext;
     }
 
-    EGLContext newCtx = eglCreateContext(mEglDisplay, mEglConfig, eglShareContext, attribs);
+    EGLContext newCtx = eglCreateContext(mEglDisplay, mEglConfig, eglShareContext, attribs.data());
 
     if (!newCtx)
     {
