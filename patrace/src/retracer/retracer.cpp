@@ -1154,7 +1154,7 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
 
         if (doFrameTakeSnapshot && isSwapBuffers)
         {
-            TakeSnapshot(curCallNo - 1, mCurFrameNo);
+            TakeSnapshot(mFile.curCallNo - 1, mCurFrameNo);
         }
 
         if (fptr)
@@ -1196,7 +1196,7 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
         else if (mOptions.mDebug)
         {
             const char *funcName = mFile.ExIdToName(mCurCall.funcId);
-            DBG_LOG("    Unsupported function : %s, call no: %d\n", funcName, curCallNo);
+            DBG_LOG("    Unsupported function : %s, call no: %d\n", funcName, mFile.curCallNo);
         }
 
         if (isSwapBuffers)
@@ -1245,7 +1245,7 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
                 mFile.rollback();
                 unsigned numOfFrames = mCurFrameNo - mOptions.mBeginMeasureFrame;
                 mCurFrameNo = mOptions.mBeginMeasureFrame;
-                curCallNo = mRollbackCallNo;
+                mFile.curCallNo = mRollbackCallNo;
                 int64_t endTime;
                 const float duration = getDuration(mLoopBeginTime, &endTime);
                 const float fps = ((double)numOfFrames) / duration;
@@ -1254,23 +1254,22 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
                 mLoopTimes++;
             }
         }
-        else if (mOptions.mSnapshotCallSet && (mOptions.mSnapshotCallSet->contains(curCallNo, mFile.ExIdToName(mCurCall.funcId))))
+        else if (mOptions.mSnapshotCallSet && (mOptions.mSnapshotCallSet->contains(mFile.curCallNo, mFile.ExIdToName(mCurCall.funcId))))
         {
-            TakeSnapshot(curCallNo, mCurFrameNo);
+            TakeSnapshot(mFile.curCallNo, mCurFrameNo);
         }
 
         while (frameBudget <= 0 && drawBudget <= 0) // Step mode
         {
             frameBudget = 0;
             drawBudget = 0;
-            StepShot(curCallNo, mCurFrameNo);
+            StepShot(mFile.curCallNo, mCurFrameNo);
             GLWS::instance().processStepEvent(); // will wait here for user input to increase budgets
         }
 
         // ---------------------------------------------------------------------------
         // Get next call
 skip_call:
-        curCallNo++;
 
         if (!mFile.GetNextCall(fptr, mCurCall, src))
         {
@@ -1339,11 +1338,14 @@ void Retracer::Retrace()
         delayedPerfmonInit = true;
     }
 
-    // Get first packet
-    if (!mFile.GetNextCall(fptr, mCurCall, src) || mFinish.load(std::memory_order_consume))
+    // Get first packet on a relevant thread
+    do
     {
-        reportAndAbort("Empty trace file!");
-    }
+        if (!mFile.GetNextCall(fptr, mCurCall, src) || mFinish.load(std::memory_order_consume))
+        {
+            reportAndAbort("Empty trace file!");
+        }
+    } while (!mOptions.mMultiThread && mCurCall.tid != mOptions.mRetraceTid);
     threads.resize(1);
     conditions.resize(1);
     results.resize(1);
@@ -1402,7 +1404,7 @@ void Retracer::StartMeasuring()
         mCollectors->initialize();
         mCollectors->start();
     }
-    mRollbackCallNo = curCallNo;
+    mRollbackCallNo = mFile.curCallNo;
     DBG_LOG("================== Start timer (Frame: %u) ==================\n", mCurFrameNo);
     mTimerBeginTime = mLoopBeginTime = os::getTime();
     mTimerBeginTimeMono = os::getTimeType(CLOCK_MONOTONIC);
@@ -1437,6 +1439,9 @@ void Retracer::OnNewFrame()
         // Per frame measurement
         if (mCollectors && mCurFrameNo > mOptions.mBeginMeasureFrame && mCurFrameNo <= mOptions.mEndMeasureFrame)
         {
+            if (mOptions.mInstrumentationDelay > 0) {
+                usleep(mOptions.mInstrumentationDelay);
+            }
             mCollectors->collect();
         }
     }

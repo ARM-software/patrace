@@ -1,6 +1,8 @@
 include(src.cmake)
+
 include_directories(
     ${SRC_ROOT}
+    ${SRC_ROOT}/../../common
     ${SRC_ROOT}/common
     ${SRC_ROOT}/dispatch
 )
@@ -46,6 +48,7 @@ endif ()
 target_link_libraries (fastforward
     dl
     common
+    common_eglstate
     collector
     ${SNAPPY_LIBRARIES}
     md5
@@ -58,6 +61,7 @@ target_link_libraries (fastforward
 add_dependencies(fastforward
     retrace_gles_auto_src_generation
     eglproc_auto_src_generation
+    call_parser_src_generation
     glxml_header
 )
 set_target_properties(fastforward PROPERTIES LINK_FLAGS "-pthread" COMPILE_FLAGS "-pthread")

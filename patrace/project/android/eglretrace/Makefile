@@ -11,6 +11,7 @@ autoGenRetrace:
 	rm -f ../../../src/helper/paramsize.cpp
 	rm -f ../../../src/retracer/retrace_gles_auto.cpp
 	rm -f ../../../src/specs/khronos_enums.hpp
+	rm -f ../../../src/specs/pa_func_to_version.cpp
 	@echo 'Auto-generate the retrace code...'
 	cd ../../../src/common && python api_info.py
 	cd ../../../src/common && python call_parser.py
@@ -18,6 +19,7 @@ autoGenRetrace:
 	cd ../../../src/helper && python paramsize.py
 	cd ../../../src/retracer && python retrace.py
 	cd ../../../src/specs/ && python glxml_header.py
+	cd ../../../src/specs/ && python glxml_to_extensions.py
 .PHONY : autoGenRetrace
 
 

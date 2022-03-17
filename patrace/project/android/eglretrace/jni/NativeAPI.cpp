@@ -40,19 +40,19 @@ JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_launchFastforward
 
     g->setupJAVAEnv(env);
 
-    int argc = env->GetArrayLength(jstrArrayArgs);
-    const char** strArray = new const char*[argc + 1];
+    int argc = env->GetArrayLength(jstrArrayArgs) + 1;
+    const char** strArray = new const char*[argc];
     strArray[0] = "fastforward";
 
-    for (int i = 0; i < argc; i++)
+    for (int i = 1; i < argc; i++)
     {
-        jstring str = (jstring) (env->GetObjectArrayElement(jstrArrayArgs, i));
-        strArray[i + 1] = env->GetStringUTFChars(str, 0);
+        jstring str = (jstring) (env->GetObjectArrayElement(jstrArrayArgs, i - 1));
+        strArray[i] = env->GetStringUTFChars(str, 0);
     }
 
     env->DeleteLocalRef(jstrArrayArgs);
 
-    for (int i = 0; i < argc + 1; i++)
+    for (int i = 0; i < argc; i++)
     {
         DBG_LOG("fastforward args: %s", strArray[i]);
     }

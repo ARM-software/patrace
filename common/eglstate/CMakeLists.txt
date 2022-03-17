@@ -8,7 +8,11 @@ set (SRC_EGL_STATE
     render_target.cpp
     context.cpp
     #vbo.cpp
-) 
+)
+
+include_directories(
+    ${SRC_ROOT}/../../common
+)
 
 add_library (common_eglstate STATIC
     ${SRC_EGL_STATE}

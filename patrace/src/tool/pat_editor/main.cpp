@@ -29,17 +29,20 @@ static void printHelp(const char *argv0)
          << "  -m : Merge OpenGL ES calls, textures, shaders, data, etc. in a SOURCE directory to a TARGET file.\n"
          << "  -v : Print version\n"
          << "  -h : Print help\n"
-         << "  -call BEGIN_CALL END_CALL : Specify the call range user wants to extract.\n";
+         << "  -call BEGIN_CALL END_CALL : Specify the call range user wants to extract.\n"
+         << "  -multithread : Enable to extract the calls in all the threads recorded in the pat file.\n";
 }
 
-int pat_extract(const string &source_name, const string &target_name, int begin_call = 0, int end_call = numeric_limits<int>::max());
-int merge_to_pat(const string &source_name, const string &target_name);
+int pat_extract(const string &source_name, const string &target_name, bool multithread, int begin_call = 0, int end_call = numeric_limits<int>::max());
+int merge_to_pat(const string &source_name, const string &target_name, bool multithread);
 
 enum Operation {
     UNKNOWN_OPERATION = 0,
     EXTRACT,
     MERGE
 };
+
+bool multithread = false;
 
 int main(int argc, char **argv)
 {
@@ -105,6 +108,10 @@ int main(int argc, char **argv)
                 return 0;
             }
         }
+        else if (!strcmp(arg, "-multithread"))
+        {
+            multithread = true;
+        }
         else
         {
             cout << "Error: Unknown option " << arg << endl;
@@ -149,7 +156,7 @@ int main(int argc, char **argv)
             cout << source_name << " is not a pat file!" << endl;
             return 1;
         }
-        if (pat_extract(source_name, target_name, begin_call, end_call) != 0)
+        if (pat_extract(source_name, target_name, multithread, begin_call, end_call) != 0)
             return 1;
     }
     else {
@@ -157,7 +164,7 @@ int main(int argc, char **argv)
             cout << source_name << " is not a directory!" << endl;
             return 1;
         }
-        if (merge_to_pat(source_name, target_name) != 0)
+        if (merge_to_pat(source_name, target_name, multithread) != 0)
             return 1;
     }
     long long end_time = os::getTime();

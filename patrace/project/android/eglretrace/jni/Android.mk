@@ -244,11 +244,23 @@ LOCAL_SRC_FILES     := \
     common/gl_utility.cpp \
     helper/shadermod.cpp \
     tool/utils.cpp \
+    tool/parse_interface.cpp \
+    tool/parse_interface_retracing.cpp \
+    common/trace_model.cpp \
+    common/trace_model_utility.cpp \
+    common/call_parser.cpp \
+    common/analysis_utility.cpp \
+    ../../common/eglstate/common.cpp \
+    tool/glsl_utils.cpp \
+    tool/glsl_parser.cpp \
+    tool/glsl_lookup.cpp \
+    specs/pa_func_to_version.cpp \
     ../project/android/eglretrace/jni/NativeAPI.cpp
 
 LOCAL_C_INCLUDES    := \
     $(LOCAL_PATH) \
     $(LOCAL_PATH)/common \
+    $(LOCAL_PATH)/../../common \
     $(LOCAL_PATH)/../../thirdparty \
     $(LOCAL_PATH)/../../thirdparty/collector \
     $(LOCAL_PATH)/../../thirdparty/hwcpipe \

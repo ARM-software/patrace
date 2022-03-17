@@ -7,6 +7,7 @@
 #include "glsl_parser.h"
 #include "glsl_utils.h"
 #include "gl_utility.hpp"
+#include "dispatch/eglproc_auto.hpp"
 
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
@@ -359,8 +360,8 @@ void ParseInterfaceBase::update_renderpass(common::CallTM *call, StateTracker::C
         }
         else if (surface_index != UNBOUND) // backbuffer
         {
-            rp.width = surfaces[surface_index].width;
-            rp.height = surfaces[surface_index].height;
+            rp.width = surfaces.at(surface_index).width;
+            rp.height = surfaces.at(surface_index).height;
             rp.depth = 1;
             rp.attachments[i].slot = GL_BACK;
             rp.attachments[i].type = rb.second.type;
@@ -471,17 +472,17 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         {
             surface_index = surface_remapping.at(surface);
             current_surface[call->mTid] = surface_index;
-            surfaces[surface_index].swaps.insert(frames);
+            surfaces.at(surface_index).swaps.insert(frames);
         }
 
         // "The first time a OpenGL or OpenGL ES context is made current the viewport
         // and scissor dimensions are set to the size of the draw surface" (EGL standard 3.7.3)
         if (surface_index != UNBOUND && context_index != UNBOUND && contexts[context_index].fillstate.scissor.width == -1)
         {
-            contexts[context_index].fillstate.scissor.width = surfaces[surface_index].width;
-            contexts[context_index].fillstate.scissor.height = surfaces[surface_index].height;
-            contexts[context_index].viewport.width = surfaces[surface_index].width;
-            contexts[context_index].viewport.height = surfaces[surface_index].height;
+            contexts[context_index].fillstate.scissor.width = surfaces.at(surface_index).width;
+            contexts[context_index].fillstate.scissor.height = surfaces.at(surface_index).height;
+            contexts[context_index].viewport.width = surfaces.at(surface_index).width;
+            contexts[context_index].viewport.height = surfaces.at(surface_index).height;
         }
     }
     else if (call->mCallName == "eglCreateContext")
@@ -921,7 +922,8 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             if (texture != 0)
             {
                 texture_index = contexts[context_index].textures.remap(texture);
-                (void)contexts[context_index].textures.at(texture_index);
+                StateTracker::Texture& tx = contexts[context_index].textures.at(texture_index);
+                if (frames >= ff_startframe && frames <= ff_endframe) tx.used = true; // ideally not needed here since we check on draw, but this makes unused texture detection for GFXB5 work
             }
         }
         else
@@ -930,7 +932,9 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             if (texture != 0)
             {
                 texture_index = contexts[context_index].textures.remap(texture);
-                textarget = contexts[context_index].textures.at(texture_index).binding_point;
+                StateTracker::Texture& tx = contexts[context_index].textures.at(texture_index);
+                if (frames >= ff_startframe && frames <= ff_endframe) tx.used = true; // as above
+                textarget = tx.binding_point;
             }
         }
 
@@ -972,7 +976,8 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         const GLuint unit = contexts[context_index].activeTextureUnit;
         const GLuint tex_id = contexts[context_index].textureUnits[unit][target];
         const int target_texture_index = contexts[context_index].textures.remap(tex_id);
-        contexts[context_index].mipmaps.push_back({ call->mCallNo, frames, target_texture_index });
+        StateTracker::Texture& tx = contexts[context_index].textures.at(target_texture_index);
+        tx.mipmaps[call->mCallNo] = { frames, false };
     }
     else if (call->mCallName == "glGenRenderbuffers" || call->mCallName == "glGenRenderbuffersOES")
     {
@@ -1616,6 +1621,17 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         tex.height = call->mArgs[4]->GetAsInt();
         tex.levels = 0;
         tex.updated();
+    }
+    else if (call->mCallName == "glBindImageTexture")
+    {
+        const GLuint unit = call->mArgs[0]->GetAsUInt();
+        const GLuint texid = call->mArgs[1]->GetAsUInt();
+        const GLuint access = call->mArgs[5]->GetAsUInt();
+        if (texid != 0)
+        {
+            const int target_texture_index = contexts[context_index].textures.remap(texid); // touch
+        }
+        contexts[context_index].image_binding[unit] = texid;
     }
     else if (call->mCallName == "glBindTexture")
     {
@@ -2309,6 +2325,18 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         StateTracker::RenderPass &rp = contexts[context_index].render_passes.back();
         rp.active = true;
         rp.used_programs.insert(current_program);
+        for (auto pair : contexts[context_index].image_binding)
+        {
+            if (pair.second == 0) continue;
+            // assume it is used if referenced in this manner, although it would be better to do this with introspection
+            const int target_texture_index = contexts[context_index].textures.remap(pair.second);
+            StateTracker::Texture& tx = contexts[context_index].textures.at(target_texture_index);
+            if (frames >= ff_startframe && frames <= ff_endframe) tx.used = true;
+            if (tx.mipmaps.rbegin() != tx.mipmaps.rend())
+            {
+                if (frames >= ff_startframe && frames <= ff_endframe) tx.mipmaps.rbegin()->second.used = true;
+            }
+        }
     }
     else if (call->mCallName == "glClear")
     {
@@ -2638,6 +2666,11 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 rp.render_targets[rb.first].second = index;
                 rp.attachments[i].index = index;
                 StateTracker::Texture& tx = contexts[context_index].textures.at(index);
+                if (frames >= ff_startframe && frames <= ff_endframe) tx.used = true;
+                if (tx.mipmaps.rbegin() != tx.mipmaps.rend())
+                {
+                    if (frames >= ff_startframe && frames <= ff_endframe) tx.mipmaps.rbegin()->second.used = true;
+                }
                 rp.attachments[i].format = tx.internal_format;
                 assert(rp.attachments[i].type == tx.binding_point || rp.attachments[i].type == GL_NONE);
                 rp.attachments[i].type = tx.binding_point;
@@ -2731,6 +2764,11 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 if (texture_id == 0) continue;
                 const int idx = contexts[context_index].textures.remap(texture_id);
                 StateTracker::Texture& tx = contexts[context_index].textures.at(idx); // touch it
+                if (frames >= ff_startframe && frames <= ff_endframe) tx.used = true;
+                if (tx.mipmaps.rbegin() != tx.mipmaps.rend())
+                {
+                    if (frames >= ff_startframe && frames <= ff_endframe) tx.mipmaps.rbegin()->second.used = true;
+                }
             }
         }
         // TBD the below does not take into account primitive restart

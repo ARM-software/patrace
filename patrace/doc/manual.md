@@ -507,9 +507,11 @@ There are three different ways to tell the retracer which parameters that should
 | `-s CALL_SET`                                | take snapshot for the calls in the specific call set. Example `*/frame` for one snapshot for each frame, or `250/frame` to take a snapshot just of frame 250.                                                                          |
 | `-step`                                      | use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call (only supported on desktop linux)                                                                                                               |
 | `-ores W H`                                  | override the resolution of the final onscreen rendering (FBOs used in earlier renderpasses are not affected!) |
-| `-msaa SAMPLES`                              | enable multi sample anti alias                                                                                                                                                                                                         |
+| `-msaa SAMPLES`                              | Enable multi sample anti alias for the final framebuffer |
+| `-msaa_override SAMPLES`                     | Override any existing MSAA settings for intermediate framebuffers that already use MSAA. |
 | `-preload START STOP`                        | preload the trace file frames from START to STOP. START must be greater than zero. Implies -framerange.                                                                                                                                |
 | `-framerange FRAME_START FRAME_END`          | start fps timer at frame start, stop timer and playback at frame end. Frame start can be 0, but you usually want to measure the middle-to-end part of a trace, so you're not measuring time spent for EGL init and loading screens.    |
+| `-instrumentation-delay USECONDS`            | Delay in microseconds that the retracer should sleep for after each present call in the measurement range.    |
 | `-loop TIMES`                                | (since r3p0) Loop the given frame range at least the given number of times. |
 | `-looptime SECONDS`                          | (since r3p0) Loop the given frame range at least the given number of seconds. |
 | `-singlesurface SURFACE`                     | (since r3p0) Render all surfaces except the given one to pbuffer render target. |
@@ -524,6 +526,7 @@ There are three different ways to tell the retracer which parameters that should
 | `-instr`                                     | Output the supported instrumentation modes as a JSON file. Do not play trace.                                                                                                                                                          |
 | `-overrideEGL`                               | Red Green Blue Alpha Depth Stencil, example: overrideEGL 5 6 5 0 16 8, for 16 bit color and 16 bit depth and 8 bit stencil                                                                                                             |
 | `-strict`                                    | Use strict EGL mode (fail unless the specified EGL configuration is valid)                                                                                                                                                             |
+| `-forceVRS`                                  | Force the use of VRS for all framebuffers. Valid values: 38566 (1x1), 38567 (1x2), 38568 (2x1), 38569 (2x2), 38572 (4x2) and 38574 (4x4). |
 | `-libEGL`                                    | Set the path to the EGL library to load |
 | `-libGLESv1`                                 | Set the path to the GLES 1 library to load |
 | `-libGLESv2`                                 | Set the path to the GLES 2+ library to load |
@@ -562,6 +565,7 @@ There are three different ways to tell the retracer which parameters that should
 | `--es snapshotCallset`     | call begin - call end / frequency, example: '10-100/draw' or '10-100/frame' or '10-100' (snapshot after every call in range!)                                                                                                                                                                                                                                                |
 | `--ei frame_start`         | Start measure fps from this frame. First allowed frame number is 1 (not 0)                                                                                                                                                                                                                                                                                                   |
 | `--ei frame_end`           | Stop fps measure, and stop playback                                                                                                                                                                                                                                                                                                                                          |
+| `--ei instrumentationDelay`           | Delay in microseconds that the retracer should sleep for after each present call in the measurement range.                                                                                                                                                                                                                                                                                                                                          |
 | `--ez callstats`           | true/false(default)  Output GLES API call statistics to callstats.csv under /sdcard for Android, or under the current dir, time spent in API calls measured in nanoseconds.                                                                                                                                                                                                  |
 | `--ei singlesurface`       | SURFACE. (since r3p0) Render all surfaces except the given one to pbuffer render target.                                                                                                                                                                                                                                                                                     |
 | `--ei perfstart`           | Start perf record from this frame. Frame number must be 1 or higher.  |
@@ -603,8 +607,12 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | colorBitsGreen               | int        | yes      |                                                                                                                                                                                                                                        |
 | colorBitsRed                 | int        | yes      |                                                                                                                                                                                                                                        |
 | depthBits                    | int        | yes      |                                                                                                                                                                                                                                        |
+| stencilBits                  | int        | yes      | |
+| msaaSamples                  | int        | yes      | Enable multi sample anti alias for the final framebuffer |
 | file                         | string     | no       | The file name of the .pat file.                                                                                                                                                                                                        |
 | frames                       | string     | no       | The frame range delimited with '-'. The first frame must be 1 or higher                                                                                                                                                                |
+| overrideMSAA                 | int        | yes      | Override any existing MSAA settings for intermediate framebuffers that already use MSAA. |
+| forceVRS                     | int        | yes      | Force the use of VRS for all framebuffers. Valid values: 38566 (1x1), 38567 (1x2), 38568 (2x1), 38569 (2x2), 38572 (4x2) and 38574 (4x4). |
 | loopTimes                    | int        | yes      | (since r3p0) Loop the given frame range at least the given number of times. |
 | loopSeconds                  | int        | yes      | (since r3p0) Loop the given frame range at least the given number of seconds. |
 | singlesurface                | int        | yes      | (since r3p0) Render all surfaces except the given one to pbuffer render target. |
@@ -615,6 +623,7 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | perfpath                     | string     | yes      | Path to your perf binary. Mostly useful on embedded systems.   |
 | perffreq                     | int        | yes      | Your perf polling frequency. The default is 1000. Can usually go up to 25000.     |
 | perfout                      | string     | yes      | Destination file for your perf data      |
+| instrumentationDelay         | int        | yes      | Delay in microseconds that the retracer should sleep for after each present call in the measurement range. |
 | scriptpath                   | string     | yes      | (since r3p3) The script file with path to be executed.           |
 | scriptframe                  | int        | yes      | (since r3p3) The frame number when script begin to execute.      |
 | landscape                    | boolean    | yes      | Override the orientation                                                                                                                                                                                                               |
@@ -630,7 +639,6 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | flushWork                    | boolean    | yes      | Will try hard to flush all pending CPU and GPU work before starting running the selected framerange. This should usually not be necessary.                                                                                             |
 | finishBeforeSwap             | boolean    | yes      | Will try hard to flush all pending CPU and GPU work before every call to swap the backbuffer. This should usually not be necessary.                                                                                                    |
 | debug                        | boolean    | yes      | Output debug messages                                                                                                                                                                                                                  |
-| stencilBits                  | int        | yes      |                                                                                                                                                                                                                                        |
 | storeProgramInformation      | boolean    | yes      | In the result file, store information about a program after each glLinkProgram. Such as, active attributes and compile errors.                                                                                                         |
 | threadId                     | int        | yes      | Retrace this specified thread id. **DO NOT USE** except for debugging!                                                                                                                                                                 |
 | offscreenSingleTile          | boolean    | yes      | Draw only one frame for each buffer swap in offscreen mode.                                                                                                                                                                            |
@@ -707,6 +715,7 @@ On Android, you can set parameter of fastforward by ADB shell or a JSON file.
 | --ez norestoretex          | yes      | When generating a fastforward trace, don't inject commands to restore the contents of textures to what the would've been when retracing the original. (NOTE: NOT RECOMMEND)                                                                                                                                                                            |
 | --ez version               | yes      | Output the version of this program                                                                                                                                                                                                                                                                                                                                                     |
 | --ei restorefbo0           | yes      | Repeat to inject a draw call commands and swapbuffer the given number of times to restore the last default FBO. Suggest repeating 3~4 times if set DamageRegionKHR, else repeating 1 time.                                                                                                                                                                                 |
+| --ez txu                   | yes      | Remove the unused textures and related function calls                                                                                                                                                                                                                                                                                                                                             |
 
 #### Example of a JSON file
 
@@ -720,6 +729,7 @@ On Android, you can set parameter of fastforward by ADB shell or a JSON file.
         "noscreen": false,
         "norestoretex": false,
         "restorefbo0": 0
+        "txu": false
     }
 
 Other

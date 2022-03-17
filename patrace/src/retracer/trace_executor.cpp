@@ -280,6 +280,8 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         options.mShaderCacheRequired = value.get("strictShaderCache", false).asBool();
     }
 
+    options.mInstrumentationDelay = value.get("instrumentationDelay", 0).asUInt();
+
     DBG_LOG("Thread: %d - override: %s (%d, %d)\n",
             options.mRetraceTid, options.mDoOverrideResolution ? "Yes" : "No", options.mOverrideResW, options.mOverrideResH);
 }

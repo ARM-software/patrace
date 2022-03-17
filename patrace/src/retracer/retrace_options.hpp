@@ -12,6 +12,7 @@ namespace retracer
 
 enum Profile
 {
+    PROFILE_ESX = 0, // unknown
     PROFILE_ES1 = 1,
     PROFILE_ES2 = 2,
     PROFILE_ES3 = 3,
@@ -65,6 +66,7 @@ struct RetraceOptions
     bool                mMeasurePerFrame = false;
     bool                mMeasureSwapTime = false;
     Profile             mApiVersion = PROFILE_ES2;
+    Profile             mLocalApiVersion = PROFILE_ESX;
     bool                mSnapshotFrameNames = false;
 
     bool                mStrictEGLMode = false;
@@ -117,6 +119,7 @@ struct RetraceOptions
 
     std::string         mScriptPath;
     int                 mScriptFrame = -1;
+    unsigned int        mInstrumentationDelay = 0;
 private:
     // Noncopyable because of owned CallSet pointer members
     RetraceOptions(const RetraceOptions&);

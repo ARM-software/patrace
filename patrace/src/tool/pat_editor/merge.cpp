@@ -256,7 +256,7 @@ void setValueTM(common::ValueTM *&pValue, const string &type_string, const Json:
     }
 }
 
-int merge_to_pat(const string &source_name_, const string &target_name)
+int merge_to_pat(const string &source_name_, const string &target_name, bool multithread)
 {
     source_name = source_name_;
     for (unsigned int i = 0; i < sizeof(value_type) / sizeof(string); ++i)
@@ -287,11 +287,35 @@ int merge_to_pat(const string &source_name_, const string &target_name)
     Json::Value json_value;
     reader.parse(fin, json_value, false);
     unsigned defaultTid = json_value["defaultTid"].asInt();
+    bool hMultiThread = json_value["multiThread"].asBool();
     Json::FastWriter header_writer;
     const std::string json_header = header_writer.write(json_value);
 
     target_file.mHeader.jsonLength = json_header.size();
     target_file.WriteHeader(json_header.c_str(), json_header.size());
+    fin.close();
+    fin.clear();
+
+    // get multithread info from extract_info
+    fin.open(source_name + "/extract_info.json");
+    if (!fin.is_open()) {
+        PAT_DEBUG_LOG("Cannot open file extract_info.json when merging\n");
+        return 1;
+    }
+    Json::Value json_value_info;
+    reader.parse(fin, json_value_info, false);
+    bool jMultiThread = json_value_info["multithread"].asBool();
+    if(multithread){
+        cout << "Multithread: enabled" << endl;
+    }
+    else if(hMultiThread){
+        cout<<"Multithread: Auto enabled as found in the pat file"<<endl;
+        multithread = true;
+    }
+    else if(jMultiThread){
+        cout<<"Multithread: Auto enabled as found in the extract info"<<endl;
+        multithread = true;
+    }
     fin.close();
     fin.clear();
 
@@ -306,7 +330,7 @@ int merge_to_pat(const string &source_name_, const string &target_name)
     int frame_num = 0;
     while ((call = file_before.NextCall()))
     {
-        if (call->mTid == defaultTid && call->mCallName.substr(0, 14) == "eglSwapBuffers")
+        if ((multithread || call->mTid == defaultTid) && call->mCallName.substr(0, 14) == "eglSwapBuffers")
         {
             frame_num++;
         }
@@ -320,7 +344,7 @@ int merge_to_pat(const string &source_name_, const string &target_name)
     }
     while ((call = file_after.NextCall()))
     {
-        if (call->mTid == defaultTid && call->mCallName.substr(0, 14) == "eglSwapBuffers")
+        if ((multithread || call->mTid == defaultTid) && call->mCallName.substr(0, 14) == "eglSwapBuffers")
         {
             frame_num++;
         }
@@ -334,7 +358,7 @@ int merge_to_pat(const string &source_name_, const string &target_name)
     while ((call = file_before.NextCall()))
     {
         writeout(target_file, call);
-        if (call->mTid == defaultTid && call->mCallName.substr(0, 14) == "eglSwapBuffers")
+        if ((multithread || call->mTid == defaultTid) && call->mCallName.substr(0, 14) == "eglSwapBuffers")
         {
             counter++;
             makeProgress(counter, frame_num);
@@ -349,7 +373,7 @@ int merge_to_pat(const string &source_name_, const string &target_name)
             continue;
         fin.open(gles_files[file_counter]);
         if (!fin.is_open()) {
-            PAT_DEBUG_LOG("Cannot open file %s when mergin\n", gles_files[file_counter].c_str());
+            PAT_DEBUG_LOG("Cannot open file %s when merging\n", gles_files[file_counter].c_str());
             break;
         }
         while ((fin.rdstate() & std::ifstream::failbit ) == 0) {
@@ -413,7 +437,7 @@ int merge_to_pat(const string &source_name_, const string &target_name)
     while ((call = file_after.NextCall()))
     {
         writeout(target_file, call);
-        if (call->mTid == defaultTid && call->mCallName.substr(0, 14) == "eglSwapBuffers")
+        if ((multithread || call->mTid == defaultTid) && call->mCallName.substr(0, 14) == "eglSwapBuffers")
         {
             counter2++;
             makeProgress(counter + gles_files.size() + counter2, frame_num);

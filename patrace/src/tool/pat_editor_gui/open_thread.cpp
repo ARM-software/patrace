@@ -7,8 +7,8 @@
 bool Pat_reading = false;
 bool Pat_saving = false;
 
-int pat_extract(const std::string &source_name, const std::string &target_name, int begin_call = 0, int end_call = std::numeric_limits<int>::max());
-int merge_to_pat(const std::string &source_name, const std::string &target_name);
+int pat_extract(const std::string &source_name, const std::string &target_name, bool multithread = false, int begin_call = 0, int end_call = std::numeric_limits<int>::max());
+int merge_to_pat(const std::string &source_name, const std::string &target_name, bool multithread = false);
 
 OpenJson_Worker::OpenJson_Worker(QObject *parent):
     QObject(parent)

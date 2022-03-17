@@ -6,7 +6,7 @@ set (PYTHON_EXECUTABLE python)
 message(STATUS "main ar: ${CMAKE_AR}")
 
 set (PATRACE_VERSION_MAJOR 3)
-set (PATRACE_VERSION_MINOR 3)
+set (PATRACE_VERSION_MINOR 4)
 set (PATRACE_VERSION_PATCH 0)
 
 IF(DEFINED ENV{SVN_REVISION})
@@ -164,6 +164,7 @@ add_custom_target(retrace_gles_auto_src_generation
 )
 
 add_subdirectory(fastforward)
+add_subdirectory (${COMMON_INCLUDE_DIRS}/eglstate ${CMAKE_CURRENT_BINARY_DIR}/common_eglstate EXCLUDE_FROM_ALL)
 
 if (NOT FF_ONLY)
     add_subdirectory(eglretrace)
@@ -242,7 +243,6 @@ if (ENABLE_TOOLS AND NOT FF_ONLY)
 
     add_subdirectory (${COMMON_INCLUDE_DIRS}/system ${CMAKE_CURRENT_BINARY_DIR}/common_system EXCLUDE_FROM_ALL)
     add_subdirectory (${COMMON_INCLUDE_DIRS}/image ${CMAKE_CURRENT_BINARY_DIR}/common_image EXCLUDE_FROM_ALL)
-    add_subdirectory (${COMMON_INCLUDE_DIRS}/eglstate ${CMAKE_CURRENT_BINARY_DIR}/common_eglstate EXCLUDE_FROM_ALL)
 
     add_subdirectory(drawstate)
     add_subdirectory(tool)

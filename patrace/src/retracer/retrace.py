@@ -930,6 +930,34 @@ class Retracer(object):
                 print('    {')
                 print('        post_glShaderSource(shaderNew, shader, count, string, length);')
                 print('    }')
+        elif func.name == 'glTexStorage2DEXT':
+            print('    if (gRetracer.mOptions.mLocalApiVersion >= PROFILE_ES3)')
+            print('    {')
+            print('    %s%s%s(%s);' % (indent, indent, 'glTexStorage2D', arg_names))
+            print('    }')
+            print('    else')
+            print('    {')
+            print('    %s%s%s(%s);' % (indent, indent, func.name, arg_names))
+            print('    }')
+        elif func.name == 'glTexStorage3DEXT':
+            print('    if (gRetracer.mOptions.mLocalApiVersion >= PROFILE_ES3)')
+            print('    {')
+            print('    %s%s%s(%s);' % (indent, indent, 'glTexStorage3D', arg_names))
+            print('    }')
+            print('    else')
+            print('    {')
+            print('    %s%s%s(%s);' % (indent, indent, func.name, arg_names))
+            print('    }')
+        elif func.name == 'glClientWaitSync':
+            print('    %sret = %s(%s);' % (indent, func.name, arg_names))
+            indent = '    '
+            print('    uint32_t retry_counter = 1000;')
+            print('    while (retry_counter > 0 && (old_ret == GL_ALREADY_SIGNALED || old_ret == GL_CONDITION_SATISFIED) && ret == GL_TIMEOUT_EXPIRED)')
+            print('    {')
+            print('    %sret = %s(%s);' % (indent, func.name, arg_names))
+            print('    %sretry_counter--;' % (indent))
+            print('    }')
+            indent = ''
         elif func.type is not stdapi.Void:
             print('    %sret = %s(%s);' % (indent, func.name, arg_names))
         else:

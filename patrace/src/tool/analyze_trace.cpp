@@ -49,6 +49,7 @@ static bool write_used_shaders = false;
 static std::map<int, double> heavinesses;
 static std::string iname;
 static int ipriority = -1;
+static bool write_usage = false;
 
 /// Helper to prune empty lists from a JSON object
 static void prune(Json::Value& v)
@@ -220,6 +221,7 @@ static void printHelp()
         "  -b            Bare call logging - useful for making diffs between traces\n"
         "  -iname <name> Pass this name to the result JSON\n"
         "  -iprio <p>    Pass this priority value to the result JSON\n"
+        "  -txu          Write out a texture usage file that maps draw calls to textures used\n"
         "Options for per frame output:\n"
         "  -Z            Write out used shaders to disk\n"
         "  -j            Write out renderpass JSON data for selected frames\n"
@@ -1472,6 +1474,38 @@ void AnalyzeTrace::analyze(ParseInterfaceBase& input)
     fs.close();
     // API stats CSV
     write_CSV(dump_csv_filename.empty() ? "trace" : dump_csv_filename, perframe, true);
+    // Usage stats CSV
+    if (write_usage)
+    {
+        std::string filename = dump_csv_filename.empty() ? "unused_mipmaps" : dump_csv_filename + "_unused_mipmaps.csv";
+        FILE* fp = fopen(filename.c_str(), "w");
+        assert(fp);
+        fprintf(fp, "Call,Context,TxIndex,TxId\n");
+        for (const auto& ctx : input.contexts)
+        {
+            for (const auto& tx : ctx.textures.all())
+            {
+                for (const auto& mip : tx.mipmaps)
+                {
+                    if (!mip.second.used) fprintf(fp, "%d,%d,%d,%d\n", mip.first, (int)ctx.id, tx.index, (int)tx.id);
+                }
+            }
+        }
+        fclose(fp);
+
+        filename = dump_csv_filename.empty() ? "unused_textures" : dump_csv_filename + "_unused_textures.csv";
+        fp = fopen(filename.c_str(), "w");
+        assert(fp);
+        fprintf(fp, "Call,Frame,TxIndex,TxId,ContextIndex,ContextId\n");
+        for (const auto& ctx : input.contexts)
+        {
+            for (const auto& tx : ctx.textures.all())
+            {
+                if (!tx.used) fprintf(fp, "%d,%d,%d,%d,%d,%d\n", tx.created.call, tx.created.frame, tx.index, (int)tx.id, ctx.index, (int)ctx.id);
+            }
+        }
+        fclose(fp);
+    }
     // Dependencies CSV
     FILE* fp = fopen(dump_csv_filename.empty() ? "dependencies.csv" : std::string(dump_csv_filename + "_deps.csv").c_str(), "w");
     if (fp)
@@ -2396,6 +2430,10 @@ int main(int argc, char **argv)
         {
             no_screenshots = true;
         }
+        else if (arg == "-txu")
+        {
+            write_usage = true;
+        }
         else if (arg == "-S")
         {
             display_mode = true;
@@ -2453,6 +2491,8 @@ int main(int argc, char **argv)
     inputFile.setOutputName(dump_csv_filename);
     inputFile.setRenderpassJSON(renderpassjson);
     inputFile.setDebug(debug);
+    inputFile.ff_startframe = startframe;
+    inputFile.ff_endframe = lastframe;
     if (multithread) inputFile.forceMultithread();
     if (!inputFile.open(source_trace_filename))
     {

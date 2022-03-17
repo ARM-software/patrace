@@ -56,6 +56,11 @@ commands.add('glLinkProgram2')
 commands.add('glTexStorageAttribs2DARM')
 commands.add('glTexStorageAttribs3DARM')
 
+# Remove the 3 lines below when these functions are added to the Khronos XML
+commands.add('glShadingRateARM')
+commands.add('glShadingRateCombinerOpsARM')
+commands.add('glFramebufferShadingRateARM')
+
 GLfixed = Alias("GLfixed", Int32)
 GLclampx = Alias("GLclampx", Int32)
 
@@ -1017,8 +1022,13 @@ gles_functions = [
     # GL_EXT_external_buffer
     GlFunction(Void, "glBufferStorageExternalEXT", [(GLenum, "target"), (GLintptr, "offset"), (GLsizeiptr, "size"), (OpaquePointer(Void), "clientBuffer"), (GLbitfield, "flags")]),
 
-    # QCOM_shading_rate
+    # GL_QCOM_shading_rate
     GlFunction(Void, "glShadingRateQCOM", [(GLenum, "rate")]),
+
+    # GL_ARM_fragment_shading_rate
+    GlFunction(Void, "glShadingRateARM", [(GLenum, "rate")]),
+    GlFunction(Void, "glShadingRateCombinerOpsARM", [(Array(Const(GLenum), 2), "combinerOps")]),
+    GlFunction(Void, "glFramebufferShadingRateARM", [(GLenum, "target"), (GLenum, "attachment"), (GLuint, "texture"), (GLint, "baseLayer"), (GLsizei, "numLayers"), (GLsizei, "texelWidth"), (GLsizei, "texelHeight")]),
 ]
 
 glesapi = API('GLES')

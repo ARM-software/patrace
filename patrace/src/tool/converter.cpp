@@ -6,7 +6,8 @@
 #include <GLES3/gl31.h>
 #include <GLES3/gl32.h>
 #include <limits.h>
-#include <unordered_map>
+#include <set>
+#include <utility>
 
 #include "tool/parse_interface.h"
 
@@ -28,6 +29,9 @@ static bool onlycount = false;
 static bool verbose = false;
 static int endframe = -1;
 static bool waitsync = false;
+static std::set<int> unused_mipmaps; // call numbers
+static std::set<std::pair<int, int>> unused_textures; // context index + texture index
+static int lastframe = -1;
 
 static void printHelp()
 {
@@ -35,7 +39,10 @@ static void printHelp()
         "Usage : converter [OPTIONS] trace_file.pat new_file.pat\n"
         "Options:\n"
         "  --waitsync    Add a non-zero timeout to glClientWaitSync and glWaitSync calls\n"
+        "  --mipmap FILE Remove unused glGenerateMipmap calls. Need a usage CSV file from analyze_trace as input\n"
+        "  --tex FILE    Remove unused texture calls. Need a usage CSV file from analyze_trace as input\n"
         "  --end FRAME   End frame (terminates trace here)\n"
+        "  --last FRAME  Stop doing changes at this frame (copies the remaining trace without changes)\n"
         "  --verbose     Print more information while running\n"
         "  -c            Only count and report instances, do no changes\n"
         "  -h            Print help\n"
@@ -66,6 +73,12 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
     // Go through entire trace file
     while ((call = input.next_call()))
     {
+        if (lastframe != -1 && input.frames >= lastframe)
+        {
+            writeout(outputFile, call);
+            continue;
+        }
+
         if (call->mCallName == "glClientWaitSync")
         {
             const uint64_t timeout = call->mArgs[2]->GetAsUInt64();
@@ -73,6 +86,31 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
             {
                 call->mArgs[2]->mUint64 = UINT64_MAX;
                 count++;
+            }
+            writeout(outputFile, call);
+        }
+        else if (call->mCallName == "glGenerateMipmap" && unused_mipmaps.count(call->mCallNo) > 0)
+        {
+            count++;
+        }
+        else if (call->mCallName == "glTexStorage3D" || call->mCallName == "glTexStorage2D" || call->mCallName == "glTexStorage1D"
+             || call->mCallName == "glTexStorage3DEXT" || call->mCallName == "glTexStorage2DEXT" || call->mCallName == "glTexStorage1DEXT"
+             || call->mCallName == "glTexImage3D" || call->mCallName == "glTexImage2D" || call->mCallName == "glTexImage1D" || call->mCallName == "glTexImage3DOES"
+             || call->mCallName == "glCompressedTexImage3D" || call->mCallName == "glCompressedTexImage2D"
+             || call->mCallName == "glCompressedTexImage1D" || call->mCallName == "glTexSubImage1D" || call->mCallName == "glTexSubImage2D"
+             || call->mCallName == "glTexSubImage3D" || call->mCallName == "glCompressedTexSubImage2D" || call->mCallName == "glCompressedTexSubImage3D")
+        {
+            const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt());
+            const GLuint unit = input.contexts[input.context_index].activeTextureUnit;
+            const GLuint tex_id = input.contexts[input.context_index].textureUnits[unit][target];
+            if (input.contexts[input.context_index].textures.contains(tex_id) && tex_id != 0)
+            {
+                const int target_texture_index = input.contexts[input.context_index].textures.remap(tex_id);
+                if (unused_textures.count(std::make_pair(input.context_index, target_texture_index)) > 0)
+                {
+                    count++;
+                    continue;
+                }
             }
             writeout(outputFile, call);
         }
@@ -106,6 +144,11 @@ int main(int argc, char **argv)
             argIndex++;
             endframe = atoi(argv[argIndex]);
         }
+        else if (arg == "--last")
+        {
+            argIndex++;
+            lastframe = atoi(argv[argIndex]);
+        }
         else if (arg == "--verbose")
         {
             verbose = true;
@@ -117,6 +160,29 @@ int main(int argc, char **argv)
         else if (arg == "-c")
         {
             onlycount = true;
+        }
+        else if (arg == "--mipmap")
+        {
+            argIndex++;
+            FILE* fp = fopen(argv[argIndex], "r");
+            if (!fp) { printf("Error: Unable to open %s: %s\n", argv[argIndex], strerror(errno)); return -11; }
+            int call = -1;
+            int ignore = fscanf(fp, "%*[^\n]\n");
+            (void)ignore;
+            while (fscanf(fp, "%d,%*d,%*d,%*d\n", &call) == 1) unused_mipmaps.insert(call);
+            fclose(fp);
+        }
+        else if (arg == "--tex")
+        {
+            argIndex++;
+            FILE* fp = fopen(argv[argIndex], "r");
+            if (!fp) { printf("Error: Unable to open %s: %s\n", argv[argIndex], strerror(errno)); return -11; }
+            int ctxidx = 0;
+            int txidx = 0;
+            int ignore = fscanf(fp, "%*[^\n]\n");
+            (void)ignore;
+            while (fscanf(fp, "%*d,%*d,%d,%*d,%d,%*d\n", &txidx, &ctxidx) == 2) unused_textures.insert(std::make_pair(ctxidx, txidx));
+            fclose(fp);
         }
         else if (arg == "-v")
         {

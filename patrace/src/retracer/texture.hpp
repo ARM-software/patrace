@@ -28,7 +28,7 @@ struct Texture
     GLenum cubeMapFace;
     GLenum binding;
 
-    GLenum _targetToBinding(GLenum target)
+    static GLenum _targetToBinding(GLenum target)
     {
         switch (target)
         {
@@ -39,6 +39,12 @@ struct Texture
         case GL_TEXTURE_3D:
             return GL_TEXTURE_BINDING_3D;
         case GL_TEXTURE_CUBE_MAP:
+        case GL_TEXTURE_CUBE_MAP_POSITIVE_X:
+        case GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
+        case GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
+        case GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
+        case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
+        case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
             return GL_TEXTURE_BINDING_CUBE_MAP;
         case GL_TEXTURE_2D_MULTISAMPLE:
             return GL_TEXTURE_BINDING_2D_MULTISAMPLE;

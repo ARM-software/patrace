@@ -205,12 +205,12 @@ Drawable* GlwsEglAndroid::CreateDrawable(int width, int height, int win, EGLint 
 
 void GlwsEglAndroid::ReleaseDrawable(NativeWindow *window)
 {
-    for (WinNameToNativeWindowMap_t::iterator it = gWinNameToNativeWindowMap.begin(); it != gWinNameToNativeWindowMap.end(); ++it)
-    {
-        if (it->second == window)
-        {
-            destroyNativeWindow(it->first);
-            gWinNameToNativeWindowMap.erase(it);
+    WinNameToNativeWindowMap_t::iterator it = gWinNameToNativeWindowMap.begin();
+    while (it != gWinNameToNativeWindowMap.end()) {
+        WinNameToNativeWindowMap_t::iterator temp_it = it++;
+        if (temp_it->second == window) {
+            destroyNativeWindow(temp_it->first);
+            gWinNameToNativeWindowMap.erase(temp_it);
         }
     }
     if (window) delete window;

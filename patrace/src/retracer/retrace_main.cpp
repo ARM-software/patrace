@@ -50,6 +50,7 @@ usage(const char *argv0) {
         "  -forceVRS VALUE Force the use of VRS for all framebuffers. Valid values: 38566 (1x1), 38567 (1x2), 38568 (2x1), 38569 (2x2), 38572 (4x2) and 38574 (4x4).\n"
         "  -collect Collect performance counters\n"
         "  -perfmon Collect performance counters in the built-in perfmon interface\n"
+        "  -instrumentation-delay USECONDS Delay in microseconds that the retracer should sleep for after each present call in the measurement range.\n"
         "  -flush Before starting running the defined measurement range, make sure we flush all pending driver work\n"
         "  -multithread Run all threads in the trace\n"
         "  -shadercache FILENAME Save and load shaders to this cache FILE. Will add .bin and .idx to the given file name.\n"
@@ -190,6 +191,8 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
                 DBG_LOG("Start frame must be lower than end frame. (End frame is never played.)\n");
                 return false;
             }
+        } else if (!strcmp(arg, "-instrumentation-delay")) {
+            mOptions.mInstrumentationDelay = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-preload")) {
             mOptions.mPreload = true;
             mOptions.mBeginMeasureFrame = readValidValue(argv[++i]);

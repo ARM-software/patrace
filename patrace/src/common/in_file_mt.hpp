@@ -33,6 +33,8 @@ public:
         return s;
     }
 
+    int curCallNo = -1;
+
 private:
     void ReadSigBook();
     void PreloadFrames(int frames_to_read, int tid);

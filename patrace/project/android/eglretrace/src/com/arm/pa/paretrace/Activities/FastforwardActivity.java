@@ -49,6 +49,7 @@ public class FastforwardActivity extends Activity {
             boolean norestoretex = receivedIntent.getBooleanExtra("norestoretex", false);
             boolean version = receivedIntent.getBooleanExtra("version", false);
             int restorefbo0 = receivedIntent.getIntExtra("restorefbo0", -1);
+            boolean txu = receivedIntent.getBooleanExtra("txu", false);
 
             // init with json parameters
             if (receivedIntent.hasExtra("jsonParam")) {
@@ -97,6 +98,9 @@ public class FastforwardActivity extends Activity {
                         if (!receivedIntent.hasExtra("restorefbo0") && json_Param.has("restorefbo0")) {
                             restorefbo0 = json_Param.getInt("restorefbo0");
                         }
+                        if (!receivedIntent.hasExtra("txu") && json_Param.has("txu")) {
+                            txu = json_Param.getBoolean("txu");
+                        }
                     } catch (Exception e) {
                         json_data = ""; // shut up the compiler
                         e.printStackTrace();
@@ -136,6 +140,9 @@ public class FastforwardActivity extends Activity {
             }
             if (restorefbo0 != -1) {
                 args += ("--restorefbo0 " + restorefbo0 + " ");
+            }
+            if (txu == true) {
+                args += "--txu ";
             }
             Log.i(TAG, "forward args: " + args);
 

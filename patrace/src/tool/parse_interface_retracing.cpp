@@ -1257,14 +1257,14 @@ void ParseInterfaceRetracing::thread(const int threadidx, const int our_tid, Cal
         // ---------------------------------------------------------------------------
         // Get next packet
 skip_call:
-        gRetracer.curCallNo++;
-        current_pos.call = gRetracer.curCallNo;
         if (!gRetracer.mFile.GetNextCall(gRetracer.fptr, gRetracer.mCurCall, gRetracer.src))
         {
+            current_pos.call = gRetracer.mFile.curCallNo;
             gRetracer.mFinish = true;
             for (auto &cv : gRetracer.conditions) cv.notify_one(); // Wake up all other threads
             break;
         }
+        current_pos.call = gRetracer.mFile.curCallNo;
         // Skip call because it is on an ignored thread?
         if (!gRetracer.mOptions.mMultiThread && gRetracer.mCurCall.tid != gRetracer.mOptions.mRetraceTid)
         {
@@ -1302,11 +1302,13 @@ skip_call:
 
 void ParseInterfaceRetracing::loop(Callback c, void *data)
 {
-    if (!gRetracer.mFile.GetNextCall(gRetracer.fptr, gRetracer.mCurCall, gRetracer.src))
+    do
     {
-        gRetracer.reportAndAbort("Empty trace file!");
-    }
-    mCall = next_call();
+        if (!gRetracer.mFile.GetNextCall(gRetracer.fptr, gRetracer.mCurCall, gRetracer.src))
+        {
+            gRetracer.reportAndAbort("Empty trace file!");
+        }
+    } while (!gRetracer.mOptions.mMultiThread && gRetracer.mCurCall.tid != gRetracer.mOptions.mRetraceTid);
     gRetracer.threads.resize(1);
     gRetracer.conditions.resize(1);
     thread(0, gRetracer.mCurCall.tid, c, data);
@@ -1316,4 +1318,19 @@ void ParseInterfaceRetracing::loop(Callback c, void *data)
     }
     GLWS::instance().Cleanup();
     gRetracer.CloseTraceFile();
+}
+
+void ParseInterfaceRetracing::outputTexUsage(std::unordered_set<unsigned int>& unusedMipgen, std::unordered_set<unsigned int>& unusedTexture)
+{
+    for (const auto& ctx : contexts)
+    {
+        for (const auto& tx : ctx.textures.all())
+        {
+            if (!tx.used) unusedTexture.insert(tx.index);
+            for (const auto& mip : tx.mipmaps)
+            {
+                if (!mip.second.used) unusedMipgen.insert(mip.first);
+            }
+        }
+    }
 }

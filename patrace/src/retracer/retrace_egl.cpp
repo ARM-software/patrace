@@ -1,5 +1,5 @@
 #include <retracer/retracer.hpp>
-#include <retracer/glws.hpp>
+#include <retracer/glws_egl.hpp>
 #include <retracer/retrace_api.hpp>
 #include <retracer/forceoffscreen/offscrmgr.h>
 #include <common/gl_extension_supported.hpp>
@@ -41,6 +41,32 @@ void getSurfaceDimensions(int* width, int* height)
         *width = opt.mWindowWidth;
         *height = opt.mWindowHeight;
     }
+}
+
+void getLocalGLESVersion()
+{
+    RetraceOptions& opt = gRetracer.mOptions;
+
+    const char* version = (const char*)glGetString(GL_VERSION);
+    if (strstr(version, "ES 3.2") != NULL) {
+        opt.mLocalApiVersion = PROFILE_ES32;
+    }
+    else if (strstr(version, "ES 3.1") != NULL) {
+        opt.mLocalApiVersion = PROFILE_ES31;
+    }
+    else if (strstr(version, "ES 3.") != NULL) {
+        opt.mLocalApiVersion = PROFILE_ES3;
+    }
+    else if (strstr(version, "ES 2.") != NULL) {
+        opt.mLocalApiVersion = PROFILE_ES2;
+    }
+    else if (strstr(version, "ES 1.") != NULL){
+        opt.mLocalApiVersion = PROFILE_ES1;
+    }
+    else {
+        opt.mLocalApiVersion = PROFILE_ESX;
+    }
+    DBG_LOG("Version: %s\n", version);
 }
 
 PUBLIC void retrace_eglCreateWindowSurface(char* src)
@@ -547,7 +573,7 @@ PUBLIC void retrace_eglMakeCurrent(char* src)
         {
             DBG_LOG("Vendor: %s\n", (const char*)glGetString(GL_VENDOR));
             DBG_LOG("Renderer: %s\n", (const char*)glGetString(GL_RENDERER));
-            DBG_LOG("Version: %s\n", (const char*)glGetString(GL_VERSION));
+            getLocalGLESVersion();
 
             typedef std::pair<std::string, GLenum> Se_t;
             std::vector<Se_t> stringEnumList;

@@ -8,6 +8,25 @@ add_custom_command(
     WORKING_DIRECTORY ${SRC_ROOT}/helper
 )
 
+add_custom_command(
+    OUTPUT ${SRC_ROOT}/specs/pa_func_to_version.cpp
+    COMMAND ${PYTHON_EXECUTABLE} ${SRC_ROOT}/specs/glxml_to_extensions.py
+    DEPENDS
+    ${SPECS_SCRIPTS}
+    ${SRC_ROOT}/specs/glxml_to_extensions.py
+    ${THIRDPARTY_INCLUDE_DIRS}/opengl-registry/xml/gl.xml
+    WORKING_DIRECTORY ${SRC_ROOT}/specs
+)
+
+add_custom_command(
+        OUTPUT ${SRC_ROOT}/common/call_parser.cpp
+        COMMAND ${PYTHON_EXECUTABLE} ${SRC_ROOT}/common/call_parser.py
+        DEPENDS
+            ${SPECS_SCRIPTS}
+            ${SRC_ROOT}/common/call_parser.py
+        WORKING_DIRECTORY ${SRC_ROOT}/common
+)
+
 set(SRC_FASTFORWARD
     ${SRC_ROOT}/dispatch/eglproc_auto.hpp
     ${SRC_ROOT}/dispatch/eglproc_auto.cpp
@@ -33,12 +52,22 @@ set(SRC_FASTFORWARD
     ${SRC_ROOT}/helper/shaderutility.cpp
     ${SRC_ROOT}/helper/depth_dumper.cpp
     ${SRC_ROOT}/tool/utils.cpp
+    ${SRC_ROOT}/tool/parse_interface.cpp
+    ${SRC_ROOT}/tool/parse_interface_retracing.cpp
+    ${SRC_ROOT}/common/trace_model.cpp
+    ${SRC_ROOT}/common/trace_model_utility.cpp
+    ${SRC_ROOT}/common/call_parser.cpp
+    ${SRC_ROOT}/tool/glsl_utils.cpp
+    ${SRC_ROOT}/tool/glsl_parser.cpp
+    ${SRC_ROOT}/tool/glsl_lookup.cpp
+    ${SRC_ROOT}/specs/pa_func_to_version.cpp
 )
 
 set_source_files_properties(
     ${SRC_ROOT}/dispatch/eglproc_auto.hpp
     ${SRC_ROOT}/dispatch/eglproc_auto.cpp
     ${SRC_ROOT}/retracer/retrace_gles_auto.cpp
+    ${SRC_ROOT}/specs/pa_func_to_version.cpp
     PROPERTIES
         GENERATED True
 )
@@ -46,4 +75,9 @@ set_source_files_properties(
 configure_file(
     "${SRC_ROOT}/retracer/config.hpp.in"
     "${SRC_ROOT}/retracer/config.hpp"
+)
+
+configure_file (
+    "${COMMON_INCLUDE_DIRS}/tool/config.hpp.in"
+    "${COMMON_INCLUDE_DIRS}/tool/config.hpp"
 )

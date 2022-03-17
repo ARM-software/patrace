@@ -359,6 +359,7 @@ public class GLThread extends Thread {
                 js.put("offscreen", parentIntent.getBooleanExtra("forceOffscreen", false));
                 js.put("offscreenSingleTile", parentIntent.getBooleanExtra("offscreenSingleTile", false)); // equal to "-singleframe"
                 js.put("measurePerFrame", parentIntent.getBooleanExtra("measurePerFrame", false));
+                js.put("instrumentationDelay", parentIntent.getIntExtra("instrumentationDelay", 0));
                 js.put("colorBitsRed", parentIntent.getIntExtra("colorBitsRed", -1));
                 js.put("colorBitsGreen", parentIntent.getIntExtra("colorBitsGreen", -1));
                 js.put("colorBitsBlue", parentIntent.getIntExtra("colorBitsBlue", -1));

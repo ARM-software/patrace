@@ -252,6 +252,7 @@ private:
     std::vector<T> store;
 };
 
+// EGL image
 struct Image : public Resource
 {
     GLenum type;
@@ -278,6 +279,12 @@ struct TransformFeedback : public Resource
     TransformFeedback(int _id, int _index) : Resource(_id, _index) {}
 };
 
+struct MipmapGeneration
+{
+    int frame;
+    bool used;
+};
+
 struct Texture : public Resource
 {
     bool immutable = false;
@@ -289,6 +296,9 @@ struct Texture : public Resource
     GLenum binding_point = GL_NONE;
     SamplerState state;
     Texture(int _id, int _index) : Resource(_id, _index) {}
+    bool used = false; // actually used in a draw call
+
+    std::map<int, MipmapGeneration> mipmaps; // call number of glGenerateMipmap : data
 
     // the below are not set by the parse_interface, because we need dynamic runtime info to fill them out
     std::set<GLenum> used_min_filters;
@@ -605,17 +615,11 @@ struct Context : public Resource
     int renderbuffer_index = UNBOUND;
     std::vector<GLenum> draw_buffers; // as set by glDrawBuffers()
 
-    struct MipmapGeneration
-    {
-        unsigned call; // call number of glGenerateMipmap
-        int frame;
-        int texture_index;
-    };
-    std::vector<MipmapGeneration> mipmaps;
     std::map<GLuint, std::map<GLenum, GLuint>> textureUnits; // texture unit : target : texture id
     GLuint activeTextureUnit = 0;
 
     std::map<GLuint, GLuint> sampler_binding; // texture unit : sampler id
+    std::map<GLuint, GLuint> image_binding; // image unit : texture id
 
     std::map<GLenum, int> query_binding; // target : query id
 
@@ -759,6 +763,8 @@ public:
     Json::Value header;
     int frames = 0; // number of frames processed so far
     int draws = 0; // number of draw calls processed so far
+    int ff_startframe = 0; // target frame of fastforwarding, to decide whether the textures or mipmaps should be marked as used
+    int ff_endframe = INT32_MAX; // end frame of fastforwarding
     int surface_index = UNBOUND;
     int context_index = UNBOUND;
 

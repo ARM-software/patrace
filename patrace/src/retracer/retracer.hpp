@@ -81,7 +81,7 @@ public:
     void StepShot(unsigned int callNo, unsigned int frameNo, const char *filename = NULL);
     void dumpUniformBuffers(unsigned int callno);
     inline int getCurTid() const { return mCurCall.tid; }
-    inline unsigned GetCurCallId() const { return curCallNo; }
+    inline unsigned GetCurCallId() const { return mFile.curCallNo; }
     const char* GetCurCallName() const { return mFile.ExIdToName(mCurCall.funcId); }
     inline unsigned GetCurDrawId() const { return mCurDrawNo; }
     inline void IncCurDrawId() { mCurDrawNo++; drawBudget--; }
@@ -127,8 +127,6 @@ public:
     std::unordered_map<std::string, ProgramCache> shaderCache; // md5 of shader source to cache struct in mem
     int64_t frameBudget = INT64_MAX;
     int64_t drawBudget = INT64_MAX;
-
-    unsigned curCallNo = 0;
 
     void* fptr = nullptr;
     char* src = nullptr;

@@ -3,6 +3,8 @@
 #include <fstream>
 #include <unistd.h>
 #include <ctime>
+#include <unordered_set>
+#include <unordered_map>
 
 #include "common/out_file.hpp"
 #include "common/image.hpp"
@@ -17,6 +19,8 @@
 #include "json/writer.h"
 
 #include "tool/utils.hpp"
+#include "tool/parse_interface.h"
+#include "tool/parse_interface_retracing.hpp"
 
 #include <retracer/config.hpp>
 #include <retracer/glws.hpp>
@@ -44,8 +48,9 @@ static PFN_GLGETTEXLEVELPARAMETERIV ff_glGetTexLevelParameteriv;
 
 enum FastForwardOptionFlags
 {
-    FASTFORWARD_RESTORE_TEXTURES  = 1 << 0,
-    FASTFORWARD_RESTORE_DEFAUTL_FBO= 1 << 1,
+    FASTFORWARD_RESTORE_TEXTURES      = 1 << 0,
+    FASTFORWARD_RESTORE_DEFAUTL_FBO   = 1 << 1,
+    FASTFORWARD_REMOVE_UNUSED_TEXTURE = 1 << 2,
 };
 
 struct FastForwardOptions
@@ -68,6 +73,33 @@ struct FastForwardOptions
         , mFbo0Repeat(0)
     {}
 };
+
+class GlobalTextureIdTracer
+{
+public:
+    std::vector<unsigned int> textureId; // map global texture to retrace id
+    std::map<unsigned int, unsigned int> remap; // remap of the mapping above
+
+    void add(unsigned int retraceId)
+    {
+        unsigned int globalId = textureId.size();
+        textureId.emplace_back(retraceId);
+        remap[retraceId] = globalId;
+    }
+
+    void remove(unsigned int traceId)
+    {
+        unsigned int retraceId = retracer::gRetracer.getCurrentContext().getTextureMap().RValue(traceId);
+        remap.erase(retraceId);
+    }
+};
+
+GlobalTextureIdTracer gTextureIdTracer;
+std::unordered_set<unsigned int> gUnusedMipgen; // call id of redundant glGenerateMipmap()
+std::unordered_set<unsigned int> gUnusedTexture; // global id of redundant textures
+unsigned int gRemovedMipgen  = 0;
+unsigned int gRemovedTexFunc = 0;
+unsigned int gRemovedTexture = 0;
 
 namespace RetraceAndTrim
 {
@@ -1055,8 +1087,8 @@ bool checkError(const std::string &msg)
 class TextureSaver
 {
 public:
-    TextureSaver(retracer::Context& retracerContext, common::OutFile& outFile, int threadId)
-        : mRetracerContext(retracerContext), mOutFile(outFile), mThreadId(threadId), mScratchBuff()
+    TextureSaver(retracer::Context& retracerContext, common::OutFile& outFile, int threadId, unsigned int flags)
+        : mRetracerContext(retracerContext), mOutFile(outFile), mThreadId(threadId), mScratchBuff(), mFlags(flags)
     {
         TexTypeInfo info2d("2D", GL_TEXTURE_2D, GL_TEXTURE_BINDING_2D, TraceCommandEmitter::Tex2D);
         TexTypeInfo info2dArray("2D_Array", GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BINDING_2D_ARRAY, TraceCommandEmitter::Tex3D);
@@ -1156,6 +1188,22 @@ public:
         {
             const unsigned int traceTextureId = it.first;
             const unsigned int retraceTextureId = it.second;
+
+            if ((mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE))
+            {
+                const unsigned int globalTextureId = gTextureIdTracer.remap.at(retraceTextureId);
+
+                if (gTextureIdTracer.textureId.at(globalTextureId) != retraceTextureId)
+                {
+                    DBG_LOG("WARNING: Reverse texture lookup failed: global-ID %d's rev. was %d, but should be %d.\n", globalTextureId, gTextureIdTracer.textureId.at(globalTextureId), retraceTextureId);
+                }
+
+                if(gUnusedTexture.count(globalTextureId) != 0)
+                {
+                    gRemovedTexture++;
+                    continue;
+                }
+            }
 
             if (retraceTextureId == 0)
             {
@@ -1839,6 +1887,7 @@ private:
     common::OutFile& mOutFile;
     int mThreadId;
     ScratchBuffer mScratchBuff;
+    unsigned int mFlags;
 };
 
 class DefaultFboSaver
@@ -2820,6 +2869,78 @@ static void injectClear(retracer::Context& retracerContext, common::OutFile& out
 
 using namespace retracer;
 
+bool checkUnusedTexture()
+{
+    // this function is used for tracing global texture ids and determining if the current function call should be skipped
+    const char *funcName = gRetracer.mFile.ExIdToName(gRetracer.mCurCall.funcId);
+    if (strstr(funcName, "glGenTexture"))
+    {
+        char* src = gRetracer.src;
+        int n;
+        src = common::ReadFixed<int>(src, n);
+        common::Array<unsigned int> textures;
+        src = common::Read1DArray(src, textures);
+        for (unsigned int i = 0; i < textures.cnt; ++i)
+        {
+            gTextureIdTracer.add(textures[i]);
+        }
+    }
+
+    else if (strstr(funcName, "glBindTexture"))
+    {
+        char* src = gRetracer.src;
+        int target;
+        src = common::ReadFixed<int>(src, target);
+        unsigned int texture;
+        src = common::ReadFixed<unsigned int>(src, texture);
+        Context& context = gRetracer.getCurrentContext();
+        unsigned int textureNew = context.getTextureMap().RValue(texture); // texture is traceId and textureNew is retraceId
+        if (textureNew == 0 && texture != 0)
+        {
+            gTextureIdTracer.add(texture);
+        }
+    }
+
+    else if (strstr(funcName, "glDeleteTexture"))
+    {
+        char* src = gRetracer.src;
+        int target;
+        src = common::ReadFixed<int>(src, target);
+        unsigned int texture;
+        src = common::ReadFixed<unsigned int>(src, texture);
+        gTextureIdTracer.remove(texture);
+    }
+
+    else if (strstr(funcName, "glGenerateMipmap"))
+    {
+        if (gUnusedMipgen.count(gRetracer.mFile.curCallNo) != 0)
+        {
+            gRemovedMipgen++;
+            return true;
+        }
+    }
+    if (strstr(funcName, "glTexImage")
+        || strstr(funcName, "glTexStorage")
+        || strstr(funcName, "glTexSubImage")
+        || strstr(funcName, "glCompressedTexImage")
+        || strstr(funcName, "glCompressedTexSubImage"))
+    {
+        char* src = gRetracer.src;
+        GLenum target;
+        src = common::ReadFixed<GLenum>(src, target);
+        GLenum target_binding = Texture::_targetToBinding(target);
+        GLint texture;
+        glGetIntegerv(target_binding, &texture);
+        if (gUnusedTexture.count(gTextureIdTracer.remap[(unsigned int)texture]))
+        {
+            gRemovedTexFunc++;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 static void saveData(common::OutFile &out, unsigned int flags, unsigned int repeat, Json::Value& ffJson, GLint dpy, GLint surface)
 {
     retracer::Retracer& retracer = gRetracer;
@@ -2844,7 +2965,7 @@ static void saveData(common::OutFile &out, unsigned int flags, unsigned int repe
     // Save texture
     if (flags & FASTFORWARD_RESTORE_TEXTURES)
     {
-        RetraceAndTrim::TextureSaver ts(retracer.getCurrentContext(), out, retracer.getCurTid());
+        RetraceAndTrim::TextureSaver ts(retracer.getCurrentContext(), out, retracer.getCurTid(), flags);
         ts.run();
     }
 
@@ -2925,6 +3046,8 @@ static void replay_thread(common::OutFile &out, const int threadidx, const int o
                 || (strcmp(funcName, "eglSetDamageRegionKHR") == 0)  // NOTE: strCMP == 0
                 || (strcmp(funcName, "glClear") == 0); // NOTE: strCMP == 0
 
+            if (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE) shouldSkip |= checkUnusedTexture();
+
             if (isFrameTarget)
             {
                 arriveTarget = (retracer.GetCurFrameId() >= ffOptions.mTargetFrame);
@@ -3003,7 +3126,6 @@ static void replay_thread(common::OutFile &out, const int threadidx, const int o
         // ---------------------------------------------------------------------------
         // Get next packet
 skip_call:
-        retracer.curCallNo++;
         if (!retracer.mFile.GetNextCall(retracer.fptr, retracer.mCurCall, retracer.src))
         {
             retracer.mFinish.store(true);
@@ -3096,6 +3218,7 @@ usage(const char *argv0)
         "  --norestoretex When generating a fastforward trace, don't inject commands to restore the contents of textures to what the would've been when retracing the original. (NOTE: NOT RECOMMEND)\n"
         "  --version Output the version of this program\n"
         "  --restorefbo0 <repeat_times> Repeat to inject a draw call commands and swapbuffer the given number of times to restore the last default FBO. Suggest repeating 3~4 times if setDamageRegionKHR, else repeating 1 time.\n"
+        "  --txu Remove the unused textures and related function calls.\n"
         "\n"
         , argv0);
 }
@@ -3195,6 +3318,10 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
             std::cout << "- Fastforwarder: " << PATRACE_VERSION << std::endl;
             exit(0);
         }
+        else if (!strcmp(arg, "--txu"))
+        {
+            ffOptions.mFlags |= FASTFORWARD_REMOVE_UNUSED_TEXTURE;
+        }
         else
         {
             DBG_LOG("error: unknown option %s\n", arg);
@@ -3250,6 +3377,26 @@ int main(int argc, char** argv)
     // Register Entries before opening tracefile as sigbook is read there
     common::gApiInfo.RegisterEntries(gles_callbacks);
     common::gApiInfo.RegisterEntries(egl_callbacks);
+
+    if (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE)
+    {
+        // Initialize texture usage parser
+        ParseInterfaceRetracing parser;
+        if (!parser.open(gRetracer.mOptions.mFileName))
+        {
+            std::cerr << "Failed to open for reading: " << gRetracer.mOptions.mFileName << std::endl;
+            return 1;
+        }
+        parser.ff_startframe = ffOptions.mTargetFrame;
+        parser.ff_endframe = ffOptions.mEndFrame;
+
+        parser.loop([](ParseInterfaceBase& input, common::CallTM *call, void *data) {if (input.frames > input.ff_endframe) return false; else return true;}, nullptr);
+        parser.outputTexUsage(gUnusedMipgen, gUnusedTexture);
+        std::string fileName = gRetracer.mOptions.mFileName;
+        gRetracer.~Retracer();
+        new (&gRetracer) Retracer();
+        gRetracer.mOptions.mFileName = fileName;
+    }
 
     // 1. Load defaults from file
     if (!gRetracer.OpenTraceFile(gRetracer.mOptions.mFileName.c_str()))
@@ -3308,6 +3455,9 @@ int main(int argc, char** argv)
 
     // Do fastforwarding: pass ffJson in case we want to add anything
     retraceAndTrim(out, ffOptions, ffJson);
+
+    if (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE)
+        DBG_LOG("%d mipmap generation calls are removed, %d textures are removed, %d texture calls are removed\n", gRemovedMipgen, gRemovedTexture, gRemovedTexFunc);
 
     // Add our conversion to the list
     addConversionEntry(jsonRoot, "fastforward", gRetracer.mOptions.mFileName, ffJson);

@@ -10,6 +10,8 @@
 #include "eglstate/common.hpp"
 #include "base/base.hpp"
 
+const unsigned int CALL_BATCH_SIZE = 1000000;
+
 using namespace std;
 
 string intToString(int a, int width = 0)
@@ -82,7 +84,7 @@ int makeExtractDir(const string &target_name)
     return 0;
 }
 
-int callNo_width;
+int gCallNo_width;
 string target_name;
 
 int current_resource_id;
@@ -226,7 +228,7 @@ void setJsonValue(Json::Value &json_value, const string &s, const common::ValueT
                 if (call->Name() == "glShaderSource" && value.mName == "string")
                 {
                     for (unsigned int i = 0; i < value.mArrayLen; ++i) {
-                        string temp = "/shader/call" + intToString(call->mCallNo, callNo_width) + "_shader" + to_string(current_resource_id) + "." + to_string(i) + ".txt";
+                        string temp = "/shader/call" + intToString(call->mCallNo, gCallNo_width) + "_shader" + to_string(current_resource_id) + "." + to_string(i) + ".txt";
                         string shader_file = target_name + temp;
                         string relative_path = ".." + temp;
                         ofstream fout(shader_file);
@@ -259,12 +261,12 @@ void setJsonValue(Json::Value &json_value, const string &s, const common::ValueT
             if (call->Name().compare(0, 10, "glTexImage") == 0 ||
                 call->Name().compare(0, 13, "glTexSubImage") == 0 ||
                 call->Name().compare(0, 15, "glCompressedTex") == 0) {
-                string temp = "/texture/call" + intToString(call->mCallNo, callNo_width) + "_tex" + to_string(current_resource_id) + ".bin";
+                string temp = "/texture/call" + intToString(call->mCallNo, gCallNo_width) + "_tex" + to_string(current_resource_id) + ".bin";
                 blob_file = target_name + temp;
                 relative_path = ".." + temp;
             }
             else {
-                string temp = "/blob/call" + intToString(call->mCallNo, callNo_width) + "_blob" + to_string(current_resource_id) + ".bin";
+                string temp = "/blob/call" + intToString(call->mCallNo, gCallNo_width) + "_blob" + to_string(current_resource_id) + ".bin";
                 blob_file = target_name + temp;
                 relative_path = ".." + temp;
             }
@@ -323,28 +325,37 @@ void setJsonValue(Json::Value &json_value, const string &s, const common::ValueT
     }
 }
 
-int pat_extract(const string &source_name, const string &target_name_, int begin_call, int end_call)
+int get_counts(const string& source_name, bool &multithread, int& callNo, int& frameNo_width, int& callNo_width)
 {
     // Load input trace
-    common::TraceFileTM source_file;
+    common::TraceFileTM source_file(CALL_BATCH_SIZE);
     if (!source_file.Open(source_name.c_str()))
     {
         PAT_DEBUG_LOG("Failed to open pat file %s for extracting.\n", source_name.c_str());
         return 1;
     }
 
-    target_name = target_name_;
-
-    cout << "Extract: " << source_name << " -> " << target_name << "\n" << endl;
     Json::Value header = source_file.mpInFileRA->getJSONHeader();
     unsigned defaultTid = header["defaultTid"].asInt();
-    int callNo = 0, frameNo = 0;
+    bool hMultiThread = header["multiThread"].asBool();
+
+    if(multithread){
+        cout << "Multithread: enabled" << endl;
+    }
+    else if(hMultiThread){
+        cout<<"Multithread: Auto enabled as found in the pat file"<<endl;
+        multithread = true;
+    }
+
+    callNo = 0;
+    int frameNo = 0;
     common::CallTM *call = NULL;
     for (callNo = 0; (call = source_file.NextCall()); ++callNo) {
-        if (call->mTid == defaultTid && call->mCallName.substr(0, 14) == "eglSwapBuffers") {
+        if ((multithread || call->mTid == defaultTid) && call->mCallName.substr(0, 14) == "eglSwapBuffers") {
             ++frameNo;
         }
     }
+
     cout << "callNo = " << callNo << ", frameNo = " << frameNo << endl;
     int temp_callNo = callNo;
     callNo_width = 0;
@@ -354,11 +365,25 @@ int pat_extract(const string &source_name, const string &target_name_, int begin
     } while (temp_callNo != 0);
 
     int temp_frameNo = frameNo;
-    int frameNo_width = 0;
+    frameNo_width = 0;
     do {
         temp_frameNo /= 10;
         frameNo_width++;
     } while (temp_frameNo != 0);
+
+    return 0;
+}
+
+int pat_extract(const string &source_name, const string &target_name_, bool multithread, int begin_call, int end_call)
+{
+    target_name = target_name_;
+    cout << "Extract: " << source_name << " -> " << target_name << "\n" << endl;
+
+    int callNo = 0;
+    int frameNo_width = 0;
+    int callNo_width = 0;
+    get_counts(source_name, multithread, callNo, frameNo_width, callNo_width);
+    gCallNo_width = callNo_width;
 
     if (makeExtractDir(target_name) != 0) {
         PAT_DEBUG_LOG("Cannot create folder %s\n", target_name.c_str());
@@ -372,6 +397,15 @@ int pat_extract(const string &source_name, const string &target_name_, int begin
         PAT_DEBUG_LOG("Failed to open file %s when extracting\n", string(target_name + "/pat_header.json").c_str());
         return 1;
     }
+
+    common::TraceFileTM source_file(CALL_BATCH_SIZE);
+    if (!source_file.Open(source_name.c_str()))
+    {
+        PAT_DEBUG_LOG("Failed to open pat file %s for extracting.\n", source_name.c_str());
+        return 1;
+    }
+    Json::Value header = source_file.mpInFileRA->getJSONHeader();
+
     Json::StyledWriter writer;
     string strWrite = writer.write(header);
     if (strWrite[strWrite.length() - 1] == '\n')
@@ -403,19 +437,21 @@ int pat_extract(const string &source_name, const string &target_name_, int begin
     outputFileAfter.mHeader.jsonLength = strFastWrite.size();
     outputFileAfter.WriteHeader(strFastWrite.c_str(), strFastWrite.size());
     file_counter = 0;
+    unsigned defaultTid = header["defaultTid"].asInt();
+    common::CallTM *call = NULL;
     for (callId = 0; (call = source_file.NextCall()); ++callId)
     {
         if (callId < begin_call)           // the call before user interested in
         {
             writeout(outputFileBefore, call);
-            if (call->mTid == defaultTid && call->mCallName.substr(0, 14) == "eglSwapBuffers") {
+            if ((multithread || call->mTid == defaultTid) && call->mCallName.substr(0, 14) == "eglSwapBuffers") {
                 file_counter++;
             }
         }
         else if (callId > end_call)        // the call after user interested in
         {
             writeout(outputFileAfter, call);
-            if (call->mTid == defaultTid && call->mCallName.substr(0, 14) == "eglSwapBuffers") {
+            if ((multithread || call->mTid == defaultTid) && call->mCallName.substr(0, 14) == "eglSwapBuffers") {
                 file_counter++;
             }
         }
@@ -515,7 +551,7 @@ int pat_extract(const string &source_name, const string &target_name_, int begin
                 file_beginning = false;
             }
             fout << strWrite;
-            if (call->mTid == defaultTid && call->mCallName.substr(0, 14) == "eglSwapBuffers") {
+            if ((multithread || call->mTid == defaultTid) && call->mCallName.substr(0, 14) == "eglSwapBuffers") {
                 file_counter++;
                 fout << "\n]";
                 fout.close();
@@ -537,6 +573,23 @@ int pat_extract(const string &source_name, const string &target_name_, int begin
         fout.close();
         fout.clear();
     }
+
+    // save extract info
+    cout << "Saving extract info..." << endl;
+    fout.open(target_name + "/extract_info.json");
+    if (!fout.is_open()) {
+        PAT_DEBUG_LOG("Failed to open file %s when saving\n", string(target_name + "/extract_info.json").c_str());
+        return 1;
+    }
+    Json::Value info_extract;
+    info_extract["multithread"] = Json::Value(multithread);
+    string strWriteInfo = writer.write(info_extract);
+    if (strWriteInfo[strWriteInfo.length() - 1] == '\n')
+        strWriteInfo.pop_back();
+    fout<<strWriteInfo;
+    fout.close();
+    fout.clear();
+
     cout << "\n\n";
     source_file.Close();
     outputFileBefore.Close();

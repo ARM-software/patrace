@@ -22,8 +22,6 @@
 #include "base/base.hpp"
 #include "tool/utils.hpp"
 
-#define DEBUG_LOG(...) if (debug) DBG_LOG(__VA_ARGS__)
-
 #define DEDUP_BUFFERS 1
 #define DEDUP_UNIFORMS 2
 #define DEDUP_TEXTURES 4
@@ -40,6 +38,9 @@ static std::pair<int, int> dedups;
 static bool onlycount = false;
 static bool verbose = false;
 static FILE* fp = stdout;
+static int lastframe = -1;
+static bool debug = false;
+#define DEBUG_LOG(...) if (debug) DBG_LOG(__VA_ARGS__)
 
 static void printHelp()
 {
@@ -59,9 +60,11 @@ static void printHelp()
         "  --programs    Deduplicate glUseProgram calls\n"
         "  --all         Deduplicate all the above\n"
         "  --end FRAME   End frame (terminates trace here)\n"
+        "  --last FRAME  Stop doing changes at this frame (copies the remaining trace without changes)\n"
         "  --replace     Replace calls with glEnable(GL_INVALID_INDEX) instead of removing\n"
         "  --verbose     Print more information while running\n"
         "  -c            Only count and report instances, do no changes\n"
+        "  -d            Debug mode (print a lot of info)\n"
         "  -o FILE       Write results to file\n"
         "  -h            Print help\n"
         "  -v            Print version\n"
@@ -134,6 +137,12 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
     // Go through entire trace file
     while ((call = input.next_call()))
     {
+        if (lastframe != -1 && input.frames >= lastframe)
+        {
+            writeout(outputFile, call);
+            continue;
+        }
+
         if ((int)call->mTid != tid) continue;
 
         if (call->mCallName == "glUseProgram")
@@ -484,6 +493,11 @@ int main(int argc, char **argv)
             argIndex++;
             endframe = atoi(argv[argIndex]);
         }
+        else if (arg == "--last")
+        {
+            argIndex++;
+            lastframe = atoi(argv[argIndex]);
+        }
         else if (arg == "--buffers")
         {
             flags |= DEDUP_BUFFERS;
@@ -539,6 +553,10 @@ int main(int argc, char **argv)
         else if (arg == "-c")
         {
             onlycount = true;
+        }
+        else if (arg == "-d")
+        {
+            debug = true;
         }
         else if (arg == "-o")
         {

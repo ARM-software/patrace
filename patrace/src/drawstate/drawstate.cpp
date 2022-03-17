@@ -916,7 +916,7 @@ static bool retrace()
 
     retracer::Retracer& retracer = gRetracer;
 
-    for ( ;; retracer.curCallNo++)
+    for (;;)
     {
         void *fptr = NULL;
         char *src = NULL;
@@ -1107,7 +1107,7 @@ static bool retraceRange()
 
     retracer::Retracer& retracer = gRetracer;
 
-    for ( ;; retracer.curCallNo++)
+    for (;;)
     {
         void *fptr = NULL;
         char *src = NULL;

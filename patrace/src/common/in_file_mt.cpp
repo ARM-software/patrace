@@ -251,6 +251,7 @@ bool InFile::GetNextCall(void*& fptr, common::BCall_vlen& call, char*& src)
             PreloadFrames(mEndFrame - mBeginFrame, mTraceTid);
         }
     }
+    curCallNo++;
     return true;
 }
 
