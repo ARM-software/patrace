@@ -366,6 +366,9 @@ public class GLThread extends Thread {
                 js.put("colorBitsAlpha", parentIntent.getIntExtra("colorBitsAlpha", -1));
                 js.put("depthBits", parentIntent.getIntExtra("depthBits", -1));
                 js.put("stencilBits", parentIntent.getIntExtra("stencilBits", -1));
+                js.put("eglSurfaceCompressionFixedRate", parentIntent.getIntExtra("eglSurfaceCompressionFixedRate", -1) );
+                js.put("eglImageCompressionFixedRate", parentIntent.getIntExtra("eglImageCompressionFixedRate", -1) );
+                js.put("glesTextureCompressionFixedRate", parentIntent.getIntExtra("glesTextureCompressionFixedRate", -1) );
 
                 if (parentIntent.getBooleanExtra("antialiasing", false)) {
                     js.put("msaaSamples", 4);

@@ -1,13 +1,9 @@
 #include <retracer/retracer.hpp>
-
 #include <retracer/retrace_api.hpp>
-
+#include <retracer/afrc_enum.hpp>
 #include <common/gl_extension_supported.hpp>
-
 #include <common/os.hpp>
-
 #include <string.h>
-
 #include "dma_buffer/dma_buffer.hpp"
 
 namespace retracer {

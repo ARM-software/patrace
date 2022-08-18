@@ -287,7 +287,10 @@ int merge_to_pat(const string &source_name_, const string &target_name, bool mul
     Json::Value json_value;
     reader.parse(fin, json_value, false);
     unsigned defaultTid = json_value["defaultTid"].asInt();
-    bool hMultiThread = json_value["multiThread"].asBool();
+    bool hMultiThread = false;
+    if (json_value.isMember("multiThread")) {
+        hMultiThread = json_value["multiThread"].asBool();
+    }
     Json::FastWriter header_writer;
     const std::string json_header = header_writer.write(json_value);
 

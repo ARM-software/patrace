@@ -527,7 +527,7 @@ local void gen_bitlen(s, desc)
     }
     if (overflow == 0) return;
 
-    Trace((stderr,"\nbit length overflow\n"));
+    //Trace((stderr,"\nbit length overflow\n"));
     /* This happens for example on obj2 and pic of the Calgary corpus */
 
     /* Find the first bit length which could increase: */
@@ -554,7 +554,7 @@ local void gen_bitlen(s, desc)
             m = s->heap[--h];
             if (m > max_code) continue;
             if ((unsigned) tree[m].Len != (unsigned) bits) {
-                Trace((stderr,"code %d bits %d->%d\n", m, tree[m].Len, bits));
+                //Trace((stderr,"code %d bits %d->%d\n", m, tree[m].Len, bits));
                 s->opt_len += ((long)bits - (long)tree[m].Len)
                               *(long)tree[m].Freq;
                 tree[m].Len = (ush)bits;
@@ -593,7 +593,7 @@ local void gen_codes (tree, max_code, bl_count)
      */
     Assert (code + bl_count[MAX_BITS]-1 == (1<<MAX_BITS)-1,
             "inconsistent bit counts");
-    Tracev((stderr,"\ngen_codes: max_code %d ", max_code));
+    //Tracev((stderr,"\ngen_codes: max_code %d ", max_code));
 
     for (n = 0;  n <= max_code; n++) {
         int len = tree[n].Len;

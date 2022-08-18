@@ -5,7 +5,7 @@ namespace common {
 
 ApiInfo gApiInfo;
 
-void ApiInfo::RegisterEntries(const EntryMap& entries)
+void ApiInfo::RegisterEntries(const EntryMap& entries, bool all)
 {
     if (!mIdToFptrArr)
     {
@@ -15,9 +15,10 @@ void ApiInfo::RegisterEntries(const EntryMap& entries)
 
     for (auto it = entries.begin(); it != entries.end(); ++it)
     {
+        if (!all && it->second.second) continue;
         unsigned short id = NameToId(it->first.c_str());
         if (id > 0)
-            mIdToFptrArr[id] = it->second;
+            mIdToFptrArr[id] = it->second.first;
         else {
             DBG_LOG("Unsupported function: %s\n", it->first.c_str());
         }

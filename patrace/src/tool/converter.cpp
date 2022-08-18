@@ -25,12 +25,14 @@
 
 #define DEBUG_LOG(...) if (debug) DBG_LOG(__VA_ARGS__)
 
+static bool debug = false;
 static bool onlycount = false;
 static bool verbose = false;
 static int endframe = -1;
 static bool waitsync = false;
 static std::set<int> unused_mipmaps; // call numbers
 static std::set<std::pair<int, int>> unused_textures; // context index + texture index
+static std::set<std::pair<int, int>> uninit_textures; // context index + texture index
 static int lastframe = -1;
 
 static void printHelp()
@@ -40,11 +42,13 @@ static void printHelp()
         "Options:\n"
         "  --waitsync    Add a non-zero timeout to glClientWaitSync and glWaitSync calls\n"
         "  --mipmap FILE Remove unused glGenerateMipmap calls. Need a usage CSV file from analyze_trace as input\n"
-        "  --tex FILE    Remove unused texture calls. Need a usage CSV file from analyze_trace as input\n"
+        "  --tex FILE    Remove unused texture calls. Need an uninitialized CSV file from analyze_trace as input\n"
+        "  --utex FILE   Fix uninitialized texture storage calls. Need a usage CSV file as input\n"
         "  --end FRAME   End frame (terminates trace here)\n"
         "  --last FRAME  Stop doing changes at this frame (copies the remaining trace without changes)\n"
         "  --verbose     Print more information while running\n"
         "  -c            Only count and report instances, do no changes\n"
+        "  -d            Print debug messages\n"
         "  -h            Print help\n"
         "  -v            Print version\n"
         ;
@@ -103,9 +107,10 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
             const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt());
             const GLuint unit = input.contexts[input.context_index].activeTextureUnit;
             const GLuint tex_id = input.contexts[input.context_index].textureUnits[unit][target];
+            assert(tex_id != 0);
+            const int target_texture_index = input.contexts[input.context_index].textures.remap(tex_id);
             if (input.contexts[input.context_index].textures.contains(tex_id) && tex_id != 0)
             {
-                const int target_texture_index = input.contexts[input.context_index].textures.remap(tex_id);
                 if (unused_textures.count(std::make_pair(input.context_index, target_texture_index)) > 0)
                 {
                     count++;
@@ -113,6 +118,83 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
                 }
             }
             writeout(outputFile, call);
+            if ((call->mCallName == "glTexImage3D" || call->mCallName == "glTexImage2D") && uninit_textures.count(std::make_pair(input.context_index, target_texture_index)) > 0)
+            {
+                const GLint level = call->mArgs[1]->GetAsUInt();
+                //const GLint internalFormat = call->mArgs[2]->GetAsUInt();
+                const GLsizei width = call->mArgs[3]->GetAsUInt();
+                const GLsizei height = call->mArgs[4]->GetAsUInt();
+                //GLint border = call->mArgs[5]->GetAsUInt();
+                const GLenum format = call->mArgs[6]->GetAsUInt();
+                const GLenum type = call->mArgs[7]->GetAsUInt();
+                common::CallTM c("glTexSubImage2D");
+                c.mArgs.push_back(new common::ValueTM(target));
+                c.mArgs.push_back(new common::ValueTM(level)); // level
+                c.mArgs.push_back(new common::ValueTM(0)); // xoffset
+                c.mArgs.push_back(new common::ValueTM(0)); // yoffset
+                c.mArgs.push_back(new common::ValueTM(width));
+                c.mArgs.push_back(new common::ValueTM(height));
+                c.mArgs.push_back(new common::ValueTM(format));
+                c.mArgs.push_back(new common::ValueTM(type));
+                const unsigned tsize = width * height * 4 * 4; // max size
+                std::vector<char> zeroes(tsize);
+                c.mArgs.push_back(common::CreateBlobOpaqueValue(tsize, zeroes.data()));
+                c.mTid = call->mTid;
+                writeout(outputFile, &c);
+                count++;
+            }
+            else if ((call->mCallName == "glTexStorage3D" || call->mCallName == "glTexStorage2D") && uninit_textures.count(std::make_pair(input.context_index, target_texture_index)) > 0)
+            {
+                const GLsizei levels = call->mArgs[1]->GetAsUInt();
+                const GLenum format = call->mArgs[2]->GetAsUInt();
+                const GLsizei width = call->mArgs[3]->GetAsUInt();
+                const GLsizei height = call->mArgs[4]->GetAsUInt();
+                if (isCompressedFormat(format))
+                {
+                    for (int i = 0; i < levels; i++)
+                    {
+                        const GLsizei w = width / (i + 1);
+                        const GLsizei h = height / (i + 1);
+                        common::CallTM c("glCompressedTexSubImage2D");
+                        c.mArgs.push_back(new common::ValueTM(target));
+                        c.mArgs.push_back(new common::ValueTM(i)); // level
+                        c.mArgs.push_back(new common::ValueTM(0)); // xoffset
+                        c.mArgs.push_back(new common::ValueTM(0)); // yoffset
+                        c.mArgs.push_back(new common::ValueTM(w));
+                        c.mArgs.push_back(new common::ValueTM(h));
+                        c.mArgs.push_back(new common::ValueTM(format));
+                        const unsigned tsize = w * h * 4 * 4; // max size
+                        c.mArgs.push_back(new common::ValueTM(tsize)); // image size
+                        std::vector<char> zeroes(tsize);
+                        c.mArgs.push_back(common::CreateBlobOpaqueValue(tsize, zeroes.data()));
+                        c.mTid = call->mTid;
+                        writeout(outputFile, &c);
+                    }
+                }
+                else // uncompressed
+                {
+                    for (int i = 0; i < levels; i++)
+                    {
+                        const GLsizei w = width / (i + 1);
+                        const GLsizei h = height / (i + 1);
+                        common::CallTM c("glTexSubImage2D");
+                        c.mArgs.push_back(new common::ValueTM(target));
+                        c.mArgs.push_back(new common::ValueTM(i)); // level
+                        c.mArgs.push_back(new common::ValueTM(0)); // xoffset
+                        c.mArgs.push_back(new common::ValueTM(0)); // yoffset
+                        c.mArgs.push_back(new common::ValueTM(w));
+                        c.mArgs.push_back(new common::ValueTM(h));
+                        c.mArgs.push_back(new common::ValueTM(sized_to_unsized_format(format)));
+                        c.mArgs.push_back(new common::ValueTM(sized_to_unsized_type(format)));
+                        const unsigned tsize = w * h * 4 * 4; // max size
+                        std::vector<char> zeroes(tsize);
+                        c.mArgs.push_back(common::CreateBlobOpaqueValue(tsize, zeroes.data()));
+                        c.mTid = call->mTid;
+                        writeout(outputFile, &c);
+                    }
+                }
+                count++;
+            }
         }
         else
         {
@@ -161,6 +243,10 @@ int main(int argc, char **argv)
         {
             onlycount = true;
         }
+        else if (arg == "-d")
+        {
+            debug = true;
+        }
         else if (arg == "--mipmap")
         {
             argIndex++;
@@ -170,6 +256,22 @@ int main(int argc, char **argv)
             int ignore = fscanf(fp, "%*[^\n]\n");
             (void)ignore;
             while (fscanf(fp, "%d,%*d,%*d,%*d\n", &call) == 1) unused_mipmaps.insert(call);
+            fclose(fp);
+        }
+        else if (arg == "--utex")
+        {
+            argIndex++;
+            FILE* fp = fopen(argv[argIndex], "r");
+            if (!fp) { printf("Error: Unable to open %s: %s\n", argv[argIndex], strerror(errno)); return -11; }
+            int ctxidx = 0;
+            int txidx = 0;
+            int ignore = fscanf(fp, "%*[^\n]\n"); // skip header line
+            (void)ignore;
+            // Call,Frame,TxIndex,TxId,ContextIndex,ContextId
+            while (fscanf(fp, "%*d,%*d,%d,%*d,%d,%*d\n", &txidx, &ctxidx) == 2)
+            {
+                uninit_textures.insert(std::make_pair(ctxidx, txidx));
+            }
             fclose(fp);
         }
         else if (arg == "--tex")

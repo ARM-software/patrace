@@ -551,6 +551,13 @@ void Retracer::loadRetraceOptionsFromHeader()
     {
         mOptions.mOnscreenConfig.override(mOptions.mOverrideConfig);
     }
+
+    const int required_major = jsHeader.get("required_replayer_version_major", 0).asInt();
+    const int required_minor = jsHeader.get("required_replayer_version_minor", 0).asInt();
+    if (required_major > PATRACE_VERSION_MAJOR || (required_major == PATRACE_VERSION_MAJOR && required_minor > PATRACE_VERSION_MINOR))
+    {
+        reportAndAbort("Required replayer version is r%dp%d, your version is r%dp%d", required_major, required_minor, PATRACE_VERSION_MAJOR, PATRACE_VERSION_MINOR);
+    }
 }
 
 std::vector<Texture> Retracer::getTexturesToDump()
@@ -1193,7 +1200,7 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
             }
             r.swaps += (int)isSwapBuffers;
         }
-        else if (mOptions.mDebug)
+        else if (mOptions.mDebug && mOptions.mRunAll)
         {
             const char *funcName = mFile.ExIdToName(mCurCall.funcId);
             DBG_LOG("    Unsupported function : %s, call no: %d\n", funcName, mFile.curCallNo);
@@ -1932,10 +1939,9 @@ void post_glLinkProgram(GLuint program, GLuint originalProgramName, int status)
     _glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);
     if (linkStatus == GL_TRUE && status == 0)
     {
-        // A bit of an odd case: Shader failed during tracing, but succeeds during replay. This can absolutely
-        // happen without being an error (because feature checks can resolve differently on different platforms),
-        // but warn about it anyway, because it _may_ give unexpected results in some cases.
-        DBG_LOG("There was error in linking program %u (retraceProgram %u) in trace, but none on replay\n", originalProgramName, program);
+        // A bit of an odd case: Shader failed during tracing, but succeeds during replay. This can absolutely happen without being an
+        // error (eg because feature checks can resolve differently on different platforms), but interesting information when debugging.
+        if (gRetracer.mOptions.mDebug) DBG_LOG("Linking program id %u (retrace id %u) failed in trace but works on replay. This is not a problem.\n", originalProgramName, program);
     }
     else if (linkStatus == GL_FALSE && (status == -1 || status == 1))
     {

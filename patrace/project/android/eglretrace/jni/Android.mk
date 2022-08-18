@@ -227,6 +227,7 @@ LOCAL_SRC_FILES     := \
     retracer/retracer.cpp \
     retracer/retrace_api.cpp \
     retracer/retrace_gles_auto.cpp \
+    retracer/afrc_enum.cpp \
     retracer/retrace_egl.cpp \
     retracer/eglconfiginfo.cpp \
     retracer/glws.cpp \

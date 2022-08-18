@@ -300,15 +300,14 @@ DrawParams ParseInterfaceRetracing::getDrawCallCount(common::CallTM *call)
             _glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &bufSize);
             if (bufferSize > (unsigned)bufSize)
             {
-                DBG_LOG("Buffer too small: Calculated to %ld, was %ld\n", (long)bufferSize, (long)bufSize);
-                assert(false);
+                DBG_LOG("Index buffer %d too small: Calculated to %ld, reported as %ld, at call number %ld: 0x%04x\n", bufferId, (long)bufferSize, (long)bufSize, (long)call->mCallNo, (unsigned)_glGetError());
                 return ret;
             }
             _glBindBuffer(GL_COPY_READ_BUFFER, bufferId);
             ptr = (const char *)_glMapBufferRange(GL_COPY_READ_BUFFER, 0, bufferSize, GL_MAP_READ_BIT);
             if (!ptr)
             {
-                DBG_LOG("Failed to bind buffer %d for draw call analysis at call number %ld: 0x%04x\n", bufferId, (long)call->mCallNo, (unsigned)_glGetError());
+                DBG_LOG("Failed to bind index buffer %d for draw call analysis at call number %ld: 0x%04x\n", bufferId, (long)call->mCallNo, (unsigned)_glGetError());
                 return ret;
             }
         }
@@ -372,7 +371,7 @@ bool ParseInterfaceRetracing::open(const std::string& input, const std::string& 
     else
     {
         gRetracer.mOptions.mMultiThread = header.get("multiThread", false).asBool();
-        only_default = header.get("multiThread", false).asBool();
+        only_default = !header.get("multiThread", false).asBool();
     }
     DBG_LOG("Multi-threading is %s, selected thread is %d\n", gRetracer.mOptions.mMultiThread ? "ON" : "OFF", (int)defaultTid);
     highest_gles_version = header["glesVersion"].asInt() * 10;
@@ -399,6 +398,19 @@ bool ParseInterfaceRetracing::open(const std::string& input, const std::string& 
 void ParseInterfaceRetracing::close()
 {
     GLWS::instance().Cleanup();
+}
+
+int CountTokenOccurances(const std::string& token, const std::string& text)
+{
+    int result = 0;
+    size_t index = text.find(token);
+
+    while (index != std::string::npos) {
+        ++result;
+        index = text.find(token, index + 1);
+    }
+
+    return result;
 }
 
 common::CallTM* ParseInterfaceRetracing::next_call()
@@ -439,24 +451,27 @@ common::CallTM* ParseInterfaceRetracing::next_call()
 
     // Perform transform feedback
     if (!mQuickMode && mCall->mCallName.compare(0, 6, "glDraw") == 0 && mCall->mCallName != "glDrawBuffers" && contexts[context_index].transform_feedback_binding == 0
-        && (contexts[context_index].program_index != UNBOUND || contexts[context_index].program_pipeline_index != UNBOUND))
+        && (contexts[context_index].program_index != UNBOUND || contexts[context_index].program_pipeline_index != UNBOUND) && mRenderpassJSON)
     {
         if (mDebug) DBG_LOG("Capturing geometry for %s\n", mCall->mCallName.c_str());
         StateTracker::VertexArrayObject& vao = contexts[context_index].vaos.at(contexts[context_index].vao_index);
-        int program_index = 0;
+        int vprogram_index = 0;
+        int fprogram_index = 0;
         if (contexts[context_index].program_index != UNBOUND)
         {
-            program_index = contexts[context_index].program_index;
+            fprogram_index = vprogram_index = contexts[context_index].program_index;
         }
         else
         {
-            program_index = contexts[context_index].program_pipelines.at(contexts[context_index].program_pipeline_index).program_stages.at(GL_VERTEX_SHADER);
-            gRetracer.reportAndAbort("draw call TF from separate program");
+            vprogram_index = contexts[context_index].program_pipelines.at(contexts[context_index].program_pipeline_index).program_stages.at(GL_VERTEX_SHADER);
+            fprogram_index = contexts[context_index].program_pipelines.at(contexts[context_index].program_pipeline_index).program_stages.at(GL_FRAGMENT_SHADER);
         }
 
         const DrawParams params = getDrawCallCount(mCall);
-        const StateTracker::Program& program = contexts[context_index].programs.at(program_index);
-        const StateTracker::Shader& vshader = contexts[context_index].shaders.at(program.shaders.at(GL_VERTEX_SHADER));
+        const StateTracker::Program& vprogram = contexts[context_index].programs.at(vprogram_index);
+        const StateTracker::Program& fprogram = contexts[context_index].programs.at(fprogram_index);
+        const StateTracker::Shader& vshader = contexts[context_index].shaders.at(vprogram.shaders.at(GL_VERTEX_SHADER));
+        const StateTracker::Shader& fshader = contexts[context_index].shaders.at(fprogram.shaders.at(GL_FRAGMENT_SHADER));
 
         std::unordered_map<std::string, int> varying_sizes_bytes;
         std::unordered_map<std::string, int> varying_offsets_bytes;
@@ -465,6 +480,13 @@ common::CallTM* ParseInterfaceRetracing::next_call()
 
         std::map<std::string, StateTracker::GLSLVarying> varyings;
         for (auto& var : vshader.varyings) {
+            int var_count = CountTokenOccurances(var.first, vshader.source_preprocessed) + CountTokenOccurances(var.first, fshader.source_preprocessed);
+            if ((var_count < 3) && (var.first.rfind("gl_", 0) != 0))
+            {
+                DBG_LOG("Skipping varying %s with reference count: %d\n", var.first.c_str(), var_count);
+                continue;
+            }
+
             varyings[var.first] = var.second;
         }
 
@@ -488,14 +510,17 @@ common::CallTM* ParseInterfaceRetracing::next_call()
         std::vector<GLfloat> feedback(out_data_num_floats);
 
         GLint oldCopyBufferId = 0;
+        GLint oldTFBufferId = 0;
         _glGetIntegerv(GL_COPY_READ_BUFFER_BINDING, &oldCopyBufferId);
+        _glGetIntegerv(GL_TRANSFORM_FEEDBACK_BUFFER_BINDING, &oldTFBufferId);
 
         GLuint tbo;
         _glGenBuffers(1, &tbo);
         _glBindBuffer(GL_COPY_READ_BUFFER, tbo);
         _glBufferData(GL_COPY_READ_BUFFER, feedback.size() * sizeof(GLfloat), feedback.data(), GL_STATIC_READ);
         _glBindBuffer(GL_COPY_READ_BUFFER, oldCopyBufferId);
-        _glEnable(GL_RASTERIZER_DISCARD);
+        const GLint old_raster = _glIsEnabled(GL_RASTERIZER_DISCARD);
+        if (!old_raster) _glEnable(GL_RASTERIZER_DISCARD);
         _glBindBuffer(GL_TRANSFORM_FEEDBACK_BUFFER, tbo);
         _glBindBufferBase(GL_TRANSFORM_FEEDBACK_BUFFER, 0, tbo);
 
@@ -522,12 +547,16 @@ common::CallTM* ParseInterfaceRetracing::next_call()
         _glFinish();
 
         void* tf_mem = _glMapBufferRange(GL_TRANSFORM_FEEDBACK_BUFFER, 0, feedback.size() * sizeof(GLfloat), GL_MAP_READ_BIT);
-        if (tf_mem) {
+        if (tf_mem)
+        {
             memcpy(feedback.data(), tf_mem, feedback.size() * sizeof(GLfloat));
             _glUnmapBuffer(GL_TRANSFORM_FEEDBACK_BUFFER);
-        } else {
+        }
+        else if (mRenderpassJSON) // TBD: only abort if we actually need this data for now... fix issues later
+        {
             gRetracer.reportAndAbort("Failed to map transform feedback buffer.");
         }
+        _glBindBuffer(GL_TRANSFORM_FEEDBACK_BUFFER, oldTFBufferId);
 
         if (mRenderpassJSON) // save it to file?
         {
@@ -587,14 +616,15 @@ common::CallTM* ParseInterfaceRetracing::next_call()
         }
 
         // Restore state
-        _glDisable(GL_RASTERIZER_DISCARD);
+        if (!old_raster) _glDisable(GL_RASTERIZER_DISCARD);
         _glDeleteBuffers(1, &tbo);
     }
 
     // Enable transform feedback in the shader
-    if (mCall->mCallName == "glLinkProgram" && mRenderpassJSON)
+    if ((mCall->mCallName == "glLinkProgram" || mCall->mCallName == "glLinkProgram2") && mRenderpassJSON)
     {
         const GLuint id = mCall->mArgs[0]->GetAsUInt();
+        const GLuint newid = gRetracer.getCurrentContext().getProgramMap().RValue(id);
         const int target_program_index = contexts[context_index].programs.remap(id);
         StateTracker::Program& p = contexts[context_index].programs[target_program_index];
         if (p.shaders.count(GL_COMPUTE_SHADER) == 0)
@@ -603,11 +633,18 @@ common::CallTM* ParseInterfaceRetracing::next_call()
             const StateTracker::Shader& fshader = contexts[context_index].shaders.at(p.shaders.at(GL_FRAGMENT_SHADER));
 
             // Need to read this before we start to mess with it
-            _glGetProgramInterfaceiv(id, GL_TRANSFORM_FEEDBACK_VARYING, GL_ACTIVE_RESOURCES, &p.activeTransformFeedbackVaryings);
+            _glGetProgramInterfaceiv(newid, GL_TRANSFORM_FEEDBACK_VARYING, GL_ACTIVE_RESOURCES, &p.activeTransformFeedbackVaryings);
 
             std::map<std::string, StateTracker::GLSLVarying> varyings;
             for (auto& var : vshader.varyings)
             {
+                int var_count = CountTokenOccurances(var.first, vshader.source_preprocessed) + CountTokenOccurances(var.first, fshader.source_preprocessed);
+                // Skip the varying if it is not a builtin and is not referenced
+                if ((var_count < 3) && (var.first.rfind("gl_", 0) != 0))
+                {
+                    DBG_LOG("Skipping varying %s with reference count: %d\n", var.first.c_str(), var_count);
+                    continue;
+                }
                 varyings[var.first] = var.second;
             }
 
@@ -618,7 +655,7 @@ common::CallTM* ParseInterfaceRetracing::next_call()
                 if (mDebug) DBG_LOG("Enabling varying: %s\n", (GLchar*)(var.first.c_str()));
             }
 
-            _glTransformFeedbackVaryings(id, feedbackVaryings.size(), feedbackVaryings.data(), GL_INTERLEAVED_ATTRIBS);
+            _glTransformFeedbackVaryings(newid, feedbackVaryings.size(), feedbackVaryings.data(), GL_INTERLEAVED_ATTRIBS);
         }
     }
 
@@ -629,6 +666,10 @@ common::CallTM* ParseInterfaceRetracing::next_call()
         perf_start();
         (*(RetraceFunc)gRetracer.fptr)(gRetracer.src); // increments src to point to end of parameter block
         mCpuCycles = perf_stop();
+    }
+    else
+    {
+        if (mDebug) DBG_LOG("Null function pointer for %s - function call will be skipped\n", mCall->mCallName.c_str());
     }
 
     // Additional special handling
@@ -641,7 +682,7 @@ common::CallTM* ParseInterfaceRetracing::next_call()
             if (contexts[context_index].shaders.all().size() > (unsigned)target_shader_index) // this is for Egypt...
             {
                 GLint compiled = 0;
-                glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+                glGetShaderiv(gRetracer.getCurrentContext().getShaderMap().RValue(shader), GL_COMPILE_STATUS, &compiled);
                 contexts[context_index].shaders[target_shader_index].compile_status = compiled;
             }
         }
@@ -664,22 +705,23 @@ common::CallTM* ParseInterfaceRetracing::next_call()
             else contexts[context_index].buffers[buffer_index].offset = mCall->mArgs[5]->GetAsUInt64();
         }
     }
-    else if (mCall->mCallName == "glLinkProgram")
+    else if (mCall->mCallName == "glLinkProgram" || mCall->mCallName == "glLinkProgram2")
     {
         const GLuint id = mCall->mArgs[0]->GetAsUInt();
+        const GLuint newid = gRetracer.getCurrentContext().getProgramMap().RValue(id);
         const int target_program_index = contexts[context_index].programs.remap(id);
         StateTracker::Program& p = contexts[context_index].programs[target_program_index];
         GLint linked = 0;
         _glGetProgramiv(id, GL_LINK_STATUS, &linked);
         p.link_status = linked;
-        _glGetProgramiv(id, GL_ACTIVE_ATTRIBUTES, &p.activeAttributes);
-        _glGetProgramInterfaceiv(id, GL_UNIFORM, GL_ACTIVE_RESOURCES, &p.activeUniforms);
-        _glGetProgramInterfaceiv(id, GL_UNIFORM_BLOCK, GL_ACTIVE_RESOURCES, &p.activeUniformBlocks);
-        _glGetProgramInterfaceiv(id, GL_ATOMIC_COUNTER_BUFFER, GL_ACTIVE_RESOURCES, &p.activeAtomicCounterBuffers);
-        _glGetProgramInterfaceiv(id, GL_PROGRAM_INPUT, GL_ACTIVE_RESOURCES, &p.activeInputs);
-        _glGetProgramInterfaceiv(id, GL_PROGRAM_OUTPUT, GL_ACTIVE_RESOURCES, &p.activeOutputs);
-        _glGetProgramInterfaceiv(id, GL_TRANSFORM_FEEDBACK_BUFFER, GL_ACTIVE_RESOURCES, &p.activeTransformFeedbackBuffers);
-        _glGetProgramInterfaceiv(id, GL_SHADER_STORAGE_BLOCK, GL_ACTIVE_RESOURCES, &p.activeSSBOs);
+        _glGetProgramiv(newid, GL_ACTIVE_ATTRIBUTES, &p.activeAttributes);
+        _glGetProgramInterfaceiv(newid, GL_UNIFORM, GL_ACTIVE_RESOURCES, &p.activeUniforms);
+        _glGetProgramInterfaceiv(newid, GL_UNIFORM_BLOCK, GL_ACTIVE_RESOURCES, &p.activeUniformBlocks);
+        _glGetProgramInterfaceiv(newid, GL_ATOMIC_COUNTER_BUFFER, GL_ACTIVE_RESOURCES, &p.activeAtomicCounterBuffers);
+        _glGetProgramInterfaceiv(newid, GL_PROGRAM_INPUT, GL_ACTIVE_RESOURCES, &p.activeInputs);
+        _glGetProgramInterfaceiv(newid, GL_PROGRAM_OUTPUT, GL_ACTIVE_RESOURCES, &p.activeOutputs);
+        _glGetProgramInterfaceiv(newid, GL_TRANSFORM_FEEDBACK_VARYING, GL_ACTIVE_RESOURCES, &p.activeTransformFeedbackBuffers);
+        _glGetProgramInterfaceiv(newid, GL_SHADER_STORAGE_BLOCK, GL_ACTIVE_RESOURCES, &p.activeSSBOs);
         for (int i = 0; i < p.activeUniforms; ++i)
         {
             GLsizei length = 0;
@@ -687,15 +729,15 @@ common::CallTM* ParseInterfaceRetracing::next_call()
             GLenum type = GL_NONE;
             GLchar tmp[128];
             memset(tmp, 0, sizeof(tmp));
-            _glGetActiveUniform(id, i, sizeof(tmp) - 1, &length, &size, &type, tmp);
-            GLint location = _glGetUniformLocation(id, tmp);
+            _glGetActiveUniform(newid, i, sizeof(tmp) - 1, &length, &size, &type, tmp);
+            GLint location = _glGetUniformLocation(newid, tmp);
             if (location >= 0) p.uniformNames[location] = tmp;
             for (int j = 0; location >= 0 && j < size; ++j)
             {
                 if (isUniformSamplerType(type))
                 {
                     GLint param = 0;
-                    _glGetUniformiv(id, location + j, &param); // arrays are guaranteed to be in sequential location
+                    _glGetUniformiv(newid, location + j, &param); // arrays are guaranteed to be in sequential location
                     p.texture_bindings[tmp] = { type, param };
                 }
             }
@@ -1246,6 +1288,19 @@ void ParseInterfaceRetracing::thread(const int threadidx, const int our_tid, Cal
     r.our_tid = our_tid;
     while (!gRetracer.mFinish)
     {
+        // Set internal tracking variables correctly
+        if (current_surface.count(our_tid) > 0)
+        {
+            surface_index = current_surface.at(our_tid);
+        }
+        else surface_index = UNBOUND;
+
+        if (current_context.count(our_tid) > 0)
+        {
+            context_index = current_context.at(our_tid);
+        }
+        else context_index = UNBOUND;
+
         mCall = next_call();
         if (!mCall || !c(*this, mCall, data))
         {
@@ -1293,9 +1348,6 @@ skip_call:
             do {
                 success = gRetracer.conditions.at(threadidx).wait_for(lk, std::chrono::milliseconds(50), [&]{ return our_tid == gRetracer.latest_call_tid || gRetracer.mFinish; });
             } while (!success);
-            // Set internal tracking variables correctly
-            if (current_surface.count(our_tid) > 0) surface_index = current_surface.at(our_tid);
-            if (current_context.count(our_tid) > 0) context_index = current_context.at(our_tid);
         }
     }
 }
@@ -1311,13 +1363,18 @@ void ParseInterfaceRetracing::loop(Callback c, void *data)
     } while (!gRetracer.mOptions.mMultiThread && gRetracer.mCurCall.tid != gRetracer.mOptions.mRetraceTid);
     gRetracer.threads.resize(1);
     gRetracer.conditions.resize(1);
+    gRetracer.thread_remapping[0] = gRetracer.mCurCall.tid;
     thread(0, gRetracer.mCurCall.tid, c, data);
     for (std::thread &t : gRetracer.threads)
     {
         if (t.joinable()) t.join();
     }
-    GLWS::instance().Cleanup();
+}
+
+void ParseInterfaceRetracing::cleanup()
+{
     gRetracer.CloseTraceFile();
+    GLWS::instance().Cleanup();
 }
 
 void ParseInterfaceRetracing::outputTexUsage(std::unordered_set<unsigned int>& unusedMipgen, std::unordered_set<unsigned int>& unusedTexture)

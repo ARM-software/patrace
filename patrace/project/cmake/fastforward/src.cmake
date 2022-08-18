@@ -33,6 +33,7 @@ set(SRC_FASTFORWARD
     ${SRC_ROOT}/dispatch/eglproc_retrace.cpp
     ${SRC_ROOT}/fastforwarder/fastforwarder.cpp
     ${SRC_ROOT}/retracer/retracer.cpp
+    ${SRC_ROOT}/retracer/afrc_enum.cpp
     ${SRC_ROOT}/retracer/retrace_api.cpp
     ${SRC_ROOT}/retracer/retrace_gles_auto.cpp
     ${SRC_ROOT}/retracer/retrace_egl.cpp

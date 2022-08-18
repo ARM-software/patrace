@@ -19,6 +19,7 @@ set(SRC_MM
     ${SRC_ROOT}/retracer/retracer.cpp
     ${SRC_ROOT}/retracer/retrace_api.cpp
     ${SRC_ROOT}/retracer/retrace_gles_auto.cpp
+    ${SRC_ROOT}/retracer/afrc_enum.cpp
     ${SRC_ROOT}/retracer/retrace_egl.cpp
     ${SRC_ROOT}/retracer/eglconfiginfo.cpp
     ${SRC_ROOT}/retracer/glws.cpp

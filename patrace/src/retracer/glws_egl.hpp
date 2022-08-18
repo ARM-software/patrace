@@ -2,6 +2,7 @@
 #define GLWS_EGL_HPP
 
 #include "retracer/glws.hpp"
+#include "retracer/afrc_enum.hpp"
 
 namespace retracer {
 
@@ -10,6 +11,7 @@ const EGLint window_surface_default_attribs[] = {
     EGL_RENDER_BUFFER,
     EGL_PROTECTED_CONTENT_EXT,
     EGL_COLOR_COMPONENT_TYPE_EXT,
+    EGL_SURFACE_COMPRESSION_EXT,
     EGL_NONE
 };
 
@@ -30,6 +32,7 @@ public:
     virtual EGLImageKHR createImageKHR(Context* context, EGLenum target, uintptr_t buffer, const EGLint* attrib_list);
     virtual EGLBoolean destroyImageKHR(EGLImageKHR image);
     virtual bool setAttribute(Drawable* drawable, int attribute, int value);
+    virtual bool querySupportedCompressionRates(const EGLAttrib *attrib_list, EGLint *rates, EGLint rate_size, EGLint *num_rates);
     virtual void releaseNativeDisplay(EGLNativeDisplayType display);
 
     virtual void postInit();

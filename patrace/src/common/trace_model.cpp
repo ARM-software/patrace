@@ -1019,7 +1019,7 @@ CallTM::CallTM(InFileRA &infile, unsigned callNo, const BCall_vlen &call)
  : mCallNo(callNo), mTid(call.tid), mCallId(call.funcId), mBkColor(0xffffffff), mTxtColor(0x000000ff)
 {
     const std::string name = infile.ExIdToName(mCallId);
-    const void *fptr = parse_callbacks.at(name);
+    const void *fptr = parse_callbacks.at(name).first;
     mRet.mName = "ret";
     mCallErrNo = static_cast<CALL_ERROR_NO>(call.errNo);
     mReadPos = infile.GetReadPos();
@@ -1032,7 +1032,7 @@ CallTM::CallTM(InFile &infile, unsigned callNo, const BCall_vlen &call)
  : mCallNo(callNo), mTid(call.tid), mCallId(call.funcId), mBkColor(0xffffffff), mTxtColor(0x000000ff)
 {
     const std::string name = infile.ExIdToName(mCallId);
-    const void *fptr = parse_callbacks.at(name);
+    const void *fptr = parse_callbacks.at(name).first;
     mRet.mName = "ret";
     mCallErrNo = static_cast<CALL_ERROR_NO>(call.errNo);
     mReadPos = 0;
@@ -1122,7 +1122,7 @@ char* CallTM::Serialize(char* dest, int overrideID, bool injected)
         else
             pCall->funcId = overrideID;
         pCall->tid = mTid;
-        pCall->source = injected ? 1 : 0;
+        pCall->source = (injected || mInjected) ? 1 : 0;
         pCall->reserved = 0;
         dest += sizeof(BCall);
     } else {
@@ -1131,7 +1131,7 @@ char* CallTM::Serialize(char* dest, int overrideID, bool injected)
         else
             pCallVlen->funcId = overrideID;
         pCallVlen->tid = mTid;
-        pCallVlen->source = injected ? 1 : 0;
+        pCallVlen->source = (injected || mInjected) ? 1 : 0;
         pCallVlen->reserved = 0;
         dest += sizeof(BCall_vlen);
     }

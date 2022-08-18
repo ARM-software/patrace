@@ -63,6 +63,16 @@ static void prune(Json::Value& v)
     }
 }
 
+static void write_json(Json::Value result, const std::string& filename)
+{
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "   ";
+    std::ofstream outputFileStream(filename + ".json");
+    std::unique_ptr<Json::StreamWriter> writer(builder.newStreamWriter());
+    writer->write(result, &outputFileStream);
+    outputFileStream.close();
+}
+
 static inline bool relevant(int frame)
 {
     return (frame >= startframe && frame <= lastframe);
@@ -481,7 +491,6 @@ public:
         int framebuffers = 0;
         BlendMode blendMode;
         std::map<GLuint, GLenum> shadertypes;
-        std::map<GLuint, bool> textureIdCompressed;
         std::set<GLuint> textureIdUsed; // has been in use this frame
         std::map<GLenum, std::map<GLuint, GLuint>> boundTextureIds; // target : texture unit : texture id
         GLuint activeTextureUnit = 0;
@@ -612,7 +621,6 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *cust
         const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt());
         const GLuint unit = az->contexts[context_index].activeTextureUnit;
         const GLuint tex_id = az->contexts[context_index].boundTextureIds[target][unit];
-        az->contexts[context_index].textureIdCompressed[tex_id] = false;
         az->contexts[context_index].textures++;
         az->texturetypes[texEnum(target)]++;
         az->features[FEATURE_EGL_IMAGE]++;
@@ -653,20 +661,14 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *cust
         for (auto& c : az->contexts) // handle texture counting
         {
             // patrace defines 'frame' as any eglSwapBuffers on any context, so count all contexts
-            // TODO, handle shared contexts. For now, they will be counted as uncompressed.
             for (auto& t : c.textureIdUsed)
             {
-                if (c.textureIdCompressed.count(t) == 0)
-                {
-                    DBG_LOG("Texture ID %d on context ID=%d has been used, but never registered (call=%d)!\n", t, c.id, (int)call->mCallNo);
-                    continue;
-                }
-                bool compressed = c.textureIdCompressed.at(t);
-                if (relevant(input.frames))
-                {
-                    az->perframe["compressed_textures"].values.back() += compressed ? 1 : 0;
-                    az->perframe["uncompressed_textures"].values.back() += compressed ? 0 : 1;
-                }
+                if (!relevant(input.frames) || !input.contexts[context_index].textures.contains(t)) continue;
+                const int texidx = input.contexts[context_index].textures.remap(t);
+                const StateTracker::Texture& tx = input.contexts[context_index].textures.at(texidx);
+                const bool compressed = isCompressedFormat(tx.internal_format);
+                az->perframe["compressed_textures"].values.back() += compressed ? 1 : 0;
+                az->perframe["uncompressed_textures"].values.back() += compressed ? 0 : 1;
             }
             c.textureIdUsed.clear();
         }
@@ -725,7 +727,7 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *cust
     {
         az->features[FEATURE_DISCARD_FBO]++;
     }
-    else if (call->mCallName == "glInvalidateFramebuffer")
+    else if (call->mCallName == "glInvalidateFramebuffer" || call->mCallName == "glInvalidateSubFramebuffer")
     {
         az->features[FEATURE_INVALIDATE_FBO]++;
     }
@@ -776,7 +778,6 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *cust
         const GLuint unit = az->contexts[context_index].activeTextureUnit;
         const GLuint tex_id = az->contexts[context_index].boundTextureIds[target][unit];
         dumpstream << "    bound=" << tex_id << " active=" << unit << std::endl;
-        DEBUG_LOG("Created texture %u on context %d with target 0x%04x\n", tex_id, context_index, target);
         const int x = call->mArgs[3]->GetAsInt();
         std::string size;
         std::string format = SafeEnumString(call->mArgs[2]->GetAsUInt(), call->mCallName.c_str());
@@ -818,18 +819,15 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *cust
             {
                 DBG_LOG("Could not decipher texture format 0x%04x merged with type 0x%04x (type@%d)\n", (unsigned)call->mArgs[2]->GetAsUInt(), (unsigned)call->mArgs[type_param]->GetAsUInt(), type_param);
             }
-            az->contexts[context_index].textureIdCompressed[tex_id] = false;
         }
         else if (call->mCallName.find("glTexStorage") != std::string::npos)
         {
             const bool compressed = isCompressedFormat(call->mArgs[2]->GetAsUInt());
-            az->contexts[context_index].textureIdCompressed[tex_id] = compressed;
             az->contexts[context_index].compressed_textures += compressed ? 1 : 0;
         }
         else // compressed variant
         {
             az->contexts[context_index].compressed_textures++;
-            az->contexts[context_index].textureIdCompressed[tex_id] = true;
         }
 
         if (level == 0) // do not count uploading individual mipmaps as separate textures
@@ -1341,7 +1339,7 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *cust
                     continue; // no textures bound
                 }
                 const GLuint texture_id = input.contexts[context_index].textureUnits.at(s.value).at(binding);
-                dumpstream << "TextureUnit:" << s.value << "(" + texEnum(binding) + ") = TexureId:" << texture_id << ",SamplerId:"
+                dumpstream << "TextureUnit:" << s.value << "(" + texEnum(binding) + ") = TextureId:" << texture_id << ",SamplerId:"
                            << input.contexts[context_index].sampler_binding[s.value] << std::endl << "    ";
                 if (texture_id == 0) continue;
                 StateTracker::SamplerState sampler;
@@ -1457,21 +1455,12 @@ void AnalyzeTrace::analyze(ParseInterfaceBase& input)
 
     for (int frame : renderpassframes)
     {
-        Json::Value result = frame_json(input, frame);
         std::string filename = dump_csv_filename.empty() ? "frame_info" : dump_csv_filename;
-        filename += "_f" + std::to_string(frame) + ".json";
-        std::fstream fs;
-        fs.open(filename, std::fstream::out | std::fstream::trunc);
-        fs << result.toStyledString();
-        fs.close();
+        filename += "_f" + std::to_string(frame);
+        write_json(frame_json(input, frame), filename);
     }
     // JSON
-    Json::Value result = trace_json(input);
-    std::fstream fs;
-    std::string filename = dump_csv_filename.empty() ? "trace" : dump_csv_filename;
-    fs.open(filename + ".json", std::fstream::out | std::fstream::trunc);
-    fs << result.toStyledString();
-    fs.close();
+    write_json(trace_json(input), dump_csv_filename.empty() ? "trace" : dump_csv_filename);
     // API stats CSV
     write_CSV(dump_csv_filename.empty() ? "trace" : dump_csv_filename, perframe, true);
     // Usage stats CSV
@@ -1505,6 +1494,19 @@ void AnalyzeTrace::analyze(ParseInterfaceBase& input)
             }
         }
         fclose(fp);
+
+        filename = dump_csv_filename.empty() ? "textures_used_uninitialized" : dump_csv_filename + "_textures_used_uninitialized.csv";
+        fp = fopen(filename.c_str(), "w");
+        assert(fp);
+        fprintf(fp, "Call,Frame,TxIndex,TxId,ContextIndex,ContextId\n");
+        for (const auto& ctx : input.contexts)
+        {
+            for (const auto& tx : ctx.textures.all())
+            {
+                if (tx.uninit_usage) fprintf(fp, "%d,%d,%d,%d,%d,%d\n", tx.created.call, tx.created.frame, tx.index, (int)tx.id, ctx.index, (int)ctx.id);
+            }
+        }
+        fclose(fp);
     }
     // Dependencies CSV
     FILE* fp = fopen(dump_csv_filename.empty() ? "dependencies.csv" : std::string(dump_csv_filename + "_deps.csv").c_str(), "w");
@@ -1525,6 +1527,8 @@ void AnalyzeTrace::analyze(ParseInterfaceBase& input)
     }
     // Dump out callstats CSV
     write_callstats(input, dump_csv_filename.empty() ? "trace" : dump_csv_filename);
+
+    input.cleanup(); // last since this can crash sometimes
 }
 
 static double ratio_with_cap(long limit, long value)

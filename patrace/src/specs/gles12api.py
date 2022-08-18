@@ -53,8 +53,9 @@ commands.add('paMandatoryExtensions')
 commands.add('glAssertBuffer_ARM')
 commands.add('glStateDump_ARM')
 commands.add('glLinkProgram2')
-commands.add('glTexStorageAttribs2DARM')
-commands.add('glTexStorageAttribs3DARM')
+# Need to remove following 2 engtries when extension being merged into spec
+commands.add('glTexStorageAttribs2DEXT')
+commands.add('glTexStorageAttribs3DEXT')
 
 # Remove the 3 lines below when these functions are added to the Khronos XML
 commands.add('glShadingRateARM')
@@ -1016,8 +1017,8 @@ gles_functions = [
     GlFunction(Void, "glMultiDrawElementsIndirectEXT", [(GLenum_mode, "mode"), (GLenum, "type"), (GLpointerConst, "indirect"), (GLsizei, "drawcount"), (GLsizei, "stride")]),
 
     # ARM_texture_storage_compression
-    GlFunction(Void, "glTexStorageAttribs2DARM", [(GLenum, "target"), (GLsizei, "levels"), (GLenum, "internalformat"), (GLsizei, "width"), (GLsizei, "height"), (GLAttribList, "attrib_list")]),
-    GlFunction(Void, "glTexStorageAttribs3DARM", [(GLenum, "target"), (GLsizei, "levels"), (GLenum, "internalformat"), (GLsizei, "width"), (GLsizei, "height"), (GLsizei, "depth"), (GLAttribList, "attrib_list")]),
+    GlFunction(Void, "glTexStorageAttribs2DEXT", [(GLenum, "target"), (GLsizei, "levels"), (GLenum, "internalformat"), (GLsizei, "width"), (GLsizei, "height"), (GLAttribList, "attrib_list")]),
+    GlFunction(Void, "glTexStorageAttribs3DEXT", [(GLenum, "target"), (GLsizei, "levels"), (GLenum, "internalformat"), (GLsizei, "width"), (GLsizei, "height"), (GLsizei, "depth"), (GLAttribList, "attrib_list")]),
 
     # GL_EXT_external_buffer
     GlFunction(Void, "glBufferStorageExternalEXT", [(GLenum, "target"), (GLintptr, "offset"), (GLsizeiptr, "size"), (OpaquePointer(Void), "clientBuffer"), (GLbitfield, "flags")]),

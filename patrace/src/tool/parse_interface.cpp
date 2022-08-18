@@ -204,6 +204,7 @@ common::CallTM* ParseInterface::next_call()
     {
         context_index = current_context[mCall->mTid];
     }
+    else context_index = UNBOUND;
     if (!only_default || mCall->mTid == defaultTid)
     {
         interpret_call(mCall);
@@ -282,13 +283,21 @@ static void adjust_sampler_state(common::CallTM* call, GLenum pname, StateTracke
             state.swizzle[3] = arg->GetAsUInt();
             break;
         default:
-            DBG_LOG("Unsupported texture parameter for %s: %s\n", call->mCallName.c_str(), texEnum(pname).c_str());
+            DBG_LOG("Unsupported texture parameter for %s: 0x%04x (%s)\n", call->mCallName.c_str(), pname, texEnum(pname).c_str());
             break;
         }
     }
-    else // non-length-of-one array values - none supported yet
+    else // non-length-of-one array values
     {
-        DBG_LOG("Unsupported texture array parameter for %s: %s\n", call->mCallName.c_str(), texEnum(pname).c_str());
+        if (pname == GL_TEXTURE_BORDER_COLOR)
+        {
+            assert(arg->mArrayLen == 4);
+            state.border[0] = arg->mArray[0].GetAsFloat();
+            state.border[1] = arg->mArray[1].GetAsFloat();
+            state.border[2] = arg->mArray[2].GetAsFloat();
+            state.border[3] = arg->mArray[3].GetAsFloat();
+        }
+        else DBG_LOG("Unsupported texture array parameter for %s: 0x%04x (%s)\n", call->mCallName.c_str(), pname, texEnum(pname).c_str());
     }
 }
 
@@ -629,7 +638,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             if (surface_index != UNBOUND) surfaces[target_surface_index].swaps.insert(frames);
         }
         if (context_index != UNBOUND) contexts[context_index].swaps.insert(frames);
-        if (call->mTid == defaultTid) frames++;
+        if (!only_default || call->mTid == defaultTid) frames++;
         current_pos.frame = frames;
         if (context_index != UNBOUND)
         {
@@ -728,6 +737,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             {
                 for (auto& buffer : target.second)
                 {
+                    if (!contexts[context_index].buffers.contains(buffer.second.buffer)) continue; // weird Netflix bug
                     const int buffer_index = contexts[context_index].buffers.remap(buffer.second.buffer);
                     StateTracker::Buffer& buf = contexts[context_index].buffers.at(buffer_index);
                     (void)buf; // compiler: do not complain
@@ -923,7 +933,8 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             {
                 texture_index = contexts[context_index].textures.remap(texture);
                 StateTracker::Texture& tx = contexts[context_index].textures.at(texture_index);
-                if (frames >= ff_startframe && frames <= ff_endframe) tx.used = true; // ideally not needed here since we check on draw, but this makes unused texture detection for GFXB5 work
+                tx.used = true; // ideally not needed here since we check on draw, but this makes unused texture detection for GFXB5 work
+                                // frame range check is skipped here in case the framebuffer attachment is possibly used later
             }
         }
         else
@@ -933,7 +944,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             {
                 texture_index = contexts[context_index].textures.remap(texture);
                 StateTracker::Texture& tx = contexts[context_index].textures.at(texture_index);
-                if (frames >= ff_startframe && frames <= ff_endframe) tx.used = true; // as above
+                tx.used = true; // as above
                 textarget = tx.binding_point;
             }
         }
@@ -975,9 +986,12 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         const GLenum target = call->mArgs[0]->GetAsUInt();
         const GLuint unit = contexts[context_index].activeTextureUnit;
         const GLuint tex_id = contexts[context_index].textureUnits[unit][target];
-        const int target_texture_index = contexts[context_index].textures.remap(tex_id);
-        StateTracker::Texture& tx = contexts[context_index].textures.at(target_texture_index);
-        tx.mipmaps[call->mCallNo] = { frames, false };
+        if (tex_id != 0)
+        {
+            const int target_texture_index = contexts[context_index].textures.remap(tex_id);
+            StateTracker::Texture& tx = contexts[context_index].textures.at(target_texture_index);
+            tx.mipmaps[call->mCallNo] = { frames, false };
+        }
     }
     else if (call->mCallName == "glGenRenderbuffers" || call->mCallName == "glGenRenderbuffersOES")
     {
@@ -1548,8 +1562,8 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     else if (call->mCallName == "glTexStorage3D" || call->mCallName == "glTexStorage2D" || call->mCallName == "glTexStorage1D"
              || call->mCallName == "glTexStorage3DEXT" || call->mCallName == "glTexStorage2DEXT" || call->mCallName == "glTexStorage1DEXT"
              || call->mCallName == "glTexImage3D" || call->mCallName == "glTexImage2D" || call->mCallName == "glTexImage1D" || call->mCallName == "glTexImage3DOES"
-             || call->mCallName == "glCompressedTexImage3D" || call->mCallName == "glCompressedTexImage2D"
-             || call->mCallName == "glCompressedTexImage1D")
+             || call->mCallName == "glCompressedTexImage3D" || call->mCallName == "glCompressedTexImage2D" || call->mCallName == "glCompressedTexImage1DOES"
+             || call->mCallName == "glCompressedTexImage1D" || call->mCallName == "glCompressedTexImage3DOES" || call->mCallName == "glCompressedTexImage2DOES")
     {
         const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt());
         const GLuint unit = contexts[context_index].activeTextureUnit;
@@ -1559,6 +1573,32 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         {
             const int target_texture_index = contexts[context_index].textures.remap(tex_id);
             StateTracker::Texture& tex = contexts[context_index].textures[target_texture_index];
+            if (call->mCallName.find("glTexImage") != std::string::npos || call->mCallName.find("glCompressedTexImage") != std::string::npos)
+            {
+                tex.initialized = true;
+                int valno = -1;
+                if (call->mCallName == "glTexImage1D") valno = 7;
+                else if (call->mCallName == "glTexImage2D") valno = 8;
+                else if (call->mCallName == "glTexImage3D") valno = 9;
+                else if (call->mCallName == "glTexImage3DOES") valno = 9;
+                else if (call->mCallName == "glCompressedTexImage1D") valno = 6;
+                else if (call->mCallName == "glCompressedTexImage2D") valno = 7;
+                else if (call->mCallName == "glCompressedTexImage3D") valno = 8;
+                else if (call->mCallName == "glCompressedTexImage1DOES") valno = 6;
+                else if (call->mCallName == "glCompressedTexImage2DOES") valno = 7;
+                else if (call->mCallName == "glCompressedTexImage3DOES") valno = 8;
+                assert(valno != -1);
+
+                if (valno > 0)
+                {
+                    assert(call->mArgs[valno]->mType == common::Opaque_Type);
+                    // very old trace files will have call->mArgs[valno]->mOpaqueIns->mType == common::Uint_Type, not sure how to handle here
+                    if (call->mArgs[valno]->mOpaqueIns->mType == common::Blob_Type && call->mArgs[valno]->mOpaqueIns->mBlobLen == 0)
+                    {
+                        tex.initialized = false;
+                    }
+                }
+            }
             tex.binding_point = target;
             if (call->mCallName.find("TexStorage") != std::string::npos)
             {
@@ -1599,6 +1639,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             const int target_texture_index = contexts[context_index].textures.remap(tex_id);
             StateTracker::Texture& tex = contexts[context_index].textures[target_texture_index];
             tex.partial_update();
+            tex.initialized = true;
         }
         else
         {
@@ -1633,6 +1674,19 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         }
         contexts[context_index].image_binding[unit] = texid;
     }
+    else if (call->mCallName == "glTexBufferEXT")
+    {
+        const unsigned unit = contexts[context_index].activeTextureUnit;
+        const GLuint target = call->mArgs[0]->GetAsUInt();
+        const GLuint buf_id = call->mArgs[2]->GetAsUInt();
+        const GLuint tex_id = contexts[context_index].textureUnits[unit][target];
+        if (tex_id != 0 && buf_id != 0)
+        {
+            const int index = contexts[context_index].textures.remap(tex_id);
+            StateTracker::Texture& tx = contexts[context_index].textures.at(index);
+            tx.initialized = true; // assume it is initialized here
+        }
+    }
     else if (call->mCallName == "glBindTexture")
     {
         const unsigned unit = contexts[context_index].activeTextureUnit;
@@ -1661,22 +1715,24 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     else if (call->mCallName == "eglDestroyImageKHR" || call->mCallName == "eglDestroyImage")
     {
         const unsigned image_id = call->mArgs[1]->GetAsUInt();
-        if (contexts[context_index].textures.contains(image_id))
+        int ctxidx = context_index;
+        if (!contexts[ctxidx].textures.contains(image_id)) ctxidx = 0; // our default storage location for external images
+        if (contexts[ctxidx].textures.contains(image_id))
         {
-            const int image_index = contexts[context_index].images.remap(image_id);
-            StateTracker::Image& image = contexts[context_index].images.at(image_index);
+            const int image_index = contexts[ctxidx].images.remap(image_id);
+            StateTracker::Image& image = contexts[ctxidx].images.at(image_index);
             if (image.type == EGL_GL_TEXTURE_2D_KHR && image.value != 0)
             {
-                const int index = contexts[context_index].textures.remap(image.value);
-                (void)contexts[context_index].textures.at(index); // just touch it
+                const int index = contexts[ctxidx].textures.remap(image.value);
+                (void)contexts[ctxidx].textures.at(index); // just touch it
             }
-            contexts[context_index].images.remove(image_id);
+            contexts[ctxidx].images.remove(image_id);
         }
     }
     else if (call->mCallName == "eglCreateImageKHR" || call->mCallName == "eglCreateImage")
     {
         const unsigned our_context_id = call->mArgs[1]->GetAsUInt();
-        const int our_context_index = context_remapping.at(our_context_id);
+        const int our_context_index = (our_context_id == (int64_t)EGL_NO_CONTEXT) ? 0 : context_remapping.at(our_context_id);
         const unsigned target = call->mArgs[2]->GetAsUInt();
         const unsigned value = call->mArgs[3]->GetAsUInt();
         const unsigned image_id = call->mRet.GetAsUInt();
@@ -1690,6 +1746,23 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             StateTracker::Image& image = contexts[our_context_index].images.add(image_id);
             image.type = target;
             image.value = value;
+        }
+    }
+    else if (call->mCallName == "glEGLImageTargetTexture2DOES")
+    {
+        const unsigned target = call->mArgs[0]->GetAsUInt();
+        const unsigned image_id = call->mArgs[1]->GetAsUInt();
+        if (target == GL_TEXTURE_EXTERNAL_OES && contexts[context_index].images.contains(image_id))
+        {
+            const StateTracker::Image& image = contexts[context_index].images.id(image_id);
+            assert(image.type != EGL_GL_RENDERBUFFER_KHR); // matches EGL_GL_TEXTURE*
+            const unsigned texture_id = image.value;
+            StateTracker::Texture& tx = contexts[context_index].textures.id(texture_id);
+            if (texture_id != 0)
+            {
+                tx.used = true; // Textures create by glEGLImageTargetTexture2DOES have dependencies with the source textures of eglImage,
+                                // so even the source textures not in target frame range should be marked as used.
+            }
         }
     }
     else if (call->mCallName == "glActiveTexture")
@@ -1823,7 +1896,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             contexts[context_index].shaders.remove(id);
         }
     }
-    else if (call->mCallName == "glLinkProgram")
+    else if (call->mCallName == "glLinkProgram" || call->mCallName == "glLinkProgram2")
     {
         GLuint program = call->mArgs[0]->GetAsUInt();
         int target_program_index = contexts[context_index].programs.remap(program);
@@ -2541,7 +2614,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         contexts[context_index].viewport.near = call->mArgs[0]->GetAsFloat();
         contexts[context_index].viewport.far = call->mArgs[1]->GetAsFloat();
     }
-    else if (call->mCallName == "glInvalidateFramebuffer" || call->mCallName == "glDiscardFramebufferEXT")
+    else if (call->mCallName == "glInvalidateFramebuffer" || call->mCallName == "glDiscardFramebufferEXT" || call->mCallName == "glInvalidateSubFramebuffer")
     {
         const GLenum target = call->mArgs[0]->GetAsUInt();
         assert(target == GL_FRAMEBUFFER || target == GL_DRAW_FRAMEBUFFER || target == GL_READ_FRAMEBUFFER);
@@ -2666,6 +2739,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 rp.render_targets[rb.first].second = index;
                 rp.attachments[i].index = index;
                 StateTracker::Texture& tx = contexts[context_index].textures.at(index);
+                tx.initialized = true; // assume it is used and thus initialized
                 if (frames >= ff_startframe && frames <= ff_endframe) tx.used = true;
                 if (tx.mipmaps.rbegin() != tx.mipmaps.rend())
                 {
@@ -2754,7 +2828,23 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             program_idx = contexts[context_index].program_pipelines.at(contexts[context_index].program_pipeline_index).program_stages.at(GL_FRAGMENT_SHADER);
         }
         StateTracker::Program& p = contexts[context_index].programs.at(program_idx);
-        for (auto& pair : p.texture_bindings)
+        for (auto& unitpair : contexts[context_index].textureUnits)
+        {
+            const GLenum unit = unitpair.first;
+            for (auto& targetpair : unitpair.second)
+            {
+                const GLenum target = targetpair.first;
+                const GLuint texture_id = targetpair.second;
+                if (texture_id == 0 || !contexts[context_index].textures.contains(texture_id)) continue;
+                const int idx = contexts[context_index].textures.remap(texture_id);
+                StateTracker::Texture& tx = contexts[context_index].textures.at(idx); // we really shouldn't touch it here...
+                if (!tx.initialized)
+                {
+                    tx.uninit_usage = true;
+                }
+            }
+        }
+        for (auto& pair : p.texture_bindings) // these are only set if replayed for real
         {
             const StateTracker::Program::ProgramSampler& s = pair.second;
             const GLenum binding = samplerTypeToBindingType(s.type);
@@ -2764,6 +2854,10 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 if (texture_id == 0) continue;
                 const int idx = contexts[context_index].textures.remap(texture_id);
                 StateTracker::Texture& tx = contexts[context_index].textures.at(idx); // touch it
+                if (!tx.initialized)
+                {
+                    tx.uninit_usage = true;
+                }
                 if (frames >= ff_startframe && frames <= ff_endframe) tx.used = true;
                 if (tx.mipmaps.rbegin() != tx.mipmaps.rend())
                 {
@@ -2826,4 +2920,8 @@ void ParseInterface::loop(Callback c, void *data)
         if (call) cont = c(*this, call, data);
     }
     while (call && cont);
+}
+
+void ParseInterface::cleanup()
+{
 }

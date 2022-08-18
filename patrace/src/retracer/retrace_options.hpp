@@ -109,7 +109,11 @@ struct RetraceOptions
 
     std::string         mCpuMask;
 
+    bool                mRunAll = false;
     bool                dmaSharedMemory = false;
+    int                 eglAfrcRate = -1;
+    int                 eglImageAfrcRate = -1;
+    int                 texAfrcRate = -1;
 
     std::string         mShaderCacheFile;
     bool                mShaderCacheRequired = false;

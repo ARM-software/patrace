@@ -16,6 +16,7 @@
 #include "common/base64.hpp"
 #include "common/os_string.hpp"
 #include "common/trace_callset.hpp"
+#include "retracer/afrc_enum.hpp"
 
 #include "libcollector/interface.hpp"
 
@@ -172,6 +173,7 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
     options.mPerfFreq = value.get("perffreq",1000).asInt();
 
     options.mPreload = value.get("preload", false).asBool();
+    options.mRunAll = value.get("runAllCalls", false).asBool();
 
     // Values needed by CLI and GUI
     options.mSnapshotPrefix = value.get("snapshotPrefix", "").asString();
@@ -269,6 +271,27 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
     if (value.get("perfmon", false).asBool())
     {
         options.mPerfmon = true;
+    }
+
+    options.eglAfrcRate = value.get("eglSurfaceCompressionFixedRate", -1).asInt();
+    if (options.eglAfrcRate != -1 && (options.eglAfrcRate < compression_fixed_rate_disabled || options.eglAfrcRate >= compression_fixed_rate_flag_end))
+    {
+        DBG_LOG("!!!WARNING: Invalid compression control flag (%d) on eglSurface. Should be between %d and %d.\n", options.eglAfrcRate, compression_fixed_rate_disabled, compression_fixed_rate_flag_end-1);
+        options.eglAfrcRate = -1;
+    }
+
+    options.eglImageAfrcRate = value.get("eglImageCompressionFixedRate", -1).asInt();
+    if (options.eglImageAfrcRate != -1 && (options.eglImageAfrcRate != compression_fixed_rate_default && options.eglImageAfrcRate != compression_fixed_rate_disabled))
+    {
+        DBG_LOG("!!!WARNING: Invalid compression control flag (%d) on eglImage. Should be %d or %d.\n", options.eglImageAfrcRate, compression_fixed_rate_disabled, compression_fixed_rate_default);
+        options.eglImageAfrcRate = -1;
+    }
+
+    options.texAfrcRate = value.get("glesTextureCompressionFixedRate", -1).asInt();
+    if (options.texAfrcRate != -1 && (options.texAfrcRate < compression_fixed_rate_disabled || options.texAfrcRate >= compression_fixed_rate_flag_end))
+    {
+        DBG_LOG("!!!WARNING: Invalid compression control flag (%d) on texture. Should be between %d and %d.\n", options.texAfrcRate, compression_fixed_rate_disabled, compression_fixed_rate_flag_end-1);
+        options.texAfrcRate = -1;
     }
 
     if (value.isMember("shaderCache"))

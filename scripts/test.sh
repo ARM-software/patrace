@@ -17,6 +17,9 @@ if [ "$(pwd|sed 's/.*scripts.*/scripts/')" == "scripts" ]; then
 	exit 1
 fi
 
+# Make sure we do not pollute screenshots with FPS numbers, causing indeterminism
+unset __GL_SHOW_GRAPHICS_OSD
+
 ### Defines and functions
 #
 
@@ -40,13 +43,13 @@ export ASAN_OPTIONS="symbolize=1,abort_on_error=1"
 function build_test()
 {
 	echo "*** Testing BUILDING"
-#	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 debug
-#	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 release
-#	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 sanitizer
-#	NO_PYTHON_BUILD=y scripts/build.py patrace fbdev_aarch64 release
+	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 debug
+	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 release
+	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x64 sanitizer
+	NO_PYTHON_BUILD=y scripts/build.py patrace fbdev_aarch64 release
 	NO_PYTHON_BUILD=y scripts/build.py patrace fbdev_x64 sanitizer
-#	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x32 release
-#	NO_PYTHON_BUILD=y scripts/build.py patrace wayland_x64 debug
+	NO_PYTHON_BUILD=y scripts/build.py patrace x11_x32 release
+	NO_PYTHON_BUILD=y scripts/build.py patrace wayland_x64 debug
 }
 
 function run()
@@ -54,7 +57,7 @@ function run()
 	echo
 	echo "-- running $1 --"
 	set -x
-	PADEMO_NULL_RUN=1 LD_LIBRARY_PATH=$DDK_PATH:. ${FB_PATRACE_TEST}/$1
+	TOOLSTEST_NULL_RUN=1 LD_LIBRARY_PATH=$DDK_PATH:. ${FB_PATRACE_TEST}/gles_$1
 	set +x
 }
 
@@ -64,7 +67,7 @@ function trace()
 	echo "-- tracing with null driver: $1 --"
 	echo "ASANLIB: $ASANLIB"
 	set -x
-	PADEMO_NULL_RUN=1 OUT_TRACE_FILE=$OUT/$1 LD_PRELOAD=${ASANLIB}:${FB_PATRACE_LIB}/libegltrace.so LD_LIBRARY_PATH=$DDK_PATH:. INTERCEPTOR_LIB=$FB_PATRACE_LIB/libegltrace.so TRACE_LIBEGL=$DDK_PATH/libEGL.so TRACE_LIBGLES1=$DDK_PATH/libGLESv1_CM.so TRACE_LIBGLES2=$DDK_PATH/libGLESv2.so ${FB_PATRACE_TEST}/$1
+	TOOLSTEST_NULL_RUN=1 OUT_TRACE_FILE=$OUT/$1 LD_PRELOAD=${ASANLIB}:${FB_PATRACE_LIB}/libegltrace.so LD_LIBRARY_PATH=$DDK_PATH:. INTERCEPTOR_LIB=$FB_PATRACE_LIB/libegltrace.so TRACE_LIBEGL=$DDK_PATH/libEGL.so TRACE_LIBGLES1=$DDK_PATH/libGLESv1_CM.so TRACE_LIBGLES2=$DDK_PATH/libGLESv2.so ${FB_PATRACE_TEST}/gles_$1
 	set +x
 }
 
@@ -73,7 +76,7 @@ function trace_desktop()
 	echo
 	echo "-- tracing with desktop driver: $1 --"
 	set -x
-	OUT_TRACE_FILE=$OUT2/$1 LD_PRELOAD=${ASANLIB}:${FB_PATRACE_LIB}/libegltrace.so LD_LIBRARY_PATH=$DDK_PATH:. INTERCEPTOR_LIB=$FB_PATRACE_LIB/libegltrace.so TRACE_LIBEGL=$DDK_PATH/libEGL.so TRACE_LIBGLES1=$DDK_PATH/libGLESv1_CM.so TRACE_LIBGLES2=$DDK_PATH/libGLESv2.so ${FB_PATRACE_TEST}/$1
+	OUT_TRACE_FILE=$OUT2/$1 LD_PRELOAD=${ASANLIB}:${FB_PATRACE_LIB}/libegltrace.so LD_LIBRARY_PATH=$DDK_PATH:. INTERCEPTOR_LIB=$FB_PATRACE_LIB/libegltrace.so TRACE_LIBEGL=$DDK_PATH/libEGL.so TRACE_LIBGLES1=$DDK_PATH/libGLESv1_CM.so TRACE_LIBGLES2=$DDK_PATH/libGLESv2.so ${FB_PATRACE_TEST}/gles_$1
 	set +x
 }
 
@@ -140,6 +143,8 @@ function integration_test_desktop()
 	trace_desktop oes_sample_shading
 	trace_desktop oes_texture_stencil8
 	trace_desktop ext_gpu_shader5
+	trace_desktop uninit_texture_1
+	trace_desktop uninit_texture_2
 
 	replay_desktop dummy_1
 	replay_desktop multisurface_1
@@ -239,6 +244,8 @@ function integration_test()
 	trace oes_sample_shading
 	trace oes_texture_stencil8
 	trace ext_gpu_shader5
+	trace uninit_texture_1
+	trace uninit_texture_2
 
 	# --- STEP 3 : Retrace with null driver
 	nreplay dummy_1
@@ -392,13 +399,13 @@ function tools_test()
 	${X11_PATRACE_BIN}/drawstate --version
 	${X11_PATRACE_ROOT}/tools/shader_analyzer -v
 	${X11_PATRACE_ROOT}/tools/shader_analyzer --selftest
-	${X11_PATRACE_ROOT}/bin/drawstate --overrideEGL 8 8 8 8 24 8 --noscreen $TESTTRACE3 72
-	${X11_PATRACE_ROOT}/tools/shader_analyzer --test geometry_shader_1.1_f2_c*/shader_2.vert
-	${X11_PATRACE_ROOT}/tools/shader_analyzer --test geometry_shader_1.1_f2_c*/shader_3.frag
-	${X11_PATRACE_ROOT}/tools/shader_analyzer --test geometry_shader_1.1_f2_c*/shader_4.geom
-	${X11_PATRACE_ROOT}/bin/drawstate --noscreen $TESTTRACE1 67
-	${X11_PATRACE_ROOT}/tools/shader_analyzer --test indirectdraw_1.1_f2_c*/shader_2.vert
-	${X11_PATRACE_ROOT}/tools/shader_analyzer --test indirectdraw_1.1_f2_c*/shader_3.frag
+	${X11_PATRACE_ROOT}/bin/drawstate --overrideEGL 8 8 8 8 24 8 --noscreen $TESTTRACE3 158
+	${X11_PATRACE_ROOT}/tools/shader_analyzer --test geometry_shader_1.1_f*/shader_2.vert
+	${X11_PATRACE_ROOT}/tools/shader_analyzer --test geometry_shader_1.1_f*/shader_3.frag
+	${X11_PATRACE_ROOT}/tools/shader_analyzer --test geometry_shader_1.1_f*/shader_4.geom
+	#${X11_PATRACE_ROOT}/bin/drawstate --noscreen $TESTTRACE1 159
+	#${X11_PATRACE_ROOT}/tools/shader_analyzer --test indirectdraw_1.1_f*/shader_2.vert
+	#${X11_PATRACE_ROOT}/tools/shader_analyzer --test indirectdraw_1.1_f*/shader_3.frag
 	set +x
 	rm -rf geometry_shader_1.1_f2_c*
 	rm -rf indirectdraw_1.1_f3_c*
@@ -508,9 +515,11 @@ function analyze_trace_test()
 	az_subtest_1 bindbufferrange_1
 	az_subtest_1 imagetex_1
 	az_subtest_1 khr_debug
+
 	# -- The below needs glCreateShaderProgramv support in analyze_trace first
 	#az_subtest programs_1
 	#az_subtest_1 compute_3
+
 	# -- The below needs multithread set in the header JSON first
 	#az_subtest multithread_1
 	#az_subtest multithread_2
@@ -520,8 +529,8 @@ function analyze_trace_test()
 #
 
 build_test
-#integration_test
-#replayer_test
+integration_test
+replayer_test
 tools_test
 
 echo

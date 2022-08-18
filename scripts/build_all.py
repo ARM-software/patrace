@@ -194,7 +194,6 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
             ' -DENABLE_TOOLS=FALSE'
             ' -DENABLE_PYTHON_TOOLS=FALSE'
             ' -DARCH={arch}'
-            ' -DCMAKE_VERBOSE_MAKEFILE=TRUE'
             ' -B{build_dir}'
             ' {other_params}'
         ).format(

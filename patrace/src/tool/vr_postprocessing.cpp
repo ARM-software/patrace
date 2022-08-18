@@ -665,7 +665,7 @@ void filter_calls_common(common::CallTM *call, bool &skip_call) {
     {
         if (call->mCallName == "glFlush")
             skip_call = true;
-        if (call->mCallName == "glInvalidateFramebuffer")
+        if (call->mCallName == "glInvalidateFramebuffer" || call->mCallName == "glInvalidateSubFramebuffer")
             skip_call = true;
         if ((call->mCallName == "glClear") || (call->mCallName == "glDrawElements"))
             skip_call = true;

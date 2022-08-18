@@ -5,6 +5,7 @@
 #include <retracer/trace_executor.hpp>
 #include <retracer/retrace_api.hpp>
 #include <retracer/config.hpp>
+#include <retracer/afrc_enum.hpp>
 #include <dispatch/eglproc_retrace.hpp>
 
 #include "libcollector/interface.hpp"
@@ -31,6 +32,7 @@ usage(const char *argv0) {
         "  -msaa SAMPLES enable multi sample anti alias for the final framebuffer\n"
         "  -msaa_override SAMPLES override any existing MSAA setting for intermediate framebuffers with MSAA\n"
         "  -preload START STOP preload the trace file frames from START to STOP. START must be greater than zero.\n"
+        "  -all run all calls even those with no side-effects. This is useful for CPU load measurements.\n"
         "  -framerange FRAME_START FRAME_END start fps timer at frame start (inclusive), stop timer and playback before frame end (exclusive).\n"
         "  -loop TIMES repeat the preloaded frames at least the given number of times\n"
         "  -looptime SECONDS repeat the preloaded frames at least the given number of seconds\n"
@@ -39,6 +41,9 @@ usage(const char *argv0) {
         "  -instr Output the supported instrumentation modes as a JSON file. Do not play trace.\n"
         "  -offscreen Run in offscreen mode\n"
         "  -singlewindow Force everything to render in a single window\n"
+        "  -egl_surface_compression_fixed_rate  CompressionControlFlag Set compression control flag on framebuffer.\n"
+        "  -egl_image_compression_fixed_rate    CompressionControlFlag Set compression control flag on eglImage\n"
+        "  -gles_texture_compression_fixed_rate CompressionControlFlag Set compression control flag on texture\n"
         "  -singleframe Draw only one frame for each buffer swap (offscreen only)\n"
         "  -debug output debug messages\n"
         "  -debugfull output all of the current invoked gl functions, with callNo, frameNo and skipped or discarded information\n"
@@ -193,6 +198,8 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             }
         } else if (!strcmp(arg, "-instrumentation-delay")) {
             mOptions.mInstrumentationDelay = readValidValue(argv[++i]);
+        } else if (!strcmp(arg, "-all")) {
+            mOptions.mRunAll = true;
         } else if (!strcmp(arg, "-preload")) {
             mOptions.mPreload = true;
             mOptions.mBeginMeasureFrame = readValidValue(argv[++i]);
@@ -241,6 +248,27 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             mOptions.mOnscreenConfig = EglConfigInfo(5, 6, 5, 0, 0, 0, 0, 0);
         } else if (!strcmp(arg, "-singlewindow")) {
             mOptions.mForceSingleWindow = true;
+        } else if (!strcmp(arg, "-egl_surface_compression_fixed_rate")) {
+            mOptions.eglAfrcRate = readValidValue(argv[++i]);
+            if (mOptions.eglAfrcRate != -1 && (mOptions.eglAfrcRate < compression_fixed_rate_disabled || mOptions.eglAfrcRate >= compression_fixed_rate_flag_end))
+            {
+                DBG_LOG("!!!WARNING: Invalid compression control flag (%d) on eglSurface. Should be between %d and %d.\n", mOptions.eglAfrcRate, compression_fixed_rate_disabled, compression_fixed_rate_flag_end-1);
+                mOptions.eglAfrcRate = -1;
+            }
+        } else if (!strcmp(arg, "-egl_image_compression_fixed_rate")) {
+            mOptions.eglImageAfrcRate = readValidValue(argv[++i]);
+            if (mOptions.eglImageAfrcRate != -1 && (mOptions.eglImageAfrcRate != compression_fixed_rate_default && mOptions.eglImageAfrcRate != compression_fixed_rate_disabled))
+            {
+                DBG_LOG("!!!WARNING: Invalid compression control flag (%d) on eglImage. Should be %d or %d.\n", mOptions.eglImageAfrcRate, compression_fixed_rate_disabled, compression_fixed_rate_default);
+                mOptions.eglImageAfrcRate = -1;
+            }
+        } else if (!strcmp(arg, "-gles_texture_compression_fixed_rate")) {
+            mOptions.texAfrcRate = readValidValue(argv[++i]);
+            if (mOptions.texAfrcRate != -1 && (mOptions.texAfrcRate < compression_fixed_rate_disabled || mOptions.texAfrcRate >= compression_fixed_rate_flag_end))
+            {
+                DBG_LOG("!!!WARNING: Invalid compression control flag (%d) on texture. Should be between %d and %d.\n", mOptions.texAfrcRate, compression_fixed_rate_disabled, compression_fixed_rate_flag_end-1);
+                mOptions.texAfrcRate = -1;
+            }
         } else if (!strcmp(arg, "-multithread")) {
             mOptions.mMultiThread = true;
         } else if (!strcmp(arg, "-shadercache")) {
@@ -371,8 +399,8 @@ int main(int argc, char** argv)
     }
 
     // Register Entries before opening tracefile as sigbook is read there
-    common::gApiInfo.RegisterEntries(gles_callbacks);
-    common::gApiInfo.RegisterEntries(egl_callbacks);
+    common::gApiInfo.RegisterEntries(gles_callbacks, gRetracer.mOptions.mRunAll);
+    common::gApiInfo.RegisterEntries(egl_callbacks, gRetracer.mOptions.mRunAll);
 
     if (!gRetracer.OpenTraceFile(gRetracer.mOptions.mFileName.c_str()))
     {

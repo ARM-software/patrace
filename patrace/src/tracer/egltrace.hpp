@@ -82,6 +82,7 @@ public:
     unsigned callNo = 0;
     unsigned frameNo = 0;
     bool snapDraw = false;
+    long long mFrameBegTime = 0;
 
     TraceOut();
     ~TraceOut();

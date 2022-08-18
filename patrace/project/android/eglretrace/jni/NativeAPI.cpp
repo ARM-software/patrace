@@ -78,8 +78,8 @@ JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_initFromJson(JNIE
     const char* traceDir = env->GetStringUTFChars(jstrTraceDir, 0);
 
     TraceExecutor::initFromJson(jsonData, traceDir, resultFile);
-    common::gApiInfo.RegisterEntries(gles_callbacks);
-    common::gApiInfo.RegisterEntries(egl_callbacks);
+    common::gApiInfo.RegisterEntries(gles_callbacks, gRetracer.mOptions.mRunAll);
+    common::gApiInfo.RegisterEntries(egl_callbacks, gRetracer.mOptions.mRunAll);
     gRetracer.OpenTraceFile(gRetracer.mOptions.mFileName.c_str());
 
     env->ReleaseStringUTFChars(jstrJsonData, jsonData);

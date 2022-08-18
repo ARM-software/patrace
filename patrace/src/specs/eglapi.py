@@ -432,6 +432,7 @@ eglapi.addFunctions([
     GlFunction(Void, "glEGLImageTargetTexture2DOES", [(GLenum, "target"), (EGLImageKHR, "image")]),
     GlFunction(Void, "glEGLImageTargetRenderbufferStorageOES", [(GLenum, "target"), (EGLImageKHR, "image")]),
     GlFunction(Void, "glEGLImageTargetTexStorageEXT", [(GLenum, "target"), (EGLImageKHR, "image"), (EGLAttribList, "attrib_list")]),
+    GlFunction(EGLBoolean, "eglQuerySupportedCompressionRatesEXT", [(EGLDisplay, "dpy"), (EGLConfig, "config"), (EGLAttribList2, "attrib_list"), Out(Pointer(EGLint), "rates"), (EGLint, "rate_size"), Out(Pointer(EGLint), "num_rates")]),
 
     # Fake call to store extra window information
     GlFunction(EGLSurface, "eglCreateWindowSurface2", [(EGLDisplay, "dpy"), (EGLConfig, "config"), (EGLNativeWindowType, "win"), (EGLAttribList, "attrib_list"), (EGLint, "x"), (EGLint, "y"), (EGLint, "width"), (EGLint, "height")]),

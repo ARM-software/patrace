@@ -31,13 +31,21 @@
 #ifndef _EGLIMPORTS_HPP_
 #define _EGLIMPORTS_HPP_
 
+#ifdef ENABLE_X11
+#define USE_X11
+#endif
+
+#include "KHR/khrplatform.h"
+
+#include "EGL/egl.h"
+#include "EGL/eglplatform.h"
+#include "EGL/eglext.h"
+
 #define GL_GLEXT_PROTOTYPES
 #include "GLES/gl.h"
 #include "GLES3/gl3.h"
 #include "GLES3/gl31.h"
 #include "GLES3/gl32.h"
-
-#include "KHR/khrplatform.h"
 
 #ifdef _GDI32_
 /* Prevent __declspec(dllimport) attribute */
@@ -45,12 +53,8 @@
 #define KHRONOS_APICALL
 #endif
 
-// EGL
-#include "EGL/egl.h"
-#include "EGL/eglext.h"
 /* Prevent collision with Trace::Bool */
 #undef Bool
-
 
 // OpenGL ES
 #include "GLES/glplatform.h"

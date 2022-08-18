@@ -510,6 +510,7 @@ There are three different ways to tell the retracer which parameters that should
 | `-msaa SAMPLES`                              | Enable multi sample anti alias for the final framebuffer |
 | `-msaa_override SAMPLES`                     | Override any existing MSAA settings for intermediate framebuffers that already use MSAA. |
 | `-preload START STOP`                        | preload the trace file frames from START to STOP. START must be greater than zero. Implies -framerange.                                                                                                                                |
+| `-all                                        | (since r4p0) run all calls even those with no side-effects. This is useful for CPU load measurements. |
 | `-framerange FRAME_START FRAME_END`          | start fps timer at frame start, stop timer and playback at frame end. Frame start can be 0, but you usually want to measure the middle-to-end part of a trace, so you're not measuring time spent for EGL init and loading screens.    |
 | `-instrumentation-delay USECONDS`            | Delay in microseconds that the retracer should sleep for after each present call in the measurement range.    |
 | `-loop TIMES`                                | (since r3p0) Loop the given frame range at least the given number of times. |
@@ -544,6 +545,9 @@ There are three different ways to tell the retracer which parameters that should
 | `-cpumask`                                   | (since r2p15) Lock all work associated with this replay to the specified CPU cores, given as a string of one or zero for each core. |
 | `-multithread`                               | Enable to run the calls in all the threads recorded in the pat file. These calls will be dispatched to corresponding work threads and run simultaneously. The execution sequence of calls between different threads is not guaranteed. |
 | `-dmasharedmem`                              | (since r2p16) The retracer would use shared memory feature of linux to handle dma buffer. Recommended on model. |
+| `-egl_surface_compression_fixed_rate flag`   | (since r3p4)  Set compression control flag on framebuffer. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate; 2: enable fixed rate compression with lowest rate; 3: enable fixed rate compression with highest rate.  |
+| `-egl_image_compression_fixed_rate flag`     | (since r3p4)  Set compression control flag on eglImage. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate.  |
+| `-gles_texture_compression_fixed_rate flag`  | (since r3p4)  Set compression control flag on texture.  0: disable fixed rate compression; 1: enable fixed rate compression with default rate; 2: enable fixed rate compression with lowest rate; 3: enable fixed rate compression with highest rate.   |
 | `-shadercache fileName`                          | (since r2p16.1) Load binary shaders from the given file, if available. Will add .bin and .idx to the given name. If not, store binary shaders there for later use. |
 | `-strictshadercache`                         | (since r2p16.1) If a binary shader is not available in the shader cache file, abort with an error. |
 
@@ -595,6 +599,9 @@ There are three different ways to tell the retracer which parameters that should
 | `--ez force_single_window` | True/False(default) to force render all the calls onto a single surface. This can't be true with multithread mode enabled.                                                                                                                                                                                                                                                   |
 | `--ez enFullScreen`        | True/False(default) to hide the system navigator and control bars.                                                                                                                                                                                                                                                                                                           |
 | `--ez debug`               | True/False(default) Output debug messages.                                                                                                                                                                                                                                                                                                                                   |
+| `--ei eglSurfaceCompressionFixedRate`    | (since r3p4) Set compression control flag on framebuffer. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate; 2: enable fixed rate compression with lowest rate; 3: enable fixed rate compression with highest rate.  |
+| `--ei eglImageCompressionFixedRate`      | (since r3p4) Set compression control flag on eglImage. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate.   |
+| `--ei glesTextureCompressionFixedRate`   | (since r3p4) Set compression control flag on texture. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate; 2: enable fixed rate compression with lowest rate; 3: enable fixed rate compression with highest rate.  |
 
 #### Parameters from JSON file
 
@@ -633,6 +640,7 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | overrideResolution           | boolean    | yes      | If true then the resolution is overridden                                                                                                                                                                                              |
 | overrideWidth                | int        | yes      | Override width in pixels                                                                                                                                                                                                               |
 | preload                      | boolean    | yes      | Preloads the trace                                                                                                                                                                                                                     |
+| runAllCalls                  | boolean    | yes      | (since r4p0) Run all calls even those with no side-effects. This is useful for CPU load measurements. |
 | snapshotCallset              | string     | yes      | call begin - call end / frequency, example: '10-100/draw' or '10-100/frame' (snapshot after every call in range!). The snapshot is saved under the current directory by default.                                                       |
 | snapshotPrefix               | string     | yes      | Contain a path and a prefix, resulting screenshots will be named prefix-callnumber.png                                                                                                                                                |
 | removeUnusedVertexAttributes | boolean    | yes      | Modify the shader in runtime by removing attributes that were not enabled during tracing. When this is enabled, 'storeProgramInformation' is automatically turned on.                                                                  |
@@ -646,6 +654,9 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | forceSingleWindow            | boolean    | yes      | Force render all the calls onto a single surface. This can't be true with multithread mode enabled.                                                                                                                                    |
 | cpumask                      | string     | yes      | See 'cpumask' command line option above. |
 | dmaSharedMem                 | bool       | yes      | If it is true, the retracer would use shared memory feature of linux to handle dma buffer. Recommended on model.|
+| eglSurfaceCompressionFixedRate  | int     | yes      | (since r3p4) Set compression control flag on framebuffer. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate; 2: enable fixed rate compression with lowest rate; 3: enable fixed rate compression with highest rate.  |
+| eglImageCompressionFixedRate | int        | yes      | (since r3p4) Set compression control flag on eglImage. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate.  |
+| glesTextureCompressionFixedRate | int     | yes      | (since r3p4) Set compression control flag on texture. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate; 2: enable fixed rate compression with lowest rate; 3: enable fixed rate compression with highest rate.  |
 | shaderCache                  | string     | yes      | (since r2p16.1) See 'shadercache' command line option above. |
 | strictShaderCache            | boolean    | yes      | (since r2p16.1) See 'strictshadercache' command line option above. |
 

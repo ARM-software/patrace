@@ -8,6 +8,66 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 import specs.stdapi as stdapi
 import specs.gles12api as gles12api
 
+broken_funcs = [ # these fail to compile and should be fixed
+    'glGetProgramResourceName',
+    'glGetProgramResourceiv',
+    'glGetSynciv',
+    'glGetTransformFeedbackVarying',
+    'glGetProgramPipelineInfoLog',
+    'glGetProgramBinary',
+    'glGetBufferPointerv',
+    'glGetActiveUniformBlockName',
+    'glGetPerfQueryInfoINTEL',
+    'glGetPerfQueryIdByNameINTEL',
+    'glGetPerfQueryDataINTEL',
+    'glGetPerfCounterInfoINTEL',
+    'glGetNextPerfQueryIdINTEL',
+    'glGetFirstPerfQueryIdINTEL',
+    'glCreatePerfQueryINTEL',
+    'glGetPerfMonitorCounterDataAMD',
+    'glGetPerfMonitorCounterInfoAMD',
+    'glGetPerfMonitorCounterStringAMD',
+    'glGetPerfMonitorGroupStringAMD',
+    'glGetPerfMonitorCountersAMD',
+    'glGetPerfMonitorGroupsAMD',
+    'glGetObjectLabel',
+    'glGetObjectLabelKHR',
+    'glGetProgramPipelineInfoLogEXT',
+    'glGetObjectLabelEXT',
+    'glGetProgramBinaryOES',
+    'glGetBufferPointervOES',
+    'glGetPointervKHR',
+    'glGetPointerv',
+    'glGetVertexAttribPointerv',
+    'glGetShaderSource',
+    'glGetShaderInfoLog',
+    'glGetProgramInfoLog',
+    'glGetAttachedShaders',
+    'glGetActiveUniform',
+    'glGetActiveAttrib',
+    'glDebugMessageCallbackKHR',
+    'glDebugMessageCallback',
+    'glGetDebugMessageLogKHR',
+    'glGetDebugMessageLog',
+
+    # For the below: Their array of values is stupidly stored since the apitrace days as a pointer value. That
+    # means we do not have the original values nor can we infer their size from the size in the original call.
+    # And there is no easy way to introspect what size it should be using only the location info.
+    'glGetUniformuiv',
+    'glGetUniformiv',
+    'glGetUniformfv',
+]
+
+check_ret_funcs = [
+    'glIsEnabledi', 'glGetGraphicsResetStatusEXT', 'glGetFramebufferPixelLocalStorageSizeEXT',
+    'glIsVertexArray', 'glIsTransformFeedback', 'glIsProgramPipeline', 'glIsQuery', 'glIsSampler',
+    'glIsSync', 'glIsTransformFeedback', 'glGetProgramResourceIndex', 'glGetProgramResourceLocation',
+    'glGetGraphicsResetStatusKHR', 'glIsEnablediEXT', 'glIsEnablediOES', 'glGetError', 'glIsEnabled',
+    'glIsBuffer', 'glIsFramebuffer', 'glIsProgram', 'glIsRenderbuffer', 'glIsShader',
+    'glIsTexture', 'glIsRenderbufferOES', 'glIsFramebufferOES', 'glIsVertexArrayOES', 'glIsQueryEXT',
+    'glIsProgramPipelineEXT', 'glGetFragDataLocation', 'glGetGraphicsResetStatus',
+]
+
 notSupportedFuncs = set([
     'glVertexAttrib1fv',
 ])
@@ -801,6 +861,33 @@ class Retracer(object):
             print('    unsigned int name = old_ret;')
 
         print('    // ------------- retrace ------------------')
+        if func.name in ['glTexStorageAttribs2DEXT', 'glTexStorageAttribs3DEXT']:
+            print('    if (gRetracer.mOptions.texAfrcRate != -1) {')
+            print('        compressionControlInfo compressInfo = {0};')
+            print('        if (convertToBPC(target, gRetracer.mOptions.texAfrcRate, internalformat, compressInfo) == true) {')
+            print('            //if (gRetracer.mOptions.mDebug > 0)')
+            print('                DBG_LOG("Enable %s (target 0x%%04x, internalformat 0x%%04x) fixed rate attrib(0x%%04x, 0x%%04x).\\n", target, internalformat, compressInfo.extension, compressInfo.rate);' % (func.name))
+            print('            std::vector<int> new_attrib_list = AddtoAttribList(attrib_list, compressInfo.extension, compressInfo.rate, GL_NONE);')
+            if func.name == 'glTexStorageAttribs2DEXT':
+                print('            glTexStorageAttribs2DEXT(target, levels, internalformat, width, height, new_attrib_list.data());')
+            else:
+                print('            glTexStorageAttribs3DEXT(target, levels, internalformat, width, height, depth, new_attrib_list.data());')
+            print('        }')
+            print('        else {')
+            print('            DBG_LOG("%s(target 0x%%04x, internalformat 0x%%04x): No supported fixed rate.\\n", target, internalformat);' % (func.name))
+            if func.name == 'glTexStorageAttribs2DEXT':
+                print('            glTexStorageAttribs2DEXT(target, levels, internalformat, width, height, attrib_list);')
+            else:
+                print('            glTexStorageAttribs3DEXT(target, levels, internalformat, width, height, depth, attrib_list);')
+            print('        }')
+            print('    }')
+            print('    else {')
+            if func.name == 'glTexStorageAttribs2DEXT':
+                print('         glTexStorageAttribs2DEXT(target, levels, internalformat, width, height, attrib_list);')
+            else:
+                print('         glTexStorageAttribs3DEXT(target, levels, internalformat, width, height, depth, attrib_list);')
+            print('    }')
+            return
         if func.name in bind_framebuffer_function_names:
             print('    hardcode_glBindFramebuffer(target, framebufferNew);')
             return
@@ -861,11 +948,33 @@ class Retracer(object):
             print('        if (ret == 0) DBG_LOG("glMapBufferOES -> glMapBufferRange(0x%04x, 0, %d, 0x%04x) failed: 0x%04x\\n", (unsigned)target, size, access_bit, (unsigned)glGetError());')
             print('    }')
             return
+        if func.name in ['glTexStorage2D', 'glTexStorage2DEXT', 'glTexStorage3D', 'glTexStorage3DEXT']:
+            print('    if (gRetracer.mOptions.texAfrcRate != -1) {')
+            print('        compressionControlInfo compressInfo = {0};')
+            print('        if (convertToBPC(target, gRetracer.mOptions.texAfrcRate, internalformat, compressInfo) == true) {')
+            print('            GLint const attrib_list[3] = { compressInfo.extension, compressInfo.rate, GL_NONE };')
+            print('            //if (gRetracer.mOptions.mDebug > 0)')
+            print('                DBG_LOG("Force %s (target 0x%%04x, internalformat 0x%%04x) to fixed rate attrib (0x%%04x, 0x%%04x).\\n", target, internalformat, compressInfo.extension, compressInfo.rate);' % (func.name))
+            if func.name == 'glTexStorage2D' or func.name == 'glTexStorage2DEXT':
+                print('            glTexStorageAttribs2DEXT(target, levels, internalformat, width, height, attrib_list);')
+            else:
+                print('            glTexStorageAttribs3DEXT(target, levels, internalformat, width, height, depth, attrib_list);')
+            print('        }')
+            print('        else {')
+            print('            DBG_LOG("%s(target 0x%%04x, internalformat 0x%%04x): No supported fixed rate.\\n", target, internalformat);' % (func.name))
+            if func.name == 'glTexStorage2D' or func.name == 'glTexStorage2DEXT':
+                print('            %s(target, levels, internalformat, width, height);' % (func.name))
+            else:
+                print('            %s(target, levels, internalformat, width, height, depth);' % (func.name))
+            print('        }')
+            print('    }')
+            print('    else {')
+            indent = '    '
         if func.name in ['glViewport']:
             print('    if (!gRetracer.mOptions.mDoOverrideResolution)')
             print('    {')
             indent = '    '
-        if func.name == 'glDiscardFramebufferEXT' or func.name == 'glInvalidateFramebuffer':
+        if func.name in ['glDiscardFramebufferEXT', 'glInvalidateFramebuffer', 'glInvalidateSubFramebuffer']:
             print('    RetraceOptions& opt = gRetracer.mOptions;')
             print('    if(opt.mForceOffscreen)')
             print('    {')
@@ -963,9 +1072,13 @@ class Retracer(object):
         else:
             print('    %s%s(%s);' % (indent, func.name, arg_names))
 
-        if func.name in ['glViewport', 'glScissor']:
+        if func.name in ['glViewport', 'glScissor', 'glTexStorage2D', 'glTexStorage2DEXT', 'glTexStorage3D', 'glTexStorage3DEXT']:
             print('    }')
 
+        if func.name in check_ret_funcs:
+            print('    if ((unsigned)old_ret != (unsigned)ret) DBG_LOG("%s mismatch old %%u != new %%u\\n", (unsigned)old_ret, (unsigned)ret);' % func.name)
+        elif func.name in ['glGetStringi', 'glGetString']:
+            print('    (void)ret;')
 
         if func.name == 'glCompileShader':
             print('    if (gRetracer.mOptions.mShaderCacheFile.size() == 0)')
@@ -1008,7 +1121,7 @@ class Retracer(object):
 
     def retraceFunctions(self, functions):
         for func in functions:
-            if func.sideeffects:
+            if not func.name in broken_funcs:
                 self.retraceFunction(func)
         print()
 
@@ -1016,9 +1129,11 @@ class Retracer(object):
         print('const common::EntryMap retracer::gles_callbacks = {')
         for func in functions:
             if func.sideeffects:
-                print('    {"%s", (void*)retrace_%s},' % (func.name, func.name))
+                print('    {"%s", std::make_pair((void*)retrace_%s, false)},' % (func.name, func.name))
+            elif not func.name in broken_funcs:
+                print('    {"%s", std::make_pair((void*)retrace_%s, true)},' % (func.name, func.name))
             else:
-                print('    {"%s", (void*)ignore},' % (func.name))
+                print('    {"%s", std::make_pair((void*)ignore, true)},' % (func.name))
         print('};')
         print()
 
@@ -1026,6 +1141,7 @@ strings = {
     'header': r"""//This file was generated by retrace.py
 #include <retracer/retracer.hpp>
 #include <retracer/retrace_api.hpp>
+#include <retracer/afrc_enum.hpp>
 #include <retracer/forceoffscreen/offscrmgr.h>
 #include <common/gl_extension_supported.hpp>
 #include <dispatch/eglproc_auto.hpp>
@@ -1043,6 +1159,23 @@ using namespace retracer;
 // clang also supports gcc pragmas
 #pragma GCC diagnostic ignored "-Wunused-variable"
 """,
+    'convertToBPC': r"""
+static bool convertToBPC(int target, int flag, int internalformat, compressionControlInfo &compressInfo)
+{
+    _glGetError();  // clear error
+    _glGetInternalformativ(target, internalformat, GL_NUM_SURFACE_COMPRESSION_FIXED_RATES_EXT, 1, &compressInfo.rate_size);
+    if (compressInfo.rate_size == 0) {
+        DBG_LOG("!!!!!! WARNING: rate_size is 0. No supported fixed rate for internalformat 0x%04x on target 0x%04x. glGetError 0x%x.\n", internalformat, target, _glGetError());
+        return false;
+    }
+
+    std::vector<GLint> rates(compressInfo.rate_size);
+    _glGetInternalformativ(target, internalformat, GL_SURFACE_COMPRESSION_EXT, compressInfo.rate_size, rates.data());
+    compressInfo.rates = rates.data();
+    getCompressionInfo(gRetracer.mOptions.texAfrcRate, false, compressInfo);
+    return true;
+}
+    """,
 }
 
 
@@ -1065,6 +1198,7 @@ def main():
         sys.stdout = f
 
         print(strings['header'])
+        print(strings['convertToBPC'])
 
         retracer = Retracer()
         retracer.retraceFunctions(api.functions)

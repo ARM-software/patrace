@@ -77,20 +77,19 @@ struct FastForwardOptions
 class GlobalTextureIdTracer
 {
 public:
-    std::vector<unsigned int> textureId; // map global texture to retrace id
+    std::vector<unsigned int> map; // map global id to trace id
     std::map<unsigned int, unsigned int> remap; // remap of the mapping above
 
-    void add(unsigned int retraceId)
+    void add(unsigned int traceId)
     {
-        unsigned int globalId = textureId.size();
-        textureId.emplace_back(retraceId);
-        remap[retraceId] = globalId;
+        unsigned int globalId = map.size();
+        map.emplace_back(traceId); // use vector index as global id
+        remap[traceId] = globalId;
     }
 
     void remove(unsigned int traceId)
     {
-        unsigned int retraceId = retracer::gRetracer.getCurrentContext().getTextureMap().RValue(traceId);
-        remap.erase(retraceId);
+        remap.erase(traceId);
     }
 };
 
@@ -1191,14 +1190,14 @@ public:
 
             if ((mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE))
             {
-                const unsigned int globalTextureId = gTextureIdTracer.remap.at(retraceTextureId);
+                const unsigned int globalTextureId = gTextureIdTracer.remap.at(traceTextureId);
 
-                if (gTextureIdTracer.textureId.at(globalTextureId) != retraceTextureId)
+                if (gTextureIdTracer.map.at(globalTextureId) != traceTextureId)
                 {
-                    DBG_LOG("WARNING: Reverse texture lookup failed: global-ID %d's rev. was %d, but should be %d.\n", globalTextureId, gTextureIdTracer.textureId.at(globalTextureId), retraceTextureId);
+                    DBG_LOG("WARNING: Reverse texture lookup failed: global-ID %d's rev. was %d, but should be %d.\n", globalTextureId, gTextureIdTracer.map.at(globalTextureId), traceTextureId);
                 }
 
-                if(gUnusedTexture.count(globalTextureId) != 0)
+                if (gUnusedTexture.count(globalTextureId) != 0)
                 {
                     gRemovedTexture++;
                     continue;
@@ -1482,14 +1481,14 @@ private:
         checkError("saveTexture" + typeInfo.name + " begin");
 
         // Remember currently bound texture
-        GLint retraceRestoreTexure;
-        _glGetIntegerv(typeInfo.bindTarget, &retraceRestoreTexure);
+        GLint retraceRestoreTexture;
+        _glGetIntegerv(typeInfo.bindTarget, &retraceRestoreTexture);
 
         // Try to bind the to-be-saved texture to the appropriate target
         if (!tryBindTexture(typeInfo.target, retraceTextureId))
         {
             // It's not this kind of texture; restore binding and return false.
-            _glBindTexture(typeInfo.target, retraceRestoreTexure);
+            _glBindTexture(typeInfo.target, retraceRestoreTexture);
             return false;
         }
 
@@ -1497,23 +1496,23 @@ private:
         bool retval = true;
 
         // Find corresponding currently-bound texture in trace
-        GLint traceRestoreTexture = mRetracerContext.getTextureRevMap().RValue(retraceRestoreTexure);
+        GLint traceRestoreTexture = mRetracerContext.getTextureRevMap().RValue(retraceRestoreTexture);
 
         DBG_LOG("Looking up %s texture %d (retrace-id %d).\n", typeInfo.name.c_str(), traceTextureId, retraceTextureId);
-        DBG_LOG("Texture %d was bound in retracer. This corresponds to %d in trace. This binding will be saved and restored.\n", retraceRestoreTexure, traceRestoreTexture);
+        DBG_LOG("Texture %d was bound in retracer. This corresponds to %d in trace. This binding will be saved and restored.\n", retraceRestoreTexture, traceRestoreTexture);
 
         TextureInfo texInfo = getTextureInfo(typeInfo.target);
 
         if (texInfo.mIsCompressed)
         {
             DBG_LOG("NOTE: Skipped saving texture %d (retrace-id %d) because it is compressed (internalformat is %s (0x%X)). (Assumption: compressed textures can't be changed after upload.)\n\n", traceTextureId, retraceTextureId, EnumString(texInfo.mInternalFormat), texInfo.mInternalFormat);
-            _glBindTexture(typeInfo.target, retraceRestoreTexure);
+            _glBindTexture(typeInfo.target, retraceRestoreTexture);
             return retval;
         }
         else if (texInfo.mInternalFormat == GL_RGB9_E5)
         {
             DBG_LOG("NOTE: Skipped saving texture %d (retrace-id %d) because its internalformat is %s (0x%X). (Assumption: This kind of textures can't be changed after upload.)\n\n", traceTextureId, retraceTextureId, EnumString(texInfo.mInternalFormat), texInfo.mInternalFormat);
-            _glBindTexture(typeInfo.target, retraceRestoreTexure);
+            _glBindTexture(typeInfo.target, retraceRestoreTexture);
             return retval;
         }
 
@@ -1557,7 +1556,7 @@ private:
                         "(Assumption: it can't be changed after upload.)\n",
                         traceTextureId, retraceTextureId, EnumString(texInfo.mInternalFormat));
                 traceCommandEmitter.emitBindTexture(typeInfo.target, traceRestoreTexture);
-                _glBindTexture(typeInfo.target, retraceRestoreTexure);
+                _glBindTexture(typeInfo.target, retraceRestoreTexture);
                 return retval;
             }
             if (texInfo.mRedType && texInfo.mGreenType && texInfo.mBlueType)
@@ -1676,7 +1675,7 @@ private:
                     DBG_LOG("Couldn't figure out format to use for internalformat 0x%x\n", texInfo.mInternalFormat);
                     DBG_LOG("Querying the texture determined it wasn't RGB(A) (using glGetTexLevelParameteriv with GL_TEXTURE_X_TYPE), and those cases aren't handled yet.\n");
                     traceCommandEmitter.emitBindTexture(GL_TEXTURE_2D, traceRestoreTexture);
-                    _glBindTexture(GL_TEXTURE_2D, retraceRestoreTexure);
+                    _glBindTexture(GL_TEXTURE_2D, retraceRestoreTexture);
                     return retval;
                 }
             }
@@ -1877,7 +1876,7 @@ private:
         traceCommandEmitter.emitBindTexture(typeInfo.target, traceRestoreTexture);
 
         // Restore previously bound texture
-        _glBindTexture(typeInfo.target, retraceRestoreTexure);
+        _glBindTexture(typeInfo.target, retraceRestoreTexture);
 
         checkError("saveTexture" + typeInfo.name + " end");
         return retval;
@@ -2518,7 +2517,7 @@ private:
         _glGetIntegerv(GL_ACTIVE_TEXTURE, &mActiveTex);
         _glActiveTexture(GL_TEXTURE0);
         _glGetIntegerv(GL_TEXTURE_BINDING_2D, &mRetraceTexture2D);
-        mTraceTexure2D = mRetracerContext.getTextureRevMap().RValue(mRetraceTexture2D);
+        mTraceTexture2D = mRetracerContext.getTextureRevMap().RValue(mRetraceTexture2D);
 
         _glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, &mTex2DWrapS);
         _glGetTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, &mTex2DWrapT);
@@ -2641,7 +2640,7 @@ private:
         mCmdEmitter.emitTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mTex2DMinFilter);
         mCmdEmitter.emitTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mTex2DMaxFilter);
         mCmdEmitter.emitTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, mTex2DCompareMode);
-        mCmdEmitter.emitBindTexture(GL_TEXTURE_2D, mTraceTexure2D);
+        mCmdEmitter.emitBindTexture(GL_TEXTURE_2D, mTraceTexture2D);
         mCmdEmitter.emitActiveTexture(mActiveTex);
         mCmdEmitter.emitDeleteTextures(1, &mFbo0Tex);
 
@@ -2766,7 +2765,7 @@ private:
     // The original texture pipe info to save and restore
     GLint mActiveTex;
     GLint mRetraceTexture2D; // The retrace texture
-    GLint mTraceTexure2D;    // The trace texture
+    GLint mTraceTexture2D;    // The trace texture
     GLint mTex2DWrapS;
     GLint mTex2DWrapT;
     GLint mTex2DMinFilter;
@@ -2882,7 +2881,7 @@ bool checkUnusedTexture()
         src = common::Read1DArray(src, textures);
         for (unsigned int i = 0; i < textures.cnt; ++i)
         {
-            gTextureIdTracer.add(textures[i]);
+            if (gTextureIdTracer.remap.count(textures[i]) == 0) gTextureIdTracer.add(textures[i]);
         }
     }
 
@@ -2901,14 +2900,17 @@ bool checkUnusedTexture()
         }
     }
 
-    else if (strstr(funcName, "glDeleteTexture"))
+    else if (strstr(funcName, "glDeleteTextures"))
     {
         char* src = gRetracer.src;
         int target;
         src = common::ReadFixed<int>(src, target);
-        unsigned int texture;
-        src = common::ReadFixed<unsigned int>(src, texture);
-        gTextureIdTracer.remove(texture);
+        common::Array<unsigned int> textures;
+        src = common::Read1DArray<unsigned int>(src, textures);
+        for (unsigned int i = 0; i < textures.cnt; ++i)
+        {
+            if (gTextureIdTracer.remap.count(textures[i]) != 0) gTextureIdTracer.remove(textures[i]);
+        }
     }
 
     else if (strstr(funcName, "glGenerateMipmap"))
@@ -2929,9 +2931,12 @@ bool checkUnusedTexture()
         GLenum target;
         src = common::ReadFixed<GLenum>(src, target);
         GLenum target_binding = Texture::_targetToBinding(target);
-        GLint texture;
-        glGetIntegerv(target_binding, &texture);
-        if (gUnusedTexture.count(gTextureIdTracer.remap[(unsigned int)texture]))
+        GLint retraceTextureId;
+        glGetIntegerv(target_binding, &retraceTextureId);
+        Context& context = gRetracer.getCurrentContext();
+        unsigned int traceTextureId = context.getTextureRevMap().RValue((unsigned int)retraceTextureId);
+        unsigned int globalTextureId = gTextureIdTracer.remap.at(traceTextureId);
+        if (gUnusedTexture.count(globalTextureId) && traceTextureId != 0)
         {
             gRemovedTexFunc++;
             return true;
@@ -3285,6 +3290,11 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
         else if (!strcmp(arg, "--targetFrame"))
         {
             ffOptions.mTargetFrame = readValidValue(argv[++i]);
+            if (ffOptions.mTargetFrame == 0)
+            {
+                DBG_LOG("WARNING: the targetFrame must greater than 0! Set targetFrame to 1 to keep all frames before endFrame.\n");
+                ffOptions.mTargetFrame = 1;
+            }
             gotTargetFrame = true;
         }
         else if (!strcmp(arg, "--targetDrawCallNo"))
@@ -3388,11 +3398,12 @@ int main(int argc, char** argv)
             return 1;
         }
         parser.ff_startframe = ffOptions.mTargetFrame;
-        parser.ff_endframe = ffOptions.mEndFrame;
+        parser.ff_endframe = (ffOptions.mEndFrame > INT32_MAX) ? INT32_MAX : ffOptions.mEndFrame; // incase mEndFrame(uint) is out of int range
 
-        parser.loop([](ParseInterfaceBase& input, common::CallTM *call, void *data) {if (input.frames > input.ff_endframe) return false; else return true;}, nullptr);
+        parser.loop([](ParseInterfaceBase& input, common::CallTM *call, void *data) {return (input.frames <= input.ff_endframe);}, nullptr);
         parser.outputTexUsage(gUnusedMipgen, gUnusedTexture);
         std::string fileName = gRetracer.mOptions.mFileName;
+        parser.cleanup();
         gRetracer.~Retracer();
         new (&gRetracer) Retracer();
         gRetracer.mOptions.mFileName = fileName;
@@ -3457,7 +3468,7 @@ int main(int argc, char** argv)
     retraceAndTrim(out, ffOptions, ffJson);
 
     if (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE)
-        DBG_LOG("%d mipmap generation calls are removed, %d textures are removed, %d texture calls are removed\n", gRemovedMipgen, gRemovedTexture, gRemovedTexFunc);
+        DBG_LOG("%d mipmap generation calls are removed, %d textures are removed, %d texture calls are removed.\n", gRemovedMipgen, gRemovedTexture, gRemovedTexFunc);
 
     // Add our conversion to the list
     addConversionEntry(jsonRoot, "fastforward", gRetracer.mOptions.mFileName, ffJson);

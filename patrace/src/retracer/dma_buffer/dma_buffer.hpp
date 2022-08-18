@@ -107,6 +107,9 @@
 #define DRM_FORMAT_YVU422	fourcc_code('Y', 'V', '1', '6') /* 2x1 subsampled Cr (1) and Cb (2) planes */
 #define DRM_FORMAT_YUV444	fourcc_code('Y', 'U', '2', '4') /* non-subsampled Cb (1) and Cr (2) planes */
 #define DRM_FORMAT_YVU444	fourcc_code('Y', 'V', '2', '4') /* non-subsampled Cr (1) and Cb (2) planes */
+#define DRM_FORMAT_Q410     fourcc_code('Q', '4', '1', '0') /* non-subsampled (444) YCbCr */
+#define DRM_FORMAT_P210     fourcc_code('P', '2', '1', '0')
+#define DRM_FORMAT_Q401     fourcc_code('Q', '4', '0', '1')
 
 /** @brief A format for a pixmap.
  *

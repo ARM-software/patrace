@@ -5,8 +5,8 @@ set (PYTHON_EXECUTABLE python)
 
 message(STATUS "main ar: ${CMAKE_AR}")
 
-set (PATRACE_VERSION_MAJOR 3)
-set (PATRACE_VERSION_MINOR 4)
+set (PATRACE_VERSION_MAJOR 4)
+set (PATRACE_VERSION_MINOR 1)
 set (PATRACE_VERSION_PATCH 0)
 
 IF(DEFINED ENV{SVN_REVISION})
@@ -54,8 +54,8 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
     set(CMAKE_C_FLAGS_RELEASE "-Os")
     set(CMAKE_CXX_FLAGS_RELEASE "-Os")
     if (SANITIZELIB)
-        set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fstack-protector-all -fsanitize=address -fsanitize-undefined-trap-on-error -fuse-ld=gold")
-        set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fstack-protector-all -fsanitize=address -fsanitize-undefined-trap-on-error -fuse-ld=gold")
+        set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -fstack-protector-all -fsanitize=${SANITIZELIB} -fsanitize-undefined-trap-on-error -fuse-ld=gold")
+        set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fstack-protector-all -fsanitize=${SANITIZELIB} -fsanitize-undefined-trap-on-error -fuse-ld=gold")
     endif()
 
     if (CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -252,10 +252,6 @@ if (ENABLE_TOOLS AND NOT FF_ONLY)
     endif ()
 endif ()
 
-if (WINDOWSYSTEM MATCHES "fbdev" AND ENABLE_TESTS)
-    add_subdirectory(integration_tests)
-endif ()
-
 install(FILES ${PROJECT_SOURCE_DIR}/../../ARM_RELEASE_NOTE DESTINATION . OPTIONAL)
 
 SET(CPACK_CMAKE_GENERATOR "Unix Makefiles")
@@ -272,3 +268,11 @@ SET(CPACK_PACKAGE_VERSION_PATCH "0")
 SET(CPACK_PACKAGE_FILE_NAME "patrace_${CPACK_PACKAGE_VERSION}_${CMAKE_SYSTEM_NAME}_${WINDOWSYSTEM}_${ARCH}")
 SET(CPACK_SOURCE_GENERATOR "TGZ;TZ")
 include(CPack)
+
+# --- tracetooltests ---
+
+if (ENABLE_TOOLS AND NOT FF_ONLY)
+    set(CMAKE_SKIP_RPATH TRUE)
+    set(NO_VULKAN "1")
+    add_subdirectory(${THIRDPARTY_INCLUDE_DIRS}/tracetooltests ${CMAKE_CURRENT_BINARY_DIR}/tests)
+endif()

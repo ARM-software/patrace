@@ -5,10 +5,11 @@
 #include <stdint.h>
 #include <map>
 #include <string>
+#include <utility>
 
 namespace common {
 
-typedef std::map<std::string, void*> EntryMap;
+typedef std::map<std::string, std::pair<void*, bool>> EntryMap;
 
 class ApiInfo
 {
@@ -42,7 +43,7 @@ public:
         return NULL;
     }
 
-    void RegisterEntries(const EntryMap& entries);
+    void RegisterEntries(const EntryMap& entries, bool all = false);
 
     // These are determined when the source code is generated
     // How many gles/egl functions are supported

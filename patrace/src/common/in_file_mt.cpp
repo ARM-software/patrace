@@ -279,16 +279,6 @@ void InFile::ReadSigBook()
     mPtr = ReadFixed(mPtr, toNext);
     mPtr = ReadFixed(mPtr, mMaxSigId);
 
-    if (mMaxSigId > ApiInfo::MaxSigId)
-    {
-        DBG_LOG("Reading the trace file failed: The reader seems to be too old, since it supports fewer functions than the trace file.\n");
-#ifndef __APPLE__
-        exit(EXIT_FAILURE); // do not crash, as this is going to happen, and is not an application bug
-#else
-        os::abort(); // we want an exception for MacOSX
-#endif
-    }
-
     mExIdToName.resize(mMaxSigId + 1);
     mExIdToName[0] = "";
     for (int id = 1; id <= mMaxSigId; ++id)
@@ -308,6 +298,18 @@ void InFile::ReadSigBook()
     for (int id = 1; id <= mMaxSigId; ++id)
     {
         const char* name = mExIdToName.at(id).c_str();
+        // glTexStorageAttribs*DARM was a short-lived experiment that nonetheless lives on in some sigbooks, just not in use anywhere.
+        // GetObjectLabel was a function typo introduced in version r1p0, fixed in r2p0.
+        if (id > 4 && gApiInfo.NameToId(name) == 0 && strcmp(name, "glTexStorageAttribs2DARM") != 0 && strcmp(name, "glTexStorageAttribs3DARM") != 0
+            && strcmp(name, "GetObjectLabel") != 0)
+        {
+            DBG_LOG("We have no implementation of function %s (id %d) - replayer likely too old to play this trace file!\n", name, id);
+#ifndef __APPLE__
+            exit(EXIT_FAILURE); // do not crash, as this is going to happen, and is not an application bug
+#else
+            os::abort(); // we want an exception for MacOSX
+#endif
+        }
         mExIdToLen[id] = gApiInfo.NameToLen(name);
         mExIdToFunc[id] = gApiInfo.NameToFptr(name);
     }

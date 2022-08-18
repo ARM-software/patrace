@@ -50,6 +50,7 @@ public:
     virtual EGLImageKHR createImageKHR(Context* context, EGLenum target, uintptr_t buffer, const EGLint* attrib_list) = 0;
     virtual EGLBoolean destroyImageKHR(EGLImageKHR image) = 0;
     virtual bool setAttribute(Drawable* drawable, int attribute, int value) = 0;
+    virtual bool querySupportedCompressionRates(const EGLAttrib *attrib_list, EGLint *rates, EGLint rate_size, EGLint *num_rates) = 0;
 
     virtual void processStepEvent() {}
     virtual bool steppable() { return false; }

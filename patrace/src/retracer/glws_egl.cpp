@@ -378,6 +378,7 @@ void GlwsEgl::Init(Profile /*profile*/)
 
     mEglConfig = configs[best_config];
     mEglConfigInfo = EglConfigInfo(mEglDisplay, mEglConfig);
+    gRetracer.mState.mEglConfig = mEglConfig;
     std::stringstream ss;
     ss << "EGL Configurations:\n" <<
         "Specified EGL configuration:\n" << o.mOnscreenConfig << "\n" <<
@@ -535,6 +536,11 @@ bool GlwsEgl::setAttribute(Drawable* drawable, int attibute, int value)
 
     EGLBoolean ok = _eglSurfaceAttrib(mEglDisplay, eglSurface, attibute, value);
     return ok == EGL_TRUE;
+}
+
+bool GlwsEgl::querySupportedCompressionRates(const EGLAttrib *attrib_list, EGLint *rates, EGLint rate_size, EGLint *num_rates)
+{
+    return _eglQuerySupportedCompressionRatesEXT(mEglDisplay, mEglConfig, attrib_list, rates, rate_size, num_rates);
 }
 
 void GlwsEgl::Cleanup()

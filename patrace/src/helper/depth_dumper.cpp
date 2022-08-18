@@ -339,6 +339,10 @@ void DepthDumper::get_depth_texture_image(GLuint sourceTexture, int width, int h
     _glBindTexture(GL_TEXTURE_2D, depthTexture);
     _glTexImage2D(GL_TEXTURE_2D, 0, texFormat, width, height, 0, format, type, 0);
 
+    GLint pre_sampler;
+    _glGetIntegerv(GL_SAMPLER_BINDING, &pre_sampler);
+    _glBindSampler(0, 0);
+
     GLint prev_viewport[4];
     _glGetIntegerv(GL_VIEWPORT, prev_viewport);
     _glViewport(0, 0, width, height);
@@ -457,6 +461,7 @@ void DepthDumper::get_depth_texture_image(GLuint sourceTexture, int width, int h
     _glViewport(prev_viewport[0], prev_viewport[1], prev_viewport[2], prev_viewport[3]);
     _glActiveTexture(act);
     _glBindTexture(GL_TEXTURE_2D, prev_texture_2d);
+    _glBindSampler(0, pre_sampler);
     _glUseProgram(prev_program_id);
     _glBindBuffer(GL_ARRAY_BUFFER, prev_vertex_buffer_id);
     _glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, prev_index_buffer_id);

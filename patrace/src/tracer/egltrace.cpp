@@ -15,7 +15,6 @@
 #include <common/trace_limits.hpp>
 #include <common/image.hpp>
 #include <common/gl_extension_supported.hpp>
-
 #include "json/writer.h"
 #include "json/reader.h"
 
@@ -65,6 +64,7 @@ std::vector<TraceThread> gTraceThread(PATRACE_THREAD_LIMIT);
 
 static std::vector<MyEGLSurface> surfaces;
 static std::vector<MyEGLContext> contexts;
+static std::vector<long long> frameTime;
 
 struct MyEGLAttribArray
 {
@@ -177,6 +177,7 @@ void BinAndMeta::writeHeader(bool cleanExit)
     jsonRoot["texCompress"] = Json::Value(Json::arrayValue);
     jsonRoot["contexts"] = Json::Value(Json::arrayValue);
     jsonRoot["surfaces"] = Json::Value(Json::arrayValue);
+    jsonRoot["tracing_FPS"] = Json::Value(Json::arrayValue);
     jsonRoot["callCnt"] = callCnt;
     jsonRoot["frameCnt"] = frameCnt;
     jsonRoot["threads"] = Json::Value(Json::arrayValue);
@@ -263,6 +264,31 @@ void BinAndMeta::writeHeader(bool cleanExit)
         jsonTexCompressFormat["internalformat"] = pair.first;
         jsonTexCompressFormat["callCnt"] = pair.second;
         jsonRoot["texCompress"].append(jsonTexCompressFormat);
+    }
+
+    static float oneOverFreq = 1.0f / os::timeFrequency;
+    int FpsFreq = 0;
+    long long duration = 0;
+    int validCnt = 0;
+    float fps;
+    FpsFreq = 10 * ((gTraceOut->frameNo/1000) + 1);    // 1000 interval
+    jsonRoot["FpsSampleFreq"] = FpsFreq;
+    for (unsigned int i=0; i<frameTime.size(); i++)
+    {
+        duration += frameTime[i];
+        validCnt++;
+        if (validCnt == FpsFreq)    // calcu fps every FpsFreq frames
+        {
+            fps = FpsFreq/(duration*oneOverFreq);
+            jsonRoot["tracing_FPS"].append(fps);
+            duration = 0;
+            validCnt = 0;
+        }
+    }
+    if (validCnt !=0 && validCnt != FpsFreq)
+    {
+        fps = validCnt/(duration*oneOverFreq);
+        jsonRoot["tracing_FPS"].append(fps);
     }
 
     jsonRoot["cleanExit"] = cleanExit;
@@ -942,6 +968,7 @@ void after_glLinkProgram(unsigned int program)
 
 void after_eglInitialize(EGLDisplay dpy)
 {
+    gTraceOut->mFrameBegTime = os::getTime();
     gTraceOut->mpBinAndMeta->saveAllEGLConfigs(dpy);
     gTraceOut->mpBinAndMeta->writeHeader(false);
 }
@@ -1343,6 +1370,10 @@ void updateUsage(GLenum target)
 
 void after_eglSwapBuffers()
 {
+    long long frameEnd = os::getTime();
+    frameTime.push_back(frameEnd - gTraceOut->mFrameBegTime);
+    gTraceOut->mFrameBegTime = frameEnd;
+
     if (tracerParams.FlushTraceFileEveryFrame)
     {
         gTraceOut->mpBinAndMeta->writeHeader(true);

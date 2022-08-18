@@ -6,6 +6,7 @@
 #include <common/trace_limits.hpp>
 #include <helper/eglstring.hpp>
 #include "../dispatch/eglproc_auto.hpp"
+#include "dma_buffer/dma_buffer.hpp"
 
 #define EGL_EGLEXT_PROTOTYPES
 #include "EGL/eglext.h"
@@ -67,6 +68,193 @@ void getLocalGLESVersion()
         opt.mLocalApiVersion = PROFILE_ESX;
     }
     DBG_LOG("Version: %s\n", version);
+}
+
+#ifdef ANDROID
+static inline uint32_t get_drm_format(EGLDisplay display, EGLConfig config)
+{
+    uint32_t drm_format = 0;
+    EGLint order;
+    EGLint num_of_planes;
+    EGLint subsample;
+    EGLint plane_bpp;
+
+    eglGetConfigAttrib(display, config, EGL_YUV_ORDER_EXT, &order);
+    eglGetConfigAttrib(display, config, EGL_YUV_NUMBER_OF_PLANES_EXT, &num_of_planes);
+    eglGetConfigAttrib(display, config, EGL_YUV_SUBSAMPLE_EXT, &subsample);
+    eglGetConfigAttrib(display, config, EGL_YUV_PLANE_BPP_EXT, &plane_bpp);
+
+    if (order == EGL_YUV_ORDER_YUV_EXT)
+    {
+        if (num_of_planes == 2)
+        {
+            if (subsample == EGL_YUV_SUBSAMPLE_4_2_0_EXT && plane_bpp == 8)         drm_format = DRM_FORMAT_NV12;
+            else if (subsample == EGL_YUV_SUBSAMPLE_4_2_2_EXT && plane_bpp == 8)    drm_format = DRM_FORMAT_NV16;
+            else if (subsample == EGL_YUV_SUBSAMPLE_4_2_0_EXT && plane_bpp == 10)   drm_format = DRM_FORMAT_P010;
+            else if (subsample == EGL_YUV_SUBSAMPLE_4_2_2_EXT && plane_bpp == 10)   drm_format = DRM_FORMAT_P210;
+        }
+        else if (num_of_planes == 3)
+        {
+            if (subsample == EGL_YUV_SUBSAMPLE_4_4_4_EXT && plane_bpp == 8)         drm_format = DRM_FORMAT_YUV444;
+            else if (subsample == EGL_YUV_SUBSAMPLE_4_4_4_EXT && plane_bpp == 10)   drm_format = DRM_FORMAT_Q410;
+            else if (subsample == EGL_YUV_SUBSAMPLE_4_2_0_EXT && plane_bpp == 8)    drm_format = DRM_FORMAT_YUV420;
+        }
+    }
+    else if (order == EGL_YUV_ORDER_YVU_EXT && subsample == EGL_YUV_SUBSAMPLE_4_2_0_EXT && plane_bpp == 8)
+    {
+        if (num_of_planes == 2)       drm_format = DRM_FORMAT_NV21;
+        else if (num_of_planes == 3)  drm_format = DRM_FORMAT_YVU420;
+    }
+
+    return drm_format;
+}
+
+static bool hardcode_egl_query_compression_rates(EGLDisplay display, EGLConfig config, const EGLAttrib *attrib_list, EGLint *rates, EGLint rate_size, EGLint *num_rates)
+{
+    std::string ext = _eglQueryString(display, EGL_EXTENSIONS);
+
+    if (ext.find("EGL_EXT_surface_compression") == std::string::npos)
+    {
+        *num_rates = 0;
+        DBG_LOG("WARNING: EGL_EXT_surface_compression is not exposed on this platform.\n");
+        return true;
+    }
+
+    // Mali GPU
+    EGLint buffer_type;
+    EGLint red_size = 0;
+    EGLint green_size = 0;
+    EGLint blue_size = 0;
+    EGLint alpha_size = 0;
+
+    eglGetConfigAttrib(display, config, EGL_COLOR_BUFFER_TYPE, &buffer_type);
+    eglGetConfigAttrib(display, config, EGL_RED_SIZE, &red_size);
+    eglGetConfigAttrib(display, config, EGL_GREEN_SIZE, &green_size);
+    eglGetConfigAttrib(display, config, EGL_BLUE_SIZE, &blue_size);
+    eglGetConfigAttrib(display, config, EGL_ALPHA_SIZE, &alpha_size);
+
+    // 1. check config valid to afrc
+    bool valid_config = false;
+    if (EGL_YUV_BUFFER_EXT == buffer_type)    // yuv buffer
+    {
+        uint32_t yuv_drm = get_drm_format(display, config);
+        switch (yuv_drm)
+        {
+            case DRM_FORMAT_NV12:
+            case DRM_FORMAT_NV16:
+            case DRM_FORMAT_YUV444:
+            case DRM_FORMAT_YUV420:
+            case DRM_FORMAT_Q410:
+            case DRM_FORMAT_P010:
+            case DRM_FORMAT_P210:
+            case DRM_FORMAT_NV21:
+            case DRM_FORMAT_NV61:
+            case DRM_FORMAT_YVU444:
+            case DRM_FORMAT_YVU420:
+            case DRM_FORMAT_Q401:
+                valid_config = true;
+                break;
+            default:
+                break;
+        }
+    }
+    else
+    {
+        if ( ((8 == red_size) && (8 == green_size) && (8 == blue_size)) ||
+             ((5 == red_size) && (6 == green_size) && (5 == blue_size)) )
+        {
+            // TODO fix me!!!
+            // According to ddk, if arm_config_type equals EGLP_ARM_CONFIG_YUV_SPECIAL_BIT, config is invalid for afrc.
+            // But patrace could not get EGLP_ARM_CONFIG_TYPE through eglGetConfigAttrib.
+            valid_config = true;
+        }
+    }
+
+    //2. check attrib valid to afrc to exclude sRGB.
+    bool is_srgb = false;
+    if (attrib_list != NULL)
+    {
+        const EGLint *cur_attrib = (const EGLint *)attrib_list;
+        while (EGL_NONE != *cur_attrib)
+        {
+            if (EGL_GL_COLORSPACE_KHR == *cur_attrib)
+            {
+                is_srgb =  *(cur_attrib+1) == EGL_GL_COLORSPACE_SRGB_KHR;
+                break;
+            }
+            cur_attrib += 2;
+        }
+    }
+
+    if (!valid_config || is_srgb)
+    {
+        *num_rates = 0;
+        return true;
+    }
+
+    //3. get compression rates
+    const EGLint low_afrc_rate[] = { EGL_SURFACE_COMPRESSION_FIXED_RATE_2BPC_EXT,
+                                     EGL_SURFACE_COMPRESSION_FIXED_RATE_4BPC_EXT,
+                                     EGL_SURFACE_COMPRESSION_FIXED_RATE_5BPC_EXT };
+    const EGLint high_afrc_rate[] = { EGL_SURFACE_COMPRESSION_FIXED_RATE_2BPC_EXT,
+                                      EGL_SURFACE_COMPRESSION_FIXED_RATE_3BPC_EXT,
+                                      EGL_SURFACE_COMPRESSION_FIXED_RATE_4BPC_EXT };
+    *num_rates = 3;
+    if (rate_size == 0 || rates == NULL)
+    {
+        return true;
+    }
+
+    const EGLint *tmp_rates;
+
+    // 3-component(RGB) AFRC has low compression efficiency.
+    if ((0 != red_size) && (0 != green_size) && (0 != blue_size) && (0 == alpha_size))
+    {
+        tmp_rates =  low_afrc_rate;
+    }
+    else
+    {
+        tmp_rates = high_afrc_rate;
+    }
+    if (rate_size < *num_rates)
+    {
+        *num_rates = rate_size;
+    }
+
+    for (int i = 0; i < *num_rates; i++)
+    {
+        rates[i] = tmp_rates[i];
+    }
+
+    return true;
+}
+#endif
+
+static bool convertToBPC(int flag, compressionControlInfo &compressInfo, EGLint const* attrib_list)
+{
+#ifdef ANDROID
+    // MPGPPAP-5290: patrace fails to get the new extension function pointer through eglGetProcAddress because Android libEGL.so only support the current display to call extension
+    // through eglGetProcAddress. Otherwise it fails due to the null current context.
+    // To work around, hard code the BPC convertion on Android.
+    hardcode_egl_query_compression_rates(gRetracer.mState.mEglDisplay, gRetracer.mState.mEglConfig, reinterpret_cast<EGLAttrib const*>(attrib_list), NULL, 0, &compressInfo.rate_size);
+#else
+    GLWS::instance().querySupportedCompressionRates(reinterpret_cast<EGLAttrib const*>(attrib_list), NULL, 0, &compressInfo.rate_size);
+#endif
+    if (compressInfo.rate_size == 0) {
+        DBG_LOG("!!!!!! WARNING: rate_size is 0. No supported fixed rate queried on eglSurface.\n");
+        return false;
+    }
+
+    std::vector<int> rates(compressInfo.rate_size);
+#ifdef ANDROID
+    hardcode_egl_query_compression_rates(gRetracer.mState.mEglDisplay, gRetracer.mState.mEglConfig, reinterpret_cast<EGLAttrib const*>(attrib_list), rates.data(), compressInfo.rate_size, &compressInfo.rate_size);
+#else
+    GLWS::instance().querySupportedCompressionRates(reinterpret_cast<EGLAttrib const*>(attrib_list), rates.data(), compressInfo.rate_size, &compressInfo.rate_size);
+#endif
+    compressInfo.rates = rates.data();
+    getCompressionInfo(flag, true, compressInfo);
+
+    return true;
 }
 
 PUBLIC void retrace_eglCreateWindowSurface(char* src)
@@ -140,7 +328,21 @@ PUBLIC void retrace_eglCreateWindowSurface(char* src)
     else
     {
         DBG_LOG("[%d] Creating drawable for surface %d: w=%d, h=%d...\n", gRetracer.getCurTid(), ret, width, height);
-        d = GLWS::instance().CreateDrawable(width, height, win, attrib_list);
+        if (gRetracer.mOptions.eglAfrcRate != -1) {
+            compressionControlInfo compressInfo = {0};
+            if (convertToBPC(gRetracer.mOptions.eglAfrcRate, compressInfo, attrib_list) == true) {
+                std::vector<int> new_attrib_list = AddtoAttribList(attrib_list, compressInfo.extension, compressInfo.rate, EGL_NONE);
+                //if (gRetracer.mOptions.mDebug > 0)
+                    DBG_LOG("Enable fixed rate attrib(0x%04x, 0x%04x) on eglSurface in eglCreateWindowSurface().\n", compressInfo.extension, compressInfo.rate);
+                d = GLWS::instance().CreateDrawable(width, height, win, new_attrib_list.data());
+            }
+            else {
+                d = GLWS::instance().CreateDrawable(width, height, win, attrib_list);
+            }
+        }
+        else {
+            d = GLWS::instance().CreateDrawable(width, height, win, attrib_list);
+        }
     }
     gRetracer.mSurfaceCount++;
     s.InsertDrawableMap(ret, d);
@@ -245,7 +447,21 @@ PUBLIC void retrace_eglCreateWindowSurface2(char* src)
     else
     {
         DBG_LOG("[%d] Creating drawable for surface %d: x=%d, y=%d, w=%d, h=%d...\n", gRetracer.getCurTid(), ret, x, y, surfWidth, surfHeight);
-        d = GLWS::instance().CreateDrawable(surfWidth, surfHeight, win, attrib_list);
+        if (gRetracer.mOptions.eglAfrcRate != -1) {
+            compressionControlInfo compressInfo = {0};
+            if (convertToBPC(gRetracer.mOptions.eglAfrcRate, compressInfo, attrib_list) == true) {
+                std::vector<int> new_attrib_list = AddtoAttribList(attrib_list, compressInfo.extension, compressInfo.rate, EGL_NONE);
+                //if (gRetracer.mOptions.mDebug > 0)
+                    DBG_LOG("Enable fixed rate attrib(0x%04x, 0x%04x) on eglSurface in eglCreateWindowSurface2().\n", compressInfo.extension, compressInfo.rate);
+                d = GLWS::instance().CreateDrawable(surfWidth, surfHeight, win, new_attrib_list.data());
+            }
+            else {
+                d = GLWS::instance().CreateDrawable(surfWidth, surfHeight, win, attrib_list);
+            }
+        }
+        else {
+            d = GLWS::instance().CreateDrawable(surfWidth, surfHeight, win, attrib_list);
+        }
     }
     gRetracer.mSurfaceCount++;
     s.InsertDrawableMap(ret, d);
@@ -491,8 +707,23 @@ PUBLIC void retrace_eglMakeCurrent(char* src)
                 }
                 else
                 {
-                    EGLint const attribs[] = { EGL_NONE };
-                    drawable = GLWS::instance().CreateDrawable(width, height, 0, attribs);
+                    if (gRetracer.mOptions.eglAfrcRate != -1) {
+                        compressionControlInfo compressInfo = {0};
+                        if (convertToBPC(gRetracer.mOptions.eglAfrcRate, compressInfo, NULL)  == true) {
+                            EGLint const attrib_list[] = { compressInfo.extension, compressInfo.rate, EGL_NONE };
+                            //if (gRetracer.mOptions.mDebug > 0)
+                                DBG_LOG("Enable fixed rate attrib(0x%04x, 0x%04x) on eglSurface in singleWindow\n", compressInfo.extension, compressInfo.rate);
+                            drawable = GLWS::instance().CreateDrawable(width, height, 0, attrib_list);
+                        }
+                        else {
+                            EGLint const attribs[] = { EGL_NONE };
+                            drawable = GLWS::instance().CreateDrawable(width, height, 0, attribs);
+                        }
+                    }
+                    else{
+                        EGLint const attribs[] = { EGL_NONE };
+                        drawable = GLWS::instance().CreateDrawable(width, height, 0, attribs);
+                    }
                 }
                 const RetraceOptions& opt = gRetracer.mOptions;
                 drawable->winWidth  = opt.mWindowWidth;
@@ -849,7 +1080,17 @@ PUBLIC void retrace_glEGLImageTargetTexStorageEXT(char* src)
     //  ------------- retrace ---------------
     bool found = false;
     EGLImageKHR imageNew = gRetracer.mState.GetEGLImage(image, found);
-    _glEGLImageTargetTexStorageEXT(tgt, imageNew, attrib_list);
+    if (gRetracer.mOptions.eglImageAfrcRate != -1) {
+        compressionControlInfo compressInfo = {0};
+        getCompressionInfo(gRetracer.mOptions.eglImageAfrcRate, false, compressInfo);
+        std::vector<int> new_attrib_list = AddtoAttribList(attrib_list, compressInfo.extension, compressInfo.rate, EGL_NONE);
+        //if (gRetracer.mOptions.mDebug > 0)
+            DBG_LOG("Enable fixed rate attrib(0x%04x, 0x%04x) on eglImage in glEGLImageTargetTexStorageEXT().\n", compressInfo.extension, compressInfo.rate);
+        _glEGLImageTargetTexStorageEXT(tgt, imageNew, new_attrib_list.data());
+    }
+    else {
+        _glEGLImageTargetTexStorageEXT(tgt, imageNew, attrib_list);
+    }
 }
 
 PUBLIC void swapBuffersCommon(char* src, bool withDamage)
@@ -1124,51 +1365,51 @@ PUBLIC void retrace_eglQuerySurface(char* _src)
 }
 
 const common::EntryMap retracer::egl_callbacks = {
-    {"eglCreateSyncKHR", (void*)retrace_eglCreateSyncKHR},
-    {"eglClientWaitSyncKHR", (void*)retrace_eglClientWaitSyncKHR},
-    {"eglDestroySyncKHR", (void*)retrace_eglDestroySyncKHR},
-    {"eglSignalSyncKHR", (void*)retrace_eglSignalSyncKHR},
-    {"eglGetSyncAttribKHR", (void*)ignore},
-    {"eglGetError", (void*)ignore},
-    {"eglGetDisplay", (void*)ignore},
-    {"eglInitialize", (void*)ignore},
-    {"eglTerminate", (void*)ignore},
-    {"eglQueryString", (void*)ignore},
-    {"eglGetConfigs", (void*)ignore},
-    {"eglChooseConfig", (void*)ignore},
-    {"eglGetConfigAttrib", (void*)ignore},
-    {"eglSetDamageRegionKHR", (void*)retrace_eglSetDamageRegionKHR},
-    {"eglCreateWindowSurface", (void*)retrace_eglCreateWindowSurface},
-    {"eglCreateWindowSurface2", (void*)retrace_eglCreateWindowSurface2},
-    {"eglCreatePlatformWindowSurface", (void*)retrace_eglCreateWindowSurface},
-    {"eglCreatePbufferSurface", (void*)retrace_eglCreatePbufferSurface},
-    //{"eglCreatePixmapSurface", (void*)ignore},
-    {"eglDestroySurface", (void*)retrace_eglDestroySurface},
-    {"eglQuerySurface", (void*)retrace_eglQuerySurface},
-    {"eglBindAPI", (void*)retrace_eglBindAPI},
-    {"eglQueryAPI", (void*)ignore},
-    //{"eglWaitClient", (void*)ignore},
-    //{"eglReleaseThread", (void*)ignore},
-    //{"eglCreatePbufferFromClientBuffer", (void*)ignore},
-    {"eglSurfaceAttrib", (void*)retrace_eglSurfaceAttrib},
-    //{"eglBindTexImage", (void*)ignore},
-    //{"eglReleaseTexImage", (void*)ignore},
-    {"eglSwapInterval", (void*)ignore},
-    {"eglCreateContext", (void*)retrace_eglCreateContext},
-    {"eglDestroyContext", (void*)retrace_eglDestroyContext},
-    {"eglMakeCurrent", (void*)retrace_eglMakeCurrent},
-    {"eglGetCurrentContext", (void*)ignore},
-    {"eglGetCurrentSurface", (void*)ignore},
-    {"eglGetCurrentDisplay", (void*)ignore},
-    {"eglQueryContext", (void*)ignore},
-    {"eglWaitGL", (void*)ignore},
-    {"eglWaitNative", (void*)ignore},
-    {"eglSwapBuffers", (void*)retrace_eglSwapBuffers},
-    {"eglSwapBuffersWithDamageKHR", (void*)retrace_eglSwapBuffersWithDamageKHR},
-    //{"eglCopyBuffers", (void*)ignore},
-    {"eglGetProcAddress", (void*)ignore},
-    {"eglCreateImageKHR", (void*)retrace_eglCreateImageKHR},
-    {"eglDestroyImageKHR", (void*)retrace_eglDestroyImageKHR},
-    {"glEGLImageTargetTexture2DOES", (void*)retrace_glEGLImageTargetTexture2DOES},
-    {"glEGLImageTargetTexStorageEXT", (void*)retrace_glEGLImageTargetTexStorageEXT},
+    {"eglCreateSyncKHR", std::make_pair((void*)retrace_eglCreateSyncKHR, false)},
+    {"eglClientWaitSyncKHR", std::make_pair((void*)retrace_eglClientWaitSyncKHR, false)},
+    {"eglDestroySyncKHR", std::make_pair((void*)retrace_eglDestroySyncKHR, false)},
+    {"eglSignalSyncKHR", std::make_pair((void*)retrace_eglSignalSyncKHR, false)},
+    {"eglGetSyncAttribKHR", std::make_pair((void*)ignore, true)},
+    {"eglGetError", std::make_pair((void*)ignore, true)},
+    {"eglGetDisplay", std::make_pair((void*)ignore, true)},
+    {"eglInitialize", std::make_pair((void*)ignore, true)},
+    {"eglTerminate", std::make_pair((void*)ignore, true)},
+    {"eglQueryString", std::make_pair((void*)ignore, true)},
+    {"eglGetConfigs", std::make_pair((void*)ignore, true)},
+    {"eglChooseConfig", std::make_pair((void*)ignore, true)},
+    {"eglGetConfigAttrib", std::make_pair((void*)ignore, true)},
+    {"eglSetDamageRegionKHR", std::make_pair((void*)retrace_eglSetDamageRegionKHR, false)},
+    {"eglCreateWindowSurface", std::make_pair((void*)retrace_eglCreateWindowSurface, false)},
+    {"eglCreateWindowSurface2", std::make_pair((void*)retrace_eglCreateWindowSurface2, false)},
+    {"eglCreatePlatformWindowSurface", std::make_pair((void*)retrace_eglCreateWindowSurface, false)},
+    {"eglCreatePbufferSurface", std::make_pair((void*)retrace_eglCreatePbufferSurface, false)},
+    //{"eglCreatePixmapSurface", std::make_pair((void*)ignore, true)},
+    {"eglDestroySurface", std::make_pair((void*)retrace_eglDestroySurface, false)},
+    {"eglQuerySurface", std::make_pair((void*)retrace_eglQuerySurface, false)},
+    {"eglBindAPI", std::make_pair((void*)retrace_eglBindAPI, false)},
+    {"eglQueryAPI", std::make_pair((void*)ignore, true)},
+    //{"eglWaitClient", std::make_pair((void*)ignore, true)},
+    //{"eglReleaseThread", std::make_pair((void*)ignore, true)},
+    //{"eglCreatePbufferFromClientBuffer", std::make_pair((void*)ignore, true)},
+    {"eglSurfaceAttrib", std::make_pair((void*)retrace_eglSurfaceAttrib, false)},
+    //{"eglBindTexImage", std::make_pair((void*)ignore, true)},
+    //{"eglReleaseTexImage", std::make_pair((void*)ignore, true)},
+    {"eglSwapInterval", std::make_pair((void*)ignore, true)},
+    {"eglCreateContext", std::make_pair((void*)retrace_eglCreateContext, false)},
+    {"eglDestroyContext", std::make_pair((void*)retrace_eglDestroyContext, false)},
+    {"eglMakeCurrent", std::make_pair((void*)retrace_eglMakeCurrent, false)},
+    {"eglGetCurrentContext", std::make_pair((void*)ignore, true)},
+    {"eglGetCurrentSurface", std::make_pair((void*)ignore, true)},
+    {"eglGetCurrentDisplay", std::make_pair((void*)ignore, true)},
+    {"eglQueryContext", std::make_pair((void*)ignore, true)},
+    {"eglWaitGL", std::make_pair((void*)ignore, true)},
+    {"eglWaitNative", std::make_pair((void*)ignore, true)},
+    {"eglSwapBuffers", std::make_pair((void*)retrace_eglSwapBuffers, false)},
+    {"eglSwapBuffersWithDamageKHR", std::make_pair((void*)retrace_eglSwapBuffersWithDamageKHR, false)},
+    //{"eglCopyBuffers", std::make_pair((void*)ignore, true)},
+    {"eglGetProcAddress", std::make_pair((void*)ignore, true)},
+    {"eglCreateImageKHR", std::make_pair((void*)retrace_eglCreateImageKHR, false)},
+    {"eglDestroyImageKHR", std::make_pair((void*)retrace_eglDestroyImageKHR, false)},
+    {"glEGLImageTargetTexture2DOES", std::make_pair((void*)retrace_glEGLImageTargetTexture2DOES, false)},
+    {"glEGLImageTargetTexStorageEXT", std::make_pair((void*)retrace_glEGLImageTargetTexStorageEXT, false)},
 };

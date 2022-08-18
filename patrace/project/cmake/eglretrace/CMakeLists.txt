@@ -75,4 +75,3 @@ add_dependencies(paretrace
 )
 
 install(TARGETS paretrace RUNTIME DESTINATION bin)
-install(PROGRAMS eglretrace DESTINATION bin)

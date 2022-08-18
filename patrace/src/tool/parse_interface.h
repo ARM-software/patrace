@@ -162,6 +162,7 @@ struct SamplerState
     GLenum depth_stencil_mode;
     GLfloat anisotropy = 1.0;
     GLenum srgb_decode = GL_DECODE_EXT;
+    GLfloat border[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
     SamplerState()
     {
         // Set to OpenGL defaults
@@ -297,6 +298,8 @@ struct Texture : public Resource
     SamplerState state;
     Texture(int _id, int _index) : Resource(_id, _index) {}
     bool used = false; // actually used in a draw call
+    bool initialized = false;
+    bool uninit_usage = false;
 
     std::map<int, MipmapGeneration> mipmaps; // call number of glGenerateMipmap : data
 
@@ -731,6 +734,7 @@ public:
     virtual common::CallTM* next_call() = 0;
     virtual DrawParams getDrawCallCount(common::CallTM *call);
     virtual void loop(Callback c, void *data) = 0;
+    virtual void cleanup() = 0;
     virtual int64_t getCpuCycles() { return 0; }
 
     void dumpFrameBuffers(bool value) { mDumpFramebuffers = value; }
@@ -813,6 +817,7 @@ public:
     virtual void close() override;
     virtual common::CallTM* next_call() override;
     virtual void loop(Callback c, void *data) override;
+    virtual void cleanup() override;
 
     virtual void writeout(common::OutFile &outputFile, common::CallTM *call);
 

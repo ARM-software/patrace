@@ -354,8 +354,8 @@ def GenerateWrapper(headerDir, pythonCmd, manual_imp_funcs):
     all_commands.update(sum_commands)
     all_includes.extend(includes)
 
-    # texStorageAttr
-    tex_commands = {}
+    # AFRC
+    afrc_commands = {}
     d={}
     d['return_type_str'] = 'void'
     d['function_name'] = 'glTexStorageAttribs2DARM'
@@ -366,7 +366,7 @@ def GenerateWrapper(headerDir, pythonCmd, manual_imp_funcs):
          {"strlist":['GLsizei width'], "length":4}, {"strlist":['GLsizei height'], "length":4}, {"strlist":['const int *attrib_list'], "length":4}
         ]
     d['parameters'] = p
-    tex_commands['glTexStorageAttribs2DARM'] = d
+    afrc_commands['glTexStorageAttribs2DARM'] = d
 
     d={}
     d['return_type_str'] = 'void'
@@ -379,9 +379,9 @@ def GenerateWrapper(headerDir, pythonCmd, manual_imp_funcs):
          {"strlist":['const int *attrib_list'], "length":4}
         ]
     d['parameters'] = p
-    tex_commands['glTexStorageAttribs3DARM'] = d
+    afrc_commands['glTexStorageAttribs3DARM'] = d
 
-    all_commands.update(tex_commands)
+    all_commands.update(afrc_commands)
 
     # single .so file
     generateSourceFile(all_commands, 'single', 'auto.cpp', pythonCmd, manual_imp_funcs, all_includes)

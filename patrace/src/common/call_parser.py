@@ -274,7 +274,7 @@ class CallParser(object):
         print('const common::EntryMap parse_callbacks = {')
         for func in functions:
             if func.name not in notSupportedFuncs:
-                print('    {"%s", (void*)parse_%s},' % (func.name, func.name))
+                print('    {"%s", std::make_pair((void*)parse_%s, false) },' % (func.name, func.name))
         print('};')
         print()
 

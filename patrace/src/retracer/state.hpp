@@ -618,6 +618,7 @@ public:
     Drawable* mSingleSurface;
     bool mForceSingleWindow;
     EGLDisplay mEglDisplay;
+    EGLConfig  mEglConfig;
 
 private:
     std::unordered_map<int, Drawable*>    mDrawableMap;
