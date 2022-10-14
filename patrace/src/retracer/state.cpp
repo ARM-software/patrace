@@ -62,7 +62,7 @@ void StateMgr::InsertContextMap(int oldVal, Context* ctx)
     ctx->retain();
 }
 
-Context* StateMgr::GetContext(int oldVal)
+Context* StateMgr::GetContext(int oldVal) const
 {
     if (oldVal == 0)
     {
@@ -86,13 +86,13 @@ void StateMgr::RemoveContextMap(int oldVal)
     }
 }
 
-int StateMgr::GetCtx(Context* context)
+int StateMgr::GetCtx(Context* context) const
 {
-    for (std::unordered_map<int, Context*>::iterator it = mContextMap.begin(); it != mContextMap.end(); ++it)
+    for (const auto& it : mContextMap)
     {
-        if (it->second == context)
+        if (it.second == context)
         {
-            return it->first;
+            return it.first;
         }
     }
 
@@ -111,7 +111,7 @@ void StateMgr::InsertDrawableToWinMap(int drawableVal, int winVal)
     mDrawableToWinMap[drawableVal] = winVal;
 }
 
-int StateMgr::GetWin(int drawableVal)
+int StateMgr::GetWin(int drawableVal) const
 {
     if (drawableVal == 0)
     {
@@ -122,7 +122,7 @@ int StateMgr::GetWin(int drawableVal)
     return win;
 }
 
-Drawable* StateMgr::GetDrawable(int oldVal)
+Drawable* StateMgr::GetDrawable(int oldVal) const
 {
     if (oldVal == 0) // EGL_NO_SURFACE
     {
@@ -150,11 +150,11 @@ void StateMgr::RemoveDrawableMap(int oldVal)
     }
 }
 
-bool StateMgr::IsInDrawableMap(Drawable* drawable)
+bool StateMgr::IsInDrawableMap(Drawable* drawable) const
 {
-    for (std::unordered_map<int, Drawable*>::iterator it = mDrawableMap.begin(); it != mDrawableMap.end(); ++it)
+    for (const auto& it : mDrawableMap)
     {
-        if (it->second == drawable)
+        if (it.second == drawable)
         {
             return true;
         }
@@ -163,13 +163,13 @@ bool StateMgr::IsInDrawableMap(Drawable* drawable)
     return false;
 }
 
-int StateMgr::GetDraw(Drawable* drawable)
+int StateMgr::GetDraw(Drawable* drawable) const
 {
-    for (std::unordered_map<int, Drawable*>::iterator it = mDrawableMap.begin(); it != mDrawableMap.end(); ++it)
+    for (const auto& it : mDrawableMap)
     {
-        if (it->second == drawable)
+        if (it.second == drawable)
         {
-            return it->first;
+            return it.first;
         }
     }
 
@@ -181,7 +181,7 @@ void StateMgr::InsertEGLImageMap(int oldVal, EGLImageKHR image)
     mEGLImageKHRMap[oldVal] = image;
 }
 
-EGLImageKHR StateMgr::GetEGLImage(int oldVal, bool &found)
+EGLImageKHR StateMgr::GetEGLImage(int oldVal, bool &found) const
 {
     if (oldVal == 0) // EGL_NO_SURFACE
     {
@@ -217,11 +217,11 @@ void StateMgr::RemoveEGLImageMap(int oldVal)
     }
 }
 
-bool StateMgr::IsInEGLImageMap(EGLImageKHR image)
+bool StateMgr::IsInEGLImageMap(EGLImageKHR image) const
 {
-    for (std::unordered_map<int, EGLImageKHR>::iterator it = mEGLImageKHRMap.begin(); it != mEGLImageKHRMap.end(); ++it)
+    for (const auto& it : mEGLImageKHRMap)
     {
-        if (it->second == image)
+        if (it.second == image)
         {
             return true;
         }

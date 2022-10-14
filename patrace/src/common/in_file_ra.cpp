@@ -179,7 +179,7 @@ bool InFileRA::CreateRAFile(const char* name, const std::string& target)
             inStream.read((char*)&bHeaderV2, sizeof(bHeaderV2));
             outStream.write((char*)&bHeaderV2, sizeof(bHeaderV2));
         }
-        else if (bHeader.version >= HEADER_VERSION_3 || bHeader.version <= HEADER_VERSION_4) {
+        else if (bHeader.version >= HEADER_VERSION_3 && bHeader.version <= HEADER_VERSION_4) {
             common::BHeaderV3   bHeaderV3;
             inStream.read((char*)&bHeaderV3, sizeof(bHeaderV3));
             outStream.write((char*)&bHeaderV3, sizeof(bHeaderV3));

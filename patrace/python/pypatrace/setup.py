@@ -83,6 +83,7 @@ patrace_extension = setuptools.Extension(
         'thirdparty/egl-registry/api',
         'thirdparty/opengl-registry/api',
         'thirdparty/libcollector/external/jsoncpp/include',
+        'thirdparty/libcollector/external/jsoncpp/src/lib_json',
     ],
     sources=[
         'patrace_wrap.cpp',

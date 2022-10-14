@@ -1316,6 +1316,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             buffer.usages.insert(call->mArgs[3]->GetAsUInt());
             buffer.size = size;
             buffer.updated();
+            buffer.initialized = true;
         }
     }
     else if (call->mCallName == "glBufferSubData")
@@ -1332,8 +1333,20 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     }
     else if (call->mCallName == "glMapBufferRange" || call->mCallName == "glMapBufferOES" || call->mCallName == "glMapBuffer")
     {
-        contexts[context_index].state_change(frames);
-        // TBD - check flags, set the appropriate update status
+        const GLenum target = call->mArgs[0]->GetAsUInt();
+        const int access_idx = (call->mCallName == "glMapBufferRange") ? 3 : 1;
+        const GLuint access = call->mArgs[access_idx]->GetAsUInt();
+        const GLintptr offset = (call->mCallName == "glMapBufferRange") ? call->mArgs[1]->GetAsUInt() : 0;
+        const bool writeaccess = (call->mCallName == "glMapBufferRange") ? (access & GL_MAP_WRITE_BIT) : (access == GL_WRITE_ONLY || access == GL_READ_WRITE);
+        if (writeaccess)
+        {
+            contexts[context_index].state_change(frames);
+            StateTracker::VertexArrayObject& vao = contexts[context_index].vaos.at(contexts[context_index].vao_index);
+            const GLuint id = vao.boundBufferIds[target][0].buffer;
+            const int index = contexts[context_index].buffers.remap(id);
+            StateTracker::Buffer &buffer = contexts[context_index].buffers[index];
+            buffer.used = true; // might still be unused but we'd need to fix a lot to omit it if used in this way...
+        }
     }
     else if (call->mCallName == "glCopyClientSideBuffer")
     {
@@ -1399,7 +1412,9 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         {
             vao.boundBufferIds[target][0] = { id, 0, 0 };
             const int buffer_index = contexts[context_index].buffers.remap(id);
-            contexts[context_index].buffers[buffer_index].bindings.insert(target);
+            StateTracker::Buffer& buf = contexts[context_index].buffers.at(buffer_index);
+            buf.bindings.insert(target);
+            if (!buf.used && buf.initialized) buf.used = true; // a very approximate assumption
         }
         else
         {
@@ -1428,7 +1443,9 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         {
             vao.boundBufferIds[target][index] = { id, 0, 0 };
             const int buffer_index = contexts[context_index].buffers.remap(id);
-            contexts[context_index].buffers[buffer_index].bindings.insert(target);
+            StateTracker::Buffer& buf = contexts[context_index].buffers.at(buffer_index);
+            buf.bindings.insert(target);
+            if (!buf.used && buf.initialized) buf.used = true; // a very approximate assumption
         }
         else
         {
@@ -1573,9 +1590,12 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         {
             const int target_texture_index = contexts[context_index].textures.remap(tex_id);
             StateTracker::Texture& tex = contexts[context_index].textures[target_texture_index];
-            if (call->mCallName.find("glTexImage") != std::string::npos || call->mCallName.find("glCompressedTexImage") != std::string::npos)
+            if (call->mCallName.find("TexImage") != std::string::npos)
             {
-                tex.initialized = true;
+                const GLint level = call->mArgs[1]->GetAsUInt();
+                if ((int)tex.initialized.size() <= level) tex.initialized.resize(level + 1);
+                tex.initialized.at(level) = true;
+                tex.levels = std::max<int>(tex.levels, level);
                 int valno = -1;
                 if (call->mCallName == "glTexImage1D") valno = 7;
                 else if (call->mCallName == "glTexImage2D") valno = 8;
@@ -1588,27 +1608,22 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 else if (call->mCallName == "glCompressedTexImage2DOES") valno = 7;
                 else if (call->mCallName == "glCompressedTexImage3DOES") valno = 8;
                 assert(valno != -1);
-
-                if (valno > 0)
+                assert(call->mArgs[valno]->mType == common::Opaque_Type);
+                // very old trace files will have call->mArgs[valno]->mOpaqueIns->mType == common::Uint_Type, not sure how to handle here
+                if (call->mArgs[valno]->mOpaqueIns->mType == common::Blob_Type && call->mArgs[valno]->mOpaqueIns->mBlobLen == 0)
                 {
-                    assert(call->mArgs[valno]->mType == common::Opaque_Type);
-                    // very old trace files will have call->mArgs[valno]->mOpaqueIns->mType == common::Uint_Type, not sure how to handle here
-                    if (call->mArgs[valno]->mOpaqueIns->mType == common::Blob_Type && call->mArgs[valno]->mOpaqueIns->mBlobLen == 0)
-                    {
-                        tex.initialized = false;
-                    }
+                    tex.initialized.at(level) = false;
                 }
-            }
-            tex.binding_point = target;
-            if (call->mCallName.find("TexStorage") != std::string::npos)
-            {
-                tex.levels = call->mArgs[1]->GetAsUInt();
-                tex.immutable = true;
             }
             else
             {
-                tex.levels = std::max<int>(tex.levels, call->mArgs[1]->GetAsUInt());
+                assert(call->mCallName.find("TexStorage") != std::string::npos);
+                const GLint levels = call->mArgs[1]->GetAsUInt();
+                tex.levels = levels;
+                tex.immutable = true;
+                if ((int)tex.initialized.size() < levels) tex.initialized.resize(levels);
             }
+            tex.binding_point = target;
             tex.internal_format = call->mArgs[2]->GetAsUInt();
             tex.width = call->mArgs[3]->GetAsInt();
             if (call->mCallName.find("2D") != std::string::npos)
@@ -1631,6 +1646,16 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
              || call->mCallName == "glCompressedTexSubImage2D" || call->mCallName == "glCompressedTexSubImage3D")
     {
         const GLenum target = interpret_texture_target(call->mArgs[0]->GetAsUInt());
+        const GLint level = call->mArgs[1]->GetAsUInt();
+        int i = 2;
+        const GLint xoffset = call->mArgs[i++]->GetAsUInt();
+        const GLint yoffset = (call->mCallName == "glTexSubImage1D") ? 0 : call->mArgs[i++]->GetAsUInt();
+        const GLint zoffset = (call->mCallName == "glTexSubImage3D" || call->mCallName == "glCompressedTexSubImage3D") ? call->mArgs[i++]->GetAsUInt() : 0;
+        const GLsizei width = call->mArgs[i++]->GetAsUInt();
+        const GLsizei height = (call->mCallName == "glTexSubImage1D") ? 1 : call->mArgs[i++]->GetAsUInt();
+        const GLsizei depth = (call->mCallName == "glTexSubImage3D" || call->mCallName == "glCompressedTexSubImage3D") ? call->mArgs[i++]->GetAsUInt() : 1;
+        if (call->mCallName == "glTexSubImage2D") { assert(i == 6); } // sanity check
+        else if (call->mCallName == "glTexSubImage3D") { assert(i == 8); }
         const GLuint unit = contexts[context_index].activeTextureUnit;
         const GLuint tex_id = contexts[context_index].textureUnits[unit][target];
         contexts[context_index].state_change(frames);
@@ -1639,7 +1664,11 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             const int target_texture_index = contexts[context_index].textures.remap(tex_id);
             StateTracker::Texture& tex = contexts[context_index].textures[target_texture_index];
             tex.partial_update();
-            tex.initialized = true;
+            if (xoffset == 0 && yoffset == 0 && zoffset == 0 && (level > 0 || (width == tex.width && height == tex.height && depth == tex.depth)))
+            {
+                assert((int)tex.initialized.size() > level);
+                tex.initialized.at(level) = true;
+            }
         }
         else
         {
@@ -1682,9 +1711,11 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         const GLuint tex_id = contexts[context_index].textureUnits[unit][target];
         if (tex_id != 0 && buf_id != 0)
         {
-            const int index = contexts[context_index].textures.remap(tex_id);
-            StateTracker::Texture& tx = contexts[context_index].textures.at(index);
-            tx.initialized = true; // assume it is initialized here
+            const int tex_index = contexts[context_index].textures.remap(tex_id);
+            StateTracker::Texture& tx = contexts[context_index].textures.at(tex_index);
+            const int buf_index = contexts[context_index].buffers.remap(buf_id);
+            StateTracker::Buffer& buf = contexts[context_index].buffers.at(buf_index);
+            for (auto& i : tx.initialized) i = buf.initialized;
         }
     }
     else if (call->mCallName == "glBindTexture")
@@ -2739,7 +2770,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 rp.render_targets[rb.first].second = index;
                 rp.attachments[i].index = index;
                 StateTracker::Texture& tx = contexts[context_index].textures.at(index);
-                tx.initialized = true; // assume it is used and thus initialized
+                for (auto& i : tx.initialized) i = true; // assume it is used and thus initialized
                 if (frames >= ff_startframe && frames <= ff_endframe) tx.used = true;
                 if (tx.mipmaps.rbegin() != tx.mipmaps.rend())
                 {
@@ -2838,9 +2869,9 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 if (texture_id == 0 || !contexts[context_index].textures.contains(texture_id)) continue;
                 const int idx = contexts[context_index].textures.remap(texture_id);
                 StateTracker::Texture& tx = contexts[context_index].textures.at(idx); // we really shouldn't touch it here...
-                if (!tx.initialized)
+                for (auto i : tx.initialized)
                 {
-                    tx.uninit_usage = true;
+                    if (!i) tx.uninit_usage = true;
                 }
             }
         }
@@ -2854,9 +2885,9 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 if (texture_id == 0) continue;
                 const int idx = contexts[context_index].textures.remap(texture_id);
                 StateTracker::Texture& tx = contexts[context_index].textures.at(idx); // touch it
-                if (!tx.initialized)
+                for (auto i : tx.initialized)
                 {
-                    tx.uninit_usage = true;
+                    if (!i) tx.uninit_usage = true;
                 }
                 if (frames >= ff_startframe && frames <= ff_endframe) tx.used = true;
                 if (tx.mipmaps.rbegin() != tx.mipmaps.rend())

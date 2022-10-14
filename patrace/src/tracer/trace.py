@@ -548,6 +548,8 @@ class Tracer:
 
         print('    gTraceOut->WriteBuf(dest);')
         print('    gTraceOut->callNo++;')
+        if func.name in ['eglSwapBuffers', 'eglSwapBuffersWithDamageKHR']: # must be before mutex unlock
+            print('    after_eglSwapBuffers();')
         print('    gTraceOut->callMutex.unlock();')
 
     def invokeFunction(self, func, prefix='_', suffix='', indent='    '):
@@ -610,34 +612,20 @@ class Tracer:
         print('%s// DBG_LOG("Invoking: %s(%s)\\n"%s);' % (indent, dispatch, printf_types, appendParams))
 
         if func.name == 'glGetStringi':
-            print('%sif (name == GL_EXTENSIONS && tracerParams.FilterSupportedExtension)' % indent)
+            print('%sif (name == GL_EXTENSIONS)' % indent)
             print('%s{' % indent)
-            print('%s    if (index >= tracerParams.SupportedExtensions.size())' % indent)
+            print('%s    if (index >= get_extensions().size())' % indent)
             print('%s    {' % indent)
-            print('%s        DBG_LOG("Invalid index %%u to extension list! Max is %%u.\\n", index, (unsigned)tracerParams.SupportedExtensions.size());' % indent)
+            print('%s        DBG_LOG("Invalid index %%u to extension list! Max is %%u.\\n", index, (unsigned)get_extensions().size());' % indent)
             print('%s        return (GLubyte*)"";' % indent)
             print('%s    }' % indent)
-            print('%s    _result = (const GLubyte*)tracerParams.SupportedExtensions[index].c_str();' % indent)
+            print('%s    _result = (const GLubyte*)get_extensions().at(index).c_str();' % indent)
             print('%s}' % indent)
             print('%selse' % indent)
             print('%s{' % indent)
             print('%s    ++gTraceThread.at(tid).mCallDepth;' % indent)
             print('%s    %s%s(%s);' % (indent, result, dispatch, params))
             print('%s    --gTraceThread.at(tid).mCallDepth;' % indent)
-            print('%s    const char *str = reinterpret_cast<const char*>(_result);' % indent)
-            print('%s    if (name == GL_EXTENSIONS && _result)' % indent)
-            print('%s    {' % indent)
-            print('%s        if ((tracerParams.ErrorOutOnBinaryShaders && (strcmp(str, "GL_ARM_mali_shader_binary") == 0 || strcmp(str, "GL_ARM_mali_program_binary") == 0 || strcmp(str, "GL_OES_get_program_binary") == 0))' % indent)
-            print('%s            || (tracerParams.DisableBufferStorage && strcmp(str, "GL_EXT_buffer_storage") == 0))' % indent)
-            print('%s        {' % indent)
-            print('%s            gTraceOut->callMutex.lock();' % indent)
-            print('%s            static std::string s;' % indent)
-            print('%s            s = str;' % indent)
-            print("%s            std::replace(s.begin(), s.end(), '_', 'X'); // make it not match anything anymore" % indent)
-            print('%s            _result = reinterpret_cast<const GLubyte*>(s.c_str());' % indent)
-            print('%s            gTraceOut->callMutex.unlock();' % indent)
-            print('%s        }' % indent)
-            print('%s    }' % indent)
             print('%s}' % indent)
             return
 
@@ -695,54 +683,9 @@ class Tracer:
         print()
 
         if func.name == 'glGetString':
-            print('%sif (name == GL_EXTENSIONS && tracerParams.FilterSupportedExtension)' % indent)
+            print('%sif (name == GL_EXTENSIONS)' % indent)
             print('%s{' % indent)
-            print('%s    string devExt = reinterpret_cast<const char*>(_result);' % indent)
-            print('%s    vector<string>& cfgExts = tracerParams.SupportedExtensions;' % indent)
-            print('%s    vector<string> notSupportedExts;' % indent)
-            #print r'%s    DBG_LOG("The device reports these extensions:\n");' % indent
-            #print r'%s    size_t pos = 0;' % indent
-            #print r'%s    while (pos < devExt.size())' % indent
-            #print r'%s    {' % indent
-            #print r'%s        DBG_LOG("%%s\n",  devExt.substr(pos, 70).c_str());' % indent
-            #print r'%s        pos += 70;' % indent
-            #print r'%s    }' % indent
-            print()
-            print('%s    for (unsigned int i = 0; i < cfgExts.size(); ++i)' % indent)
-            print('%s    {' % indent)
-            print('%s        if (devExt.find(cfgExts[i]) == string::npos)' % indent)
-            print('%s            notSupportedExts.push_back(cfgExts[i]);' % indent)
-            print('%s    }' % indent)
-            print()
-            print('%s    if (notSupportedExts.size() > 0)' % indent)
-            print('%s    {' % indent)
-            print('%s        DBG_LOG("This device doesn\'t support the following extensions listed in /system/lib/egl/tracerparams.cfg.");' % indent)
-            print('%s        for (unsigned int i = 0; i < notSupportedExts.size(); ++i)' % indent)
-            print(r'%s            DBG_LOG("    \'%%s\'\n", notSupportedExts[i].c_str());' % indent)
-            print('%s        DBG_LOG("Aborting...");' % indent)
-            print('%s        os::abort();' % indent)
-            print('%s    }' % indent)
-            print('%s    _result = reinterpret_cast<const GLubyte*>(tracerParams.SupportedExtensionsString.c_str());' % indent)
-            #print r'%s      DBG_LOG("Fake extensions: \'%%s\'\n", (const char*)_result);' % indent
-            print('%s}' % indent)
-            print('%sif (name == GL_EXTENSIONS && tracerParams.ErrorOutOnBinaryShaders) // remove binary shader support by default' % indent)
-            print('%s{' % indent)
-            print('%s    gTraceOut->callMutex.lock();' % indent)
-            print('%s    vector<string> target;' % indent)
-            print('%s    target.push_back("GL_ARM_mali_shader_binary");' % indent)
-            print('%s    target.push_back("GL_ARM_mali_program_binary");' % indent)
-            print('%s    target.push_back("GL_OES_get_program_binary");' % indent)
-            print('%s    tracerParams._tmp_extensions = removeString(_result, target);' % indent)
-            print('%s    _result = reinterpret_cast<const GLubyte*>(tracerParams._tmp_extensions.c_str());' % indent)
-            print('%s    gTraceOut->callMutex.unlock();' % indent)
-            print('%s}' % indent)
-            print('%sif (name == GL_EXTENSIONS && tracerParams.DisableBufferStorage) { // remove EXT_buffer_storage support' % indent)
-            print('%s    gTraceOut->callMutex.lock();' % indent)
-            print('%s    vector<string> target;' % indent)
-            print('%s    target.push_back("GL_EXT_buffer_storage");' % indent)
-            print('%s    tracerParams._tmp_extensions = removeString(_result, target);' % indent)
-            print('%s    _result = reinterpret_cast<const GLubyte*>(tracerParams._tmp_extensions.c_str());' % indent)
-            print('%s    gTraceOut->callMutex.unlock();' % indent)
+            print('%s    _result = (const GLubyte*)get_extension_string().c_str();' % indent)
             print('%s}' % indent)
             print('%sif (name == GL_RENDERER && tracerParams.RendererName != "") {      // modify renderer\'s name' % indent)
             print('%s    _result = reinterpret_cast<const GLubyte*>(tracerParams.RendererName.c_str());' % indent)
@@ -786,7 +729,7 @@ class Tracer:
             print('%s    *data = 0;' % indent)
             print('%s}' % indent)
             # override extensions list
-            print('%sif (pname == GL_NUM_EXTENSIONS && tracerParams.FilterSupportedExtension) *data = tracerParams.SupportedExtensions.size();' % indent)
+            print('%sif (pname == GL_NUM_EXTENSIONS) *data = get_extensions().size();' % indent)
             # make sure we have a compatible workgroup size
             print('%sif (pname == GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS) *data = 128;' % indent)
         if func.name in ['glGetIntegeri_v']:
@@ -811,31 +754,6 @@ class Tracer:
             print('%s}' % indent)
 
     def traceApi(self, api):
-        print('string removeString(const GLubyte *orig, const vector<string> &target) {')
-        print('    std::string extensions = reinterpret_cast<const char*>(orig);')
-        print('    istringstream iss(extensions);')
-        print('    std::vector<string> tokens{istream_iterator<string>{iss}, istream_iterator<string>{}};')
-        print('    std::vector<string> retlist;')
-        print('    for (const std::string& s : tokens)')
-        print('    {')
-        print('        bool found = false;')
-        print('        for (const std::string &s1 : target)')
-        print('        {')
-        print('            if (s == s1) {')
-        print('                found = true;')
-        print('                break;')
-        print('            }')
-        print('        }')
-        print('        if (!found)')
-        print('        {')
-        print('            retlist.push_back(s);')
-        print('        }')
-        print('    }')
-        print('    std::string retval = std::accumulate(retlist.begin(), retlist.end(), std::string(), [](const std::string& a, const std::string& b) -> std::string { return a + (a.length() > 0 ? " " : "") + b; });')
-        print('    return retval;')
-        print('}')
-        print()
-
         list(map(self.traceFunction, api.functions))
         for f in api.functions:
             if f.name in internal_functions:
@@ -980,9 +898,6 @@ class Tracer:
             print('    after_eglMakeCurrent(dpy, draw, ctx);')
         if func.name == 'eglCreateWindowSurface':
             print('    after_eglCreateWindowSurface(dpy, config, _result, x, y, width, height);')
-        if func.name in ['eglSwapBuffers',
-                         'eglSwapBuffersWithDamageKHR']:
-            print('    after_eglSwapBuffers();')
         if func.name == 'eglDestroySurface':
             print('    after_eglDestroySurface(surface);')
         if func.name in ['glCompressedTexImage2D', 'glCompressedTexImage3D']:
@@ -1139,12 +1054,12 @@ if __name__ == '__main__':
         sys.stdout = f
         print('#include <tracer/egltrace.hpp>')
         print()
-        print('#include <tracer/sig_enum.hpp>')
-        print('#include <tracer/tracerparams.hpp>')
-        print('#include <dispatch/eglproc_auto.hpp>')
-        print('#include <helper/eglsize.hpp>')
+        print('#include "tracer/sig_enum.hpp"')
+        print('#include "tracer/tracerparams.hpp"')
+        print('#include "dispatch/eglproc_auto.hpp"')
+        print('#include "helper/eglsize.hpp"')
         print('#include "helper/states.h"')
-        print('#include <common/trace_model.hpp>')
+        print('#include "common/in_file_mt.hpp"')
         print('#include "common/os.hpp"')
         print()
         print('#include <inttypes.h>')
@@ -1162,7 +1077,6 @@ if __name__ == '__main__':
         print()
         print('// clang also supports gcc pragmas')
         print('#pragma GCC diagnostic ignored "-Wunused-variable"')
-        print()
         print()
         api.delFunctionByName("glClientSideBufferData")
         api.delFunctionByName("glClientSideBufferSubData")

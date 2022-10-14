@@ -49,23 +49,6 @@
         }\
     } while(0)
 
-#define PRINT_MEMORY(mem, len) \
-    do {\
-        { \
-            printf("\nMEMORY PRINT BEGIN : %d >>>>>>>>>>>> {\n", (int)len); \
-          \
-            const unsigned char *begin = (const unsigned char*)mem; \
-            for (size_t i = 0; i < len; ++i) \
-            { \
-                printf("0x%X ", *(begin++)); \
-                if ((i+1) % 16 == 0) \
-                    printf("\n"); \
-            } \
-          \
-            printf("\nMEMORY PRINT END : %d <<<<<<<<<<<<< }\n", (int)len); \
-        }\
-    } while(0)
-
 #ifndef GL_BGR_EXT
 #define GL_BGR_EXT 0x80E0
 #endif

@@ -6,3 +6,4 @@ SET(WINDOWSYSTEM wayland)
 SET(ARCH aarch64)
 
 set(CC_HOST "aarch64-linux-gnu")
+set(ENV{PKG_CONFIG_PATH} "./scripts/pkgconfig/aarch64-linux-gnu")

@@ -298,4 +298,7 @@ void _glDeleteClientSideBuffer(common::ClientSideBufferObjectName name);
 #endif
 void _pa_MandatoryExtensions();
 
+const std::vector<std::string>& get_extensions();
+const std::string& get_extension_string();
+
 #endif

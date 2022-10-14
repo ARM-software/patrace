@@ -1,4 +1,4 @@
-#if !defined(PAEXCEPTION_H)
+#ifndef PAEXCEPTION_H
 #define PAEXCEPTION_H
 
 #include <iostream>

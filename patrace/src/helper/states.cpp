@@ -862,32 +862,6 @@ std::ostream& operator << (std::ostream& o, const UniformBlockInfo& ubi)
     return o;
 }
 
-
-VertexArrayInfo::VertexArrayInfo()
-    : binding(0)
-    , enabled(GL_FALSE)
-    , active(false)
-    , location(-1)
-    , bindingindex(-1)
-    , size(0)
-    , type(0)
-    , name()
-    , accessFlags(0)
-    , isMapped(true)
-    , mapLength(0)
-    , mapOffset(0)
-    , bufOffset(0)
-    , bufOffsetPtr(0)
-    , bufferSize(0)
-    , bufferMd5("-")
-    , elemSz(0)
-    , stride(0)
-    , typeV(0)
-    , normalized(0)
-    , integer(0)
-    , divisor(0)
-{}
-
 void VertexArrayInfo::updateEnabled()
 {
     _glGetVertexAttribiv(location, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &enabled);

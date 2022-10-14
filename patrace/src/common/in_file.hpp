@@ -38,6 +38,9 @@ public:
 
     void setFrameRange(unsigned startFrame, unsigned endFrame, int tid, bool preload, bool keep_all = false);
 
+    inline int getMaxSigId() const { return mMaxSigId; }
+    inline const std::vector<std::string>& getFuncNames() const { return mExIdToName; }
+
 protected:
     bool parseHeader(BHeaderV1 hdrV1, Json::Value &value);
     bool parseHeader(BHeaderV2 hdrV2, Json::Value &value);

@@ -1,15 +1,13 @@
 #ifndef _RETRACER_HANDLE_MAP_HPP_
 #define _RETRACER_HANDLE_MAP_HPP_
 
-#include <common/os.hpp>
+#include <cstring>
 #ifndef _WIN32
 #include <unistd.h>
 #endif
 #include <unordered_map>
 
 namespace retracer {
-
-extern bool gMapError;
 
 template <class K, class V>
 class stdmap {
@@ -28,7 +26,7 @@ public:
         return mMap.at(key);
     }
 
-    inline V& RValue(const K& key)
+    const inline V& RValue(const K& key) const
     {
         const auto it = mMap.find(key);
         if (it == mMap.end())
@@ -92,7 +90,6 @@ public:
                 resize(key);
             return mpData[key];
         }
-        //DBG_LOG("Map index (%u) larger than KEY_LIMIT, using map instead of array.\n", (unsigned)key);
         const auto it = mMap.find(key);
         if (it == mMap.end())
         {
@@ -101,7 +98,7 @@ public:
         return mMap.at(key);
     }
 
-    inline T& RValue(const T& key)
+    inline const T& RValue(const T& key) const
     {
         if (key < KEY_LIMIT) {
             if (((unsigned int)key) >= mSize)
@@ -122,7 +119,6 @@ public:
 
     void resize(unsigned int sz)
     {
-        // DBG_LOG("Resize(%d), %d\n", sz, mSize);
         if (sz < mSize)
             return;
 
@@ -186,7 +182,7 @@ public:
         return mpData[key];
     }
 
-    inline const int& RValue(const int& key)
+    inline const int& RValue(const int& key) const
     {
         if (((unsigned int)key) >= mSize)
             return key;
@@ -195,12 +191,8 @@ public:
 
     void resize(unsigned int sz)
     {
-        // DBG_LOG("Resize(%d), %d\n", sz, mSize);
         if (sz < mSize)
             return;
-
-        if (sz > 10000)
-            DBG_LOG("Much bigger map than expected: %d!\n", sz);
 
         int newSz = 1;
         for (; sz ; sz>>=1, newSz<<=1)
@@ -218,7 +210,6 @@ public:
         mSize = newSz;
     }
 };
-
 
 }
 

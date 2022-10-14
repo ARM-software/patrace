@@ -799,7 +799,10 @@ PUBLIC void retrace_eglMakeCurrent(char* src)
                 _glDebugMessageControlKHR(GL_DONT_CARE, GL_DONT_CARE, GL_DEBUG_SEVERITY_NOTIFICATION_KHR, 0, NULL, GL_FALSE);
             }
         }
+    }
 
+    if (context)
+    {
         if (only_once_ever)
         {
             DBG_LOG("Vendor: %s\n", (const char*)glGetString(GL_VENDOR));
@@ -834,10 +837,7 @@ PUBLIC void retrace_eglMakeCurrent(char* src)
 
             only_once_ever = false;
         }
-    }
 
-    if (context)
-    {
         gGlesFeatures.Update();
         if (gRetracer.delayedPerfmonInit) gRetracer.perfMonInit();
     }

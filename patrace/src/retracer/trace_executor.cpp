@@ -23,6 +23,7 @@
 #include <sstream>
 #include <vector>
 #include <sys/stat.h>
+#include <algorithm>
 
 #ifdef ANDROID
 #include <android/log.h>
@@ -37,6 +38,7 @@ using namespace retracer;
 
 void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
 {
+    bool usedFramerange = false;
     retracer::RetraceOptions& options = gRetracer.mOptions;
 
     options.mDoOverrideResolution = value.get("overrideResolution", false).asBool();
@@ -44,15 +46,12 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
     options.mOverrideResH = value.get("overrideHeight", -1).asInt();
     options.mFailOnShaderError = value.get("overrideFailOnShaderError", options.mFailOnShaderError).asBool();
     options.mOverrideMSAA = value.get("overrideMSAA", options.mOverrideMSAA).asInt();
+    if (options.mOverrideMSAA != -1)
+        DBG_LOG("Override the existing MSAA for fbo attachment with new MSAA: %d\n", options.mOverrideMSAA);
     options.mLoopTimes = value.get("loopTimes", options.mLoopTimes).asInt();
     if (value.isMember("loopSeconds"))
     {
         options.mLoopSeconds = value["loopSeconds"].asInt();
-    }
-    options.mCallStats = value.get("callStats", options.mCallStats).asBool();
-    if (options.mCallStats)
-    {
-        DBG_LOG("Callstats output enabled\n");
     }
 
     if (value.get("finishBeforeSwap", false).asBool())
@@ -83,23 +82,6 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
 
     options.mForceAnisotropicLevel = value.get("forceAnisotropicLevel", options.mForceAnisotropicLevel).asInt();
 
-    int jsWidth = value.get("width", -1).asInt();
-    int jsHeight = value.get("height", -1).asInt();
-    if (gRetracer.mFile.getHeaderVersion() >= common::HEADER_VERSION_2
-        && (jsWidth != options.mWindowWidth || jsHeight != options.mWindowHeight)
-        && (jsWidth > 0 && jsHeight > 0))
-    {
-        DBG_LOG("Wrong window size specified, must be same as in trace header. This option is only useful for very old trace files!");
-        jsWidth = -1;
-        jsHeight = -1;
-    }
-    if (jsWidth != -1 && jsHeight != -1)
-    {
-        DBG_LOG("Changing window size from (%d, %d) to (%d, %d)\n", options.mWindowWidth, options.mWindowHeight, jsWidth, jsHeight);
-        options.mWindowWidth = jsWidth;
-        options.mWindowHeight = jsHeight;
-    }
-
     EglConfigInfo eglConfig(
         value.get("colorBitsRed", -1).asInt(),
         value.get("colorBitsGreen", -1).asInt(),
@@ -107,7 +89,7 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         value.get("colorBitsAlpha", -1).asInt(),
         value.get("depthBits", -1).asInt(),
         value.get("stencilBits", -1).asInt(),
-        value.get("msaaSamples", -1).asInt(),
+        value.get("msaa", -1).asInt(),
         0
     );
 
@@ -124,6 +106,9 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
     options.mOverrideConfig = eglConfig;
     options.mMeasurePerFrame = value.get("measurePerFrame", false).asBool();
 
+    if (options.mOverrideConfig.msaa_samples > 0)
+        DBG_LOG("Enable multi sample: %d, for EGL window surface.\n", options.mOverrideConfig.msaa_samples);
+
     if (value.isMember("frames")) {
         std::string frames = value.get("frames", "").asString();
         DBG_LOG("Frame string: %s\n", frames.c_str());
@@ -136,9 +121,16 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
             }
             options.mBeginMeasureFrame = start;
             options.mEndMeasureFrame = end;
+            usedFramerange = true;
         } else {
             gRetracer.reportAndAbort("Invalid frames parameter [ %s ]", frames.c_str());
         };
+    }
+
+    options.mCallStats = value.get("callStats", options.mCallStats).asBool();
+    if (options.mCallStats && !usedFramerange)
+    {
+        gRetracer.reportAndAbort("callStats requires frames to also be present in the JSON input!\n");
     }
 
     if(value.isMember("perfrange")){
@@ -294,16 +286,78 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         options.texAfrcRate = -1;
     }
 
-    if (value.isMember("shaderCache"))
+    if (value.isMember("loadShaderCache"))
     {
-        options.mShaderCacheFile = value.get("shaderCache", "").asString();
+        options.mShaderCacheFile = value.get("loadShaderCache", "").asString();
+        options.mShaderCacheLoad = true;
     }
-    if (value.isMember("strictShaderCache"))
+    else if (value.isMember("saveShaderCache"))
     {
-        options.mShaderCacheRequired = value.get("strictShaderCache", false).asBool();
+        options.mShaderCacheFile = value.get("saveShaderCache", "").asString();
+        options.mShaderCacheLoad = false;
     }
+    options.mCacheOnly = value.get("cacheOnly", options.mCacheOnly).asBool();
+    if (value.isMember("loadShaderCache") && value.isMember("saveShaderCache")) gRetracer.reportAndAbort("loadShaderCache and saveShaderCache cannot be used at the same time in the JSON input!");
+    if (!value.isMember("saveShaderCache") && value.isMember("cacheOnly")) gRetracer.reportAndAbort("cacheOnly requires saveShaderCache to also be present in the JSON input!");
 
     options.mInstrumentationDelay = value.get("instrumentationDelay", 0).asUInt();
+
+    if (value.isMember("skipfence"))
+    {
+        std::vector<std::pair<unsigned int, unsigned int>> ranges;
+        for (auto ranges_itr : value["skipfence"])
+        {
+            ranges.push_back(std::make_pair(ranges_itr[0].asInt(), ranges_itr[1].asInt()));
+        }
+
+        if (ranges.size() == 0)
+        {
+            gRetracer.reportAndAbort("Bad value for option -skipfence, must give at least one frame range.");
+        }
+
+        std::sort(ranges.begin(), ranges.end());
+
+        unsigned int start = ranges[0].first;
+        unsigned int end = ranges[0].second;
+
+        std::vector<std::pair<unsigned int, unsigned int>> merged_ranges;
+        for (unsigned int i = 0; i < ranges.size() - 1; ++i)
+        {
+            if (ranges[i].second >= ranges[i + 1].first)
+            {
+                if (ranges[i].second < ranges[i + 1].second)
+                {
+                    end = ranges[i + 1].second;
+                }
+                else
+                {
+                    i += 1;
+                }
+            }
+            else
+            {
+                merged_ranges.push_back(std::make_pair(start, end));
+                start = ranges[i + 1].first;
+                end = ranges[i + 1].second;
+            }
+        }
+
+        merged_ranges.push_back(std::make_pair(start, end));
+
+        if (merged_ranges.size() > 0)
+        {
+            options.mSkipFence = true;
+            options.mSkipFenceRanges = merged_ranges;
+        }
+        else
+        {
+            options.mSkipFence = false;
+        }
+    }
+    else
+    {
+        options.mSkipFence = false;
+    }
 
     DBG_LOG("Thread: %d - override: %s (%d, %d)\n",
             options.mRetraceTid, options.mDoOverrideResolution ? "Yes" : "No", options.mOverrideResW, options.mOverrideResH);

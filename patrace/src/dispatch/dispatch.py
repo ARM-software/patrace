@@ -83,7 +83,7 @@ synonyms = {
     'glCopyImageSubDataOES' : 'glCopyImageSubData',
     'glBlendEquationEXT' : 'glBlendEquation',
     'glReadnPixelsEXT' : 'glReadnPixels',
-    'glShadingRateQCOM' : 'glShadingRateARM',
+    'glShadingRateQCOM' : 'glShadingRateEXT',
 }
 
 # Map commonly used core functions to extensions, in case core

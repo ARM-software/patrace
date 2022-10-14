@@ -163,9 +163,12 @@ def check_log_erros(log_file):
 
 
 def build_project(platform, variant, build_dir, install_dir, project_path, log_file=sys.stdout, make_target='install', cmake_defines=[], stop_early=False, static=False):
-    sanitizer = 'false'
+    sanitizer = 'False'
     if variant == 'sanitizer':
-        sanitizer = 'true'
+        sanitizer = 'address'
+        variant = 'debug'
+    elif variant == 'sanitizer-undefined':
+        sanitizer = 'undefined'
         variant = 'debug'
     if platform == 'win':
         cmake_command = (
@@ -199,7 +202,7 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
         ).format(
             project_path=project_path,
             variant=variant.capitalize(),
-            sanitizer=sanitizer.capitalize(),
+            sanitizer=sanitizer,
             build_dir=build_dir,
             install_dir=install_dir,
             arch=platform.split('_')[1],
@@ -309,7 +312,7 @@ def build_cmake(src_path, build_base_dir, install_base_dir):
         },
     ]
 
-    variants = ('release', 'debug', 'sanitizer')
+    variants = ('release', 'debug', 'sanitizer', 'sanitizer-undefined')
 
     for product in products:
         for platform in product['platforms']:

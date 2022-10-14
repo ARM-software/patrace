@@ -49,6 +49,7 @@ broken_funcs = [ # these fail to compile and should be fixed
     'glDebugMessageCallback',
     'glGetDebugMessageLogKHR',
     'glGetDebugMessageLog',
+    'glGetFragmentShadingRatesEXT', # Out(Pointer(basic type)) broken
 
     # For the below: Their array of values is stupidly stored since the apitrace days as a pointer value. That
     # means we do not have the original values nor can we infer their size from the size in the original call.
@@ -1004,7 +1005,7 @@ class Retracer(object):
         if func.name == 'glLinkProgram2' or func.name == 'glLinkProgram':
             if func.name == 'glLinkProgram':
                 print('    const int status = -1;')
-            print('    if (gRetracer.mOptions.mShaderCacheFile.size() > 0)')
+            print('    if (gRetracer.mOptions.mShaderCacheFile.size() > 0 && gRetracer.mOptions.mShaderCacheLoad)')
             print('    {')
             print('        load_from_shadercache(programNew, program, status);')
             print('    }')
@@ -1025,20 +1026,14 @@ class Retracer(object):
         arg_names = ", ".join(args)
 
         if func.name in shadercache_funcs:
-            print('    if (gRetracer.mOptions.mShaderCacheFile.size() == 0)')
+            print('    if (gRetracer.mOptions.mShaderCacheFile.size() == 0 || !gRetracer.mOptions.mShaderCacheLoad)')
             print('    {')
             print('        {name}({args});'.format(name=func.name, args=arg_names))
             print('    }')
             if func.name == 'glAttachShader':
-                print('    else')
-                print('    {')
-                print('        gRetracer.getCurrentContext().addShaderID(programNew, shaderNew);')
-                print('    }')
+                print('    gRetracer.getCurrentContext().addShaderID(programNew, shaderNew);')
             if func.name == 'glShaderSource':
-                print('    else')
-                print('    {')
-                print('        post_glShaderSource(shaderNew, shader, count, string, length);')
-                print('    }')
+                print('    post_glShaderSource(shaderNew, shader, count, string, length);')
         elif func.name == 'glTexStorage2DEXT':
             print('    if (gRetracer.mOptions.mLocalApiVersion >= PROFILE_ES3)')
             print('    {')
@@ -1060,11 +1055,10 @@ class Retracer(object):
         elif func.name == 'glClientWaitSync':
             print('    %sret = %s(%s);' % (indent, func.name, arg_names))
             indent = '    '
-            print('    uint32_t retry_counter = 1000;')
-            print('    while (retry_counter > 0 && (old_ret == GL_ALREADY_SIGNALED || old_ret == GL_CONDITION_SATISFIED) && ret == GL_TIMEOUT_EXPIRED)')
+            print('    while ((old_ret == GL_ALREADY_SIGNALED || old_ret == GL_CONDITION_SATISFIED) && ret == GL_TIMEOUT_EXPIRED)')
             print('    {')
+            print('    %sif (old_ret == GL_ALREADY_SIGNALED || old_ret == GL_CONDITION_SATISFIED) timeout = UINT64_MAX;' % indent)
             print('    %sret = %s(%s);' % (indent, func.name, arg_names))
-            print('    %sretry_counter--;' % (indent))
             print('    }')
             indent = ''
         elif func.type is not stdapi.Void:
@@ -1081,21 +1075,15 @@ class Retracer(object):
             print('    (void)ret;')
 
         if func.name == 'glCompileShader':
-            print('    if (gRetracer.mOptions.mShaderCacheFile.size() == 0)')
+            print('    if (gRetracer.mOptions.mShaderCacheFile.size() == 0 || !gRetracer.mOptions.mShaderCacheLoad)')
             print('    {')
             print('        post_glCompileShader(shaderNew, shader);')
             print('    }')
 
         if func.name == 'glDeleteShader':
-            print('    if (gRetracer.mOptions.mShaderCacheFile.size() > 0)')
-            print('    {')
-            print('        gRetracer.getCurrentContext().deleteShader(shaderNew);')
-            print('    }')
+            print('    gRetracer.getCurrentContext().deleteShader(shaderNew);')
         if func.name == 'glDeleteProgram':
-            print('    if (gRetracer.mOptions.mShaderCacheFile.size() > 0)')
-            print('    {')
-            print('        gRetracer.getCurrentContext().deleteShaderIDs(programNew);')
-            print('    }')
+            print('    gRetracer.getCurrentContext().deleteShaderIDs(programNew);')
 
     def retraceFunctionBody(self, func):
         #print '    DBG_LOG("retrace %s _src = %%p\\n", _src);' % func.name

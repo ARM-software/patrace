@@ -1,4 +1,4 @@
-#if !defined(STATES_H)
+#ifndef STATES_H
 #define STATES_H
 #include "dispatch/eglimports.hpp"
 #include "dispatch/eglproc_auto.hpp"
@@ -60,8 +60,6 @@ private:
 
 struct VertexArrayInfo
 {
-    VertexArrayInfo();
-
     static std::string title()
     {
         return ""
@@ -91,44 +89,44 @@ struct VertexArrayInfo
     void updateEnabled();
 
     // The id of the array buffer
-    GLint binding;
+    GLint binding = 0;
     // If the array buffer is enabled with
-    GLint enabled;
+    GLint enabled = 0;
     // If it is used in the shader
-    bool active;
+    bool active = false;
     // The index of attribute list
-    GLint location;
+    GLint location = -1;
     // The slot in the available array buffer list
-    GLint bindingindex;
+    GLint bindingindex = -1;
     // The offset of the first element relative to the start of the vertex buffer binding this attribute fetches from.
-    GLint relativeOffset;
+    GLint relativeOffset = 0;
     // The distance between elements within the buffer.
-    GLint vbstride;
+    GLint vbstride = 0;
     // The offset of the first element of the buffer.
-    GLint vboffset;
+    GLint vboffset = 0;
     // The number of elements of array types. E.g. 4 for float[4]
-    GLsizei size;
+    GLsizei size = 0;
     // The type as defined in shader, e.g. GL_FLOAT_VEC4
-    GLenum type;
+    GLenum type = GL_NONE;
     // The variable string, as it appears in the shader
     std::string name;
 
-    GLint accessFlags;
-    GLint isMapped;
-    GLint64 mapLength;
-    GLint64 mapOffset;
-    intptr_t bufOffset;
-    GLvoid* bufOffsetPtr;
-    GLint bufferSize;
-    std::string bufferMd5;
+    GLint accessFlags = 0;
+    GLint isMapped = 0;
+    GLint64 mapLength = 0;
+    GLint64 mapOffset = 0;
+    intptr_t bufOffset = 0;
+    GLvoid* bufOffsetPtr = nullptr;
+    GLint bufferSize = 0;
+    std::string bufferMd5 = "-";
     // The number of elements (e.g. 4 for a vec4)
-    GLint elemSz;
-    GLint stride;
+    GLint elemSz = 0;
+    GLint stride = 0;
     // The element type, e.g. GL_FLOAT for a float vec4
-    GLint typeV;
-    GLint normalized;
-    GLint integer;
-    GLint divisor;
+    GLint typeV = 0;
+    GLint normalized = 0;
+    GLint integer = 0;
+    GLint divisor = 0;
 
     bool operator<(const VertexArrayInfo &rhs) const { return name < rhs.name; }
 };

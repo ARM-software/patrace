@@ -23,6 +23,8 @@
 #include "base/base.hpp"
 #include "tool/utils.hpp"
 
+#pragma GCC diagnostic ignored "-Wunused-variable"
+
 #define DEBUG_LOG(...) if (debug) DBG_LOG(__VA_ARGS__)
 
 static bool debug = false;
@@ -32,8 +34,10 @@ static int endframe = -1;
 static bool waitsync = false;
 static std::set<int> unused_mipmaps; // call numbers
 static std::set<std::pair<int, int>> unused_textures; // context index + texture index
+static std::set<std::pair<int, int>> unused_buffers; // context index + buffer index
 static std::set<std::pair<int, int>> uninit_textures; // context index + texture index
 static int lastframe = -1;
+static bool cull_error = false;
 
 static void printHelp()
 {
@@ -43,11 +47,13 @@ static void printHelp()
         "  --waitsync    Add a non-zero timeout to glClientWaitSync and glWaitSync calls\n"
         "  --mipmap FILE Remove unused glGenerateMipmap calls. Need a usage CSV file from analyze_trace as input\n"
         "  --tex FILE    Remove unused texture calls. Need an uninitialized CSV file from analyze_trace as input\n"
+        "  --buf FILE    Remove unused buffer calls. Need an uninitialized CSV file from analyze_trace as input\n"
         "  --utex FILE   Fix uninitialized texture storage calls. Need a usage CSV file as input\n"
         "  --end FRAME   End frame (terminates trace here)\n"
         "  --last FRAME  Stop doing changes at this frame (copies the remaining trace without changes)\n"
         "  --verbose     Print more information while running\n"
         "  -c            Only count and report instances, do no changes\n"
+        "  -G            Remove all glGetError and eglGetError calls\n"
         "  -d            Print debug messages\n"
         "  -h            Print help\n"
         "  -v            Print version\n"
@@ -97,6 +103,38 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
         {
             count++;
         }
+        else if (call->mCallName == "glBufferData")
+        {
+            const GLenum target = call->mArgs[0]->GetAsUInt();
+            const StateTracker::VertexArrayObject& vao = input.contexts[input.context_index].vaos.at(input.contexts[input.context_index].vao_index);
+            if (vao.boundBufferIds.count(target) == 0 || vao.boundBufferIds.at(target).count(0) == 0)
+            {
+                printf("%d : no bound buffer!\n", (int)call->mCallNo);
+                abort();
+            }
+            const GLuint id = vao.boundBufferIds.at(target).at(0).buffer;
+            if (id == 0)
+            {
+                writeout(outputFile, call);
+                continue;
+            }
+            if (!input.contexts[input.context_index].buffers.contains(id))
+            {
+                printf("%d : buffer %d not tracked!\n", (int)call->mCallNo, (int)id);
+                abort();
+            }
+            const int buffer_index = input.contexts[input.context_index].buffers.remap(id);
+            if (unused_buffers.count(std::make_pair(input.context_index, buffer_index)) == 0)
+            {
+                writeout(outputFile, call);
+            } // else skip it
+            else count++;
+        }
+        else if ((call->mCallName == "eglGetError" || call->mCallName == "glGetError") && cull_error)
+        {
+            // don't output it
+            count++;
+        }
         else if (call->mCallName == "glTexStorage3D" || call->mCallName == "glTexStorage2D" || call->mCallName == "glTexStorage1D"
              || call->mCallName == "glTexStorage3DEXT" || call->mCallName == "glTexStorage2DEXT" || call->mCallName == "glTexStorage1DEXT"
              || call->mCallName == "glTexImage3D" || call->mCallName == "glTexImage2D" || call->mCallName == "glTexImage1D" || call->mCallName == "glTexImage3DOES"
@@ -118,7 +156,7 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
                 }
             }
             writeout(outputFile, call);
-            if ((call->mCallName == "glTexImage3D" || call->mCallName == "glTexImage2D") && uninit_textures.count(std::make_pair(input.context_index, target_texture_index)) > 0)
+            if (call->mCallName == "glTexImage2D" && uninit_textures.count(std::make_pair(input.context_index, target_texture_index)) > 0)
             {
                 const GLint level = call->mArgs[1]->GetAsUInt();
                 //const GLint internalFormat = call->mArgs[2]->GetAsUInt();
@@ -143,7 +181,12 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
                 writeout(outputFile, &c);
                 count++;
             }
-            else if ((call->mCallName == "glTexStorage3D" || call->mCallName == "glTexStorage2D") && uninit_textures.count(std::make_pair(input.context_index, target_texture_index)) > 0)
+            else if ((call->mCallName == "glTexStorage3D" || call->mCallName == "glTexImage3D") && uninit_textures.count(std::make_pair(input.context_index, target_texture_index)) > 0)
+            {
+                printf("Support for removing unused 3D textures not implemented yet!\n");
+                assert(false); // TBD
+            }
+            else if ((call->mCallName == "glTexStorage2DMultisample" || call->mCallName == "glTexStorage2D") && uninit_textures.count(std::make_pair(input.context_index, target_texture_index)) > 0)
             {
                 const GLsizei levels = call->mArgs[1]->GetAsUInt();
                 const GLenum format = call->mArgs[2]->GetAsUInt();
@@ -243,6 +286,10 @@ int main(int argc, char **argv)
         {
             onlycount = true;
         }
+        else if (arg == "-G")
+        {
+            cull_error = true;
+        }
         else if (arg == "-d")
         {
             debug = true;
@@ -284,6 +331,18 @@ int main(int argc, char **argv)
             int ignore = fscanf(fp, "%*[^\n]\n");
             (void)ignore;
             while (fscanf(fp, "%*d,%*d,%d,%*d,%d,%*d\n", &txidx, &ctxidx) == 2) unused_textures.insert(std::make_pair(ctxidx, txidx));
+            fclose(fp);
+        }
+        else if (arg == "--buf")
+        {
+            argIndex++;
+            FILE* fp = fopen(argv[argIndex], "r");
+            if (!fp) { printf("Error: Unable to open %s: %s\n", argv[argIndex], strerror(errno)); return -11; }
+            int ctxidx = 0;
+            int bufidx = 0;
+            int ignore = fscanf(fp, "%*[^\n]\n");
+            (void)ignore;
+            while (fscanf(fp, "%*d,%*d,%d,%*d,%d,%*d\n", &bufidx, &ctxidx) == 2) unused_buffers.insert(std::make_pair(ctxidx, bufidx));
             fclose(fp);
         }
         else if (arg == "-v")
@@ -329,7 +388,13 @@ int main(int argc, char **argv)
     if (!onlycount)
     {
         Json::Value info;
-        if (waitsync) info["waitsync"] = count;
+        info["count"] = count;
+        if (waitsync) info["waitsync"] = true;
+        if (unused_mipmaps.size() > 0) info["remove_unused_mipmaps"] = true;
+        if (unused_textures.size() > 0) info["remove_unused_textures"] = true;
+        if (uninit_textures.size() > 0) info["remove_uninitialized_textures"] = true;
+        if (endframe != -1) info["endframe"] = endframe;
+        if (lastframe != -1) info["lastframe"] = lastframe;
         addConversionEntry(header, "converter", source_trace_filename, info);
         Json::FastWriter writer;
         const std::string json_header = writer.write(header);

@@ -265,6 +265,7 @@ static void amd_perf_init(const char *vendor)
         if (r != 1)
         {
             DBG_LOG("Failed to read perfmon.conf! No perf measurements for you :-(\n");
+            fclose(pm_fp);
             return;
         }
         DBG_LOG("GL_AMD_performance_monitor activating for group %u and counters:", pm_current_group);
@@ -409,7 +410,7 @@ static void amd_perf_end(Json::Value& v)
     _glGetPerfMonitorCounterDataAMD(pm_monitor, GL_PERFMON_RESULT_AMD, resultSize, (GLuint*)result.data(), &written);
     ok = (_glGetError() == GL_NO_ERROR);
     if (!ok) DBG_LOG("perfmon end : Could not fetch data itself\n");
-    fprintf(pm_fp, "run");
+    if (pm_fp) fprintf(pm_fp, "run");
     GLsizei wordCount = 0;
     while (wordCount * (GLsizei)sizeof(GLuint) < written)
     {
@@ -421,8 +422,8 @@ static void amd_perf_end(Json::Value& v)
         if (groupId == 0 && counterId == 2) v["gpu_active"] = (Json::Value::Int64)counterResult;
         wordCount += 4;
     }
-    fprintf(pm_fp, "\n");
-    fclose(pm_fp);
+    if (pm_fp) fprintf(pm_fp, "\n");
+    if (pm_fp) fclose(pm_fp);
     _glDeletePerfMonitorsAMD(1, &pm_monitor);
     amd_perf_activated = false;
     DBG_LOG("Perfmon data successfully written (%d words, %u result size)\n", (int)wordCount, (unsigned)resultSize);
@@ -471,10 +472,7 @@ bool Retracer::OpenTraceFile(const char* filename)
     mFileFormatVersion = mFile.getHeaderVersion();
     mStateLogger.open(std::string(filename) + ".retracelog");
     loadRetraceOptionsFromHeader();
-    mExIdEglSwapBuffers = mFile.NameToExId("eglSwapBuffers");
-    mExIdEglSwapBuffersWithDamage = mFile.NameToExId("eglSwapBuffersWithDamageKHR");
     mFinish.store(false);
-
     initializeCallCounter();
 
     return true;
@@ -528,6 +526,56 @@ void Retracer::loadRetraceOptionsFromHeader()
     if (mOptions.mForceSingleWindow) DBG_LOG("Enabling force single window option\n");
     if (jsHeader.isMember("multiThread")) mOptions.mMultiThread = jsHeader.get("multiThread", false).asBool();
     if (mOptions.mMultiThread) DBG_LOG("Enabling multiple thread option\n");
+    if (jsHeader.isMember("skipfence")) {
+        std::vector<std::pair<unsigned int, unsigned int>> ranges;
+        for (auto ranges_itr : jsHeader["skipfence"])
+        {
+            ranges.push_back(std::make_pair(ranges_itr[0].asInt(), ranges_itr[1].asInt()));
+        }
+
+        if (ranges.size() == 0)
+        {
+            gRetracer.reportAndAbort("Bad value for option -skipfence, must give at least one frame range.");
+        }
+
+        std::sort(ranges.begin(), ranges.end());
+
+        unsigned int start = ranges[0].first;
+        unsigned int end = ranges[0].second;
+
+        std::vector<std::pair<unsigned int, unsigned int>> merged_ranges;
+        for (unsigned int i = 0; i < ranges.size() - 1; ++i)
+        {
+            if (ranges[i].second >= ranges[i + 1].first)
+            {
+                if (ranges[i].second < ranges[i + 1].second)
+                {
+                    end = ranges[i + 1].second;
+                }
+                else
+                {
+                    i += 1;
+                }
+            }
+            else
+            {
+                merged_ranges.push_back(std::make_pair(start, end));
+                start = ranges[i + 1].first;
+                end = ranges[i + 1].second;
+            }
+        }
+
+        if (merged_ranges.size() > 0)
+        {
+            mOptions.mSkipFence = true;
+            mOptions.mSkipFenceRanges = merged_ranges;
+        }
+        else
+        {
+            mOptions.mSkipFence = false;
+        }
+    }
+    if (mOptions.mSkipFence) DBG_LOG("Enabling fence skip option\n");
     switch (jsHeader["glesVersion"].asInt())
     {
     case 1: mOptions.mApiVersion = PROFILE_ES1; break;
@@ -579,7 +627,7 @@ std::vector<Texture> Retracer::getTexturesToDump()
     Context& context = gRetracer.getCurrentContext();
     while (textureNamesSS >> textureName)
     {
-        Texture t;
+        Texture t = {};
         t.handle = context.getTextureMap().RValue(textureName);
         ret.push_back(t);
     }
@@ -1152,14 +1200,13 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
     std::unique_lock<std::mutex> lk(mConditionMutex);
     thread_result r;
     r.our_tid = our_tid;
+    unsigned int skip_fence_range_index = 0;
+
     while (!mFinish.load(std::memory_order_consume))
     {
-        // ---------------------------------------------------------------------------
-        // Handle all packet details
-        const bool doFrameTakeSnapshot = mOptions.mSnapshotCallSet && (mOptions.mSnapshotCallSet->contains(mCurFrameNo, mFile.ExIdToName(mCurCall.funcId)));
-        const bool isSwapBuffers = (mCurCall.funcId == mExIdEglSwapBuffers || mCurCall.funcId == mExIdEglSwapBuffersWithDamage);
+        const bool isSwapBuffers = swapvals[mCurCall.funcId];
 
-        if (doFrameTakeSnapshot && isSwapBuffers)
+        if (mOptions.mSnapshotCallSet && (mOptions.mSnapshotCallSet->contains(mCurFrameNo, mFile.ExIdToName(mCurCall.funcId))) && isSwapBuffers)
         {
             TakeSnapshot(mFile.curCallNo - 1, mCurFrameNo);
         }
@@ -1173,10 +1220,26 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
                 if (mOptions.mFinishBeforeSwap || (mCurFrameNo == 0 && mFile.isFFTrace()))
                 {
                     _glFinish();
-                    DBG_LOG("glfinish() is called\n");
+                }
+
+                if (mOptions.mSkipFence && ((mCurFrameNo + 1) > mOptions.mSkipFenceRanges[skip_fence_range_index].second))
+                {
+                    skip_fence_range_index += 1;
+
+                    if (skip_fence_range_index >= mOptions.mSkipFenceRanges.size())
+                    {
+                        mOptions.mSkipFence = false;
+                    }
                 }
             }
-            if (mOptions.mCallStats && mCurFrameNo >= mOptions.mBeginMeasureFrame && mCurFrameNo < mOptions.mEndMeasureFrame)
+
+            if (mOptions.mDebug > 1) DBG_LOG("    %s: t%d, c%d, f%d \n", mFile.ExIdToName(mCurCall.funcId), our_tid, mFile.curCallNo, mCurFrameNo);
+
+            if (mOptions.mSkipFence && syncvals[mCurCall.funcId] && (mCurFrameNo >= mOptions.mSkipFenceRanges[skip_fence_range_index].first) && (mCurFrameNo <= mOptions.mSkipFenceRanges[skip_fence_range_index].second))
+            {
+                if (mOptions.mDebug) DBG_LOG("    FENCE SKIP : function name: %s (id: %d), call no: %d\n", mFile.ExIdToName(mCurCall.funcId), mCurCall.funcId, mFile.curCallNo);
+            }
+            else if (mOptions.mCallStats && mCurFrameNo >= mOptions.mBeginMeasureFrame && mCurFrameNo < mOptions.mEndMeasureFrame)
             {
                 const char *funcName = mFile.ExIdToName(mCurCall.funcId);
                 uint64_t pre = gettime();
@@ -1185,10 +1248,11 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
                 mCallStats[funcName].count++;
                 mCallStats[funcName].time += post - pre;
             }
-            else
+            else if (!mOptions.mCacheOnly || cachevals[mCurCall.funcId])
             {
                 (*(RetraceFunc)fptr)(src);
             }
+
             // Error Check
             if (mOptions.mDebug && hasCurrentContext())
             {
@@ -1202,8 +1266,7 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
         }
         else if (mOptions.mDebug && mOptions.mRunAll)
         {
-            const char *funcName = mFile.ExIdToName(mCurCall.funcId);
-            DBG_LOG("    Unsupported function : %s, call no: %d\n", funcName, mFile.curCallNo);
+            DBG_LOG("    Unsupported function : %s, call no: %d\n", mFile.ExIdToName(mCurCall.funcId), mFile.curCallNo);
         }
 
         if (isSwapBuffers)
@@ -1324,8 +1387,14 @@ void Retracer::Retrace()
     if (!mOptions.mCpuMask.empty()) set_cpu_mask(mOptions.mCpuMask);
     report_cpu_mask();
 
-    // open shader cache file if needed
-    OpenShaderCacheFile();
+    //pre-process of shader cache file if needed
+    if (gRetracer.mOptions.mShaderCacheFile.size() > 0)
+    {
+        if (gRetracer.mOptions.mShaderCacheLoad)
+            OpenShaderCacheFile();
+        else
+            DeleteShaderCacheFile();
+    }
 
     mFile.setFrameRange(mOptions.mBeginMeasureFrame, mOptions.mEndMeasureFrame, mOptions.mMultiThread ? -1 : mOptions.mRetraceTid, mOptions.mPreload, mOptions.mLoopTimes != 0);
 
@@ -1333,6 +1402,26 @@ void Retracer::Retrace()
     mInitTimeMono = os::getTimeType(CLOCK_MONOTONIC);
     mInitTimeMonoRaw = os::getTimeType(CLOCK_MONOTONIC_RAW);
     mInitTimeBoot = os::getTimeType(CLOCK_BOOTTIME);
+
+    swapvals.resize(mFile.getMaxSigId());
+    swapvals[mFile.NameToExId("eglSwapBuffers")] = true;
+    swapvals[mFile.NameToExId("eglSwapBuffersWithDamageKHR")] = true;
+    cachevals.resize(mFile.getMaxSigId());
+    for (const auto& s : mFile.getFuncNames())
+    {
+        if (s.find("Uniform") != string::npos || s.find("Attrib") != string::npos || s.find("Shader") != string::npos || s.find("Program") != string::npos || (s[0] == 'e' && s[1] == 'g' && s[2] == 'l')
+            || s.find("Feedback") != string::npos || s.find("Buffer") != string::npos)
+        {
+            cachevals[mFile.NameToExId(s.c_str())] = true;
+        }
+    }
+    syncvals.resize(mFile.getMaxSigId());
+    syncvals[mFile.NameToExId("eglClientWaitSync")] = true;
+    syncvals[mFile.NameToExId("eglClientWaitSyncKHR")] = true;
+    syncvals[mFile.NameToExId("eglWaitSync")] = true;
+    syncvals[mFile.NameToExId("eglWaitSyncKHR")] = true;
+    syncvals[mFile.NameToExId("glWaitSync")] = true;
+    syncvals[mFile.NameToExId("glClientWaitSync")] = true;
 
     if (mOptions.mScriptFrame == 0 && mOptions.mScriptPath.size() > 0)
     {
@@ -1587,6 +1676,8 @@ void Retracer::saveResult(Json::Value& result)
     result["init_time"] = ((double)mInitTime) / os::timeFrequency;
     result["start_time"] = ((double)mTimerBeginTime) / os::timeFrequency;
     result["end_time"] = ((double)endTime) / os::timeFrequency;
+    result["start_frame"] = mOptions.mBeginMeasureFrame;
+    result["end_frame"] = mOptions.mEndMeasureFrame;
     result["init_time_monotonic"] = ((double)mInitTimeMono) / os::timeFrequency;
     result["start_time_monotonic"] = ((double)mTimerBeginTimeMono) / os::timeFrequency;
     result["end_time_monotonic"] = ((double)endTimeMono) / os::timeFrequency;
@@ -1796,12 +1887,16 @@ void post_glShaderSource(GLuint shader, GLuint originalShaderName, GLsizei count
     }
 }
 
+void DeleteShaderCacheFile()
+{
+    const std::string bpath = gRetracer.mOptions.mShaderCacheFile + ".bin";
+    remove(bpath.c_str());
+}
+
 void OpenShaderCacheFile()
 {
-    if (!gRetracer.shaderCacheFile && gRetracer.mOptions.mShaderCacheFile.size() > 0)
-    {
         const std::string bpath = gRetracer.mOptions.mShaderCacheFile + ".bin";
-        gRetracer.shaderCacheFile = fopen(bpath.c_str(), "ab+");
+        gRetracer.shaderCacheFile = fopen(bpath.c_str(), "rb");
         if (!gRetracer.shaderCacheFile)
         {
             gRetracer.reportAndAbort("Failed to open shader cache file %s: %s", bpath.c_str(), strerror(errno));
@@ -1869,15 +1964,12 @@ void OpenShaderCacheFile()
             fclose(idx);
             DBG_LOG("Found shader cache index file, loaded %d cache entries\n", (int)size);
         }
-        else
-        {
-            DBG_LOG("No existing shader cache index file found -- making new one\n");
-        }
-    }
 }
 
 bool load_from_shadercache(GLuint program, GLuint originalProgramName, int status)
 {
+    assert(gRetracer.mOptions.mShaderCacheLoad);
+
     // check this particular shader
     std::vector<std::string> shaders;
     for (const GLuint shader_id : gRetracer.getCurrentContext().getShaderIDs(program))
@@ -1887,49 +1979,101 @@ bool load_from_shadercache(GLuint program, GLuint originalProgramName, int statu
 
     MD5Digest cached_md5(shaders);
     const std::string md5 = cached_md5.text();
-    if (gRetracer.shaderCacheIndex.count(md5) > 0)
+    if (gRetracer.shaderCacheIndex.count(md5) == 0)
     {
-        if (gRetracer.shaderCacheIndex[md5] == UINT64_MAX)
-        {
-            if (gRetracer.mOptions.mDebug)
-            {
-                DBG_LOG("warning: skip load_from_shadercache for program %u because of error linking: status %d\n", originalProgramName, status);
-            }
-            return false;
-        }
-        _glGetError(); // clear
-        _glProgramBinary(program, gRetracer.shaderCache[md5].format, gRetracer.shaderCache[md5].buffer.data(), gRetracer.shaderCache[md5].buffer.size());
-        GLenum err = _glGetError();
-        if (err != GL_NO_ERROR)
-        {
-            gRetracer.reportAndAbort("Failed to upload shader %s from cache for program %u(retraceProgram %u)!", md5.c_str(), originalProgramName, program);
-        }
+        gRetracer.reportAndAbort("Could not find shader %s in cache!", md5.c_str());
+    }
+
+    if (gRetracer.shaderCacheIndex[md5] == UINT64_MAX)
+    {
         if (gRetracer.mOptions.mDebug)
         {
-            DBG_LOG("Loaded program %u from cache as %s.\n", originalProgramName, md5.c_str());
+            DBG_LOG("warning: skip load_from_shadercache for program %u because of error linking: status %d\n", originalProgramName, status);
         }
-        return true;
+        return false;
     }
-    else if (gRetracer.mOptions.mShaderCacheRequired)
+    _glGetError(); // clear
+    _glProgramBinary(program, gRetracer.shaderCache[md5].format, gRetracer.shaderCache[md5].buffer.data(), gRetracer.shaderCache[md5].buffer.size());
+    GLenum err = _glGetError();
+    if (err != GL_NO_ERROR)
     {
-        gRetracer.reportAndAbort("Could not find shader cache %s -- and strict shader cache option is on!", md5.c_str());
+        gRetracer.reportAndAbort("Failed to upload shader %s from cache for program %u(retraceProgram %u)!", md5.c_str(), originalProgramName, program);
     }
-
-    // If we got here, we did not find it in the cache, so carry out deferred calls.
-    for (const GLuint s : gRetracer.getCurrentContext().getShaderIDs(program))
+    if (gRetracer.mOptions.mDebug)
     {
-        const std::string& shadersrc = gRetracer.getCurrentContext().getShaderSource(s);
-        GLchar* cstr = (GLchar*)shadersrc.c_str();
-        GLint len = shadersrc.size();
-        _glShaderSource(s, 1, &cstr, &len);
-        _glCompileShader(s);
-        post_glCompileShader(s, gRetracer.getCurrentContext().getShaderRevMap().RValue(s));
-        _glAttachShader(program, s);
+        DBG_LOG("Loaded program %u from cache as %s.\n", originalProgramName, md5.c_str());
     }
-    _glLinkProgram(program);
-    post_glLinkProgram(program, originalProgramName, status);
+    return true;
+}
 
-    return false;
+static void save_shadercache(GLuint program, GLuint originalProgramName, bool bSkipShadercache)
+{
+    std::vector<std::string> shaders;
+    for (const GLuint shader_id : gRetracer.getCurrentContext().getShaderIDs(program))
+    {
+        shaders.push_back(gRetracer.getCurrentContext().getShaderSource(shader_id));
+    }
+    MD5Digest cached_md5(shaders);
+    if (gRetracer.shaderCacheIndex.count(cached_md5.text()) == 0)
+    {
+        if (!bSkipShadercache)
+        {
+            // save and write binary to disk
+            GLint len = 0;
+            _glGetProgramiv(program, GL_PROGRAM_BINARY_LENGTH, &len);
+
+            std::vector<char> buffer(len);
+            GLenum binaryFormat = GL_NONE;
+            _glGetProgramBinary(program, len, NULL, &binaryFormat, (void*)buffer.data());
+
+            const std::string bpath = gRetracer.mOptions.mShaderCacheFile + ".bin";
+            FILE* fp = fopen(bpath.c_str(), "ab+");
+            if (!fp) gRetracer.reportAndAbort("Failed to open shader cache file %s for writing: %s", bpath.c_str(), strerror(errno));
+            uint32_t size = len;
+            (void)fseek(fp, 0, SEEK_END);
+            long offset = ftell(fp);
+            if (fwrite(&binaryFormat, sizeof(GLenum), 1, fp) != 1 || fwrite(&size, sizeof(size), 1, fp) != 1 || fwrite(buffer.data(), buffer.size(), 1, fp) != 1)
+            {
+                gRetracer.reportAndAbort("Failed to write data to shader cache file: %s", strerror(ferror(gRetracer.shaderCacheFile)));
+            }
+            fclose(fp);
+
+            gRetracer.shaderCacheIndex[cached_md5.text()] = offset;
+            if (gRetracer.mOptions.mDebug)
+            {
+                DBG_LOG("Saving program %u(retraceProgram %u) to shader cache as %s{.idx|.bin} with offset=%ld size=%ld md5=%s\n", originalProgramName, program, gRetracer.mOptions.mShaderCacheFile.c_str(), offset, (long)size, cached_md5.text().c_str());
+            }
+        }
+        else
+        {
+            gRetracer.shaderCacheIndex[cached_md5.text()] = UINT64_MAX;
+        }
+        // Overwrite index on disk
+        const std::string ipath = gRetracer.mOptions.mShaderCacheFile + ".idx";
+        FILE *fp = fopen(ipath.c_str(), "wb");
+        if (!fp)
+        {
+            gRetracer.reportAndAbort("Failed to open index file %s for writing: %s", ipath.c_str(), strerror(errno));
+        }
+        if (fwrite(gRetracer.shaderCacheVersionMD5.c_str(), gRetracer.shaderCacheVersionMD5.size(), 1, fp ) != 1)
+        {
+            gRetracer.reportAndAbort("Failed to write ddk version MD5 (%s) to shader cache index: %s", gRetracer.shaderCacheVersionMD5.c_str(), strerror(ferror(fp)));
+        }
+
+        uint32_t entries = gRetracer.shaderCacheIndex.size();
+        if (fwrite(&entries, sizeof(entries), 1, fp) != 1)
+        {
+            gRetracer.reportAndAbort("Failed to write size of data to shader cache index: %s", strerror(ferror(fp)));
+        }
+        for (const auto &pair : gRetracer.shaderCacheIndex)
+        {
+            if (fwrite(pair.first.c_str(), pair.first.size(), 1, fp) != 1 || fwrite(&pair.second, sizeof(pair.second), 1, fp) != 1)
+            {
+                gRetracer.reportAndAbort("Failed to write data to shader cache index: %s", strerror(ferror(fp)));
+            }
+        }
+        fclose(fp);
+    }
 }
 
 void post_glLinkProgram(GLuint program, GLuint originalProgramName, int status)
@@ -1952,7 +2096,7 @@ void post_glLinkProgram(GLuint program, GLuint originalProgramName, int status)
         if (infoLogLength > 0)
         {
             infoLog = (char *)malloc(infoLogLength);
-            glGetProgramInfoLog(program, infoLogLength, &len, infoLog);
+            _glGetProgramInfoLog(program, infoLogLength, &len, infoLog);
         }
         vector<unsigned int>::iterator result = find(gRetracer.mOptions.mLinkErrorWhiteListCallNum.begin(), gRetracer.mOptions.mLinkErrorWhiteListCallNum.end(), gRetracer.GetCurCallId());
         if(result != gRetracer.mOptions.mLinkErrorWhiteListCallNum.end())
@@ -1972,74 +2116,9 @@ void post_glLinkProgram(GLuint program, GLuint originalProgramName, int status)
         bSkipShadercache = true;
     }
 
-    static std::unordered_map<std::string, uint64_t> shaderCacheIndex;
-
-    if (gRetracer.mOptions.mShaderCacheFile.size() > 0 && !gRetracer.mOptions.mShaderCacheRequired)
+    if (gRetracer.mOptions.mShaderCacheFile.size() > 0 && !gRetracer.mOptions.mShaderCacheLoad)
     {
-        std::vector<std::string> shaders;
-        for (const GLuint shader_id : gRetracer.getCurrentContext().getShaderIDs(program))
-        {
-            shaders.push_back(gRetracer.getCurrentContext().getShaderSource(shader_id));
-        }
-
-        MD5Digest cached_md5(shaders);
-        if (shaderCacheIndex.count(cached_md5.text()) == 0)
-        {
-            if(!bSkipShadercache)
-            {
-                // save and write binary to disk
-                GLint len = 0;
-                _glGetProgramiv(program, GL_PROGRAM_BINARY_LENGTH, &len);
-
-                std::vector<char> buffer(len);
-                GLenum binaryFormat = GL_NONE;
-                _glGetProgramBinary(program, len, NULL, &binaryFormat, (void*)buffer.data());
-
-                uint32_t size = len;
-                long offset = ftell(gRetracer.shaderCacheFile);
-                if (fwrite(&binaryFormat, sizeof(GLenum), 1, gRetracer.shaderCacheFile) != 1
-                    || fwrite(&size, sizeof(size), 1, gRetracer.shaderCacheFile) != 1
-                    || fwrite(buffer.data(), buffer.size(), 1, gRetracer.shaderCacheFile) != 1)
-                {
-                    gRetracer.reportAndAbort("Failed to write data to shader cache file: %s", strerror(ferror(gRetracer.shaderCacheFile)));
-                }
-
-                shaderCacheIndex[cached_md5.text()] = offset;
-                if (gRetracer.mOptions.mDebug)
-                {
-                    DBG_LOG("Saving program %u(retraceProgram %u) to shader cache as %s{.idx|.bin} with offset=%ld size=%ld\n", originalProgramName, program, gRetracer.mOptions.mShaderCacheFile.c_str(), offset, (long)size);
-                }
-            }
-            else
-            {
-                shaderCacheIndex[cached_md5.text()] = UINT64_MAX;
-            }
-            // Overwrite index on disk
-            const std::string ipath = gRetracer.mOptions.mShaderCacheFile + ".idx";
-            FILE *fp = fopen(ipath.c_str(), "wb");
-            if (!fp)
-            {
-                gRetracer.reportAndAbort("Failed to open index file %s for writing: %s", ipath.c_str(), strerror(errno));
-            }
-            if (fwrite(gRetracer.shaderCacheVersionMD5.c_str(), gRetracer.shaderCacheVersionMD5.size(), 1, fp ) != 1)
-            {
-                gRetracer.reportAndAbort("Failed to write ddk version MD5 to shader cache index: %s",strerror(ferror(fp)));
-            }
-
-            uint32_t entries = shaderCacheIndex.size();
-            if (fwrite(&entries, sizeof(entries), 1, fp) != 1)
-            {
-                gRetracer.reportAndAbort("Failed to write size of data to shader cache index: %s", strerror(ferror(fp)));
-            }
-            for (const auto &pair : shaderCacheIndex)
-            {
-                if (fwrite(pair.first.c_str(), pair.first.size(), 1, fp) != 1 || fwrite(&pair.second, sizeof(pair.second), 1, fp) != 1)
-                {
-                    gRetracer.reportAndAbort("Failed to write data to shader cache index: %s", strerror(ferror(fp)));
-                }
-            }
-            fclose(fp);
-        }
+        save_shadercache(program, originalProgramName, bSkipShadercache);
     }
 
     if (!(gRetracer.mOptions.mStoreProgramInformation || gRetracer.mOptions.mRemoveUnusedVertexAttributes))
@@ -2088,7 +2167,7 @@ void hardcode_glBindFramebuffer(int target, unsigned int framebuffer)
 
     if (gRetracer.mOptions.mForceVRS != -1)
     {
-        _glShadingRateQCOM(gRetracer.mOptions.mForceVRS);
+        _glShadingRateEXT(gRetracer.mOptions.mForceVRS);
     }
 }
 

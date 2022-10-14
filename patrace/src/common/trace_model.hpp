@@ -29,34 +29,6 @@ namespace common {
 class TraceFileTM;
 class CallTM;
 
-enum Value_Type_TM {
-    Void_Type = 1,
-    Int8_Type,
-    Uint8_Type,
-    Int16_Type,
-    Uint16_Type,
-    Int_Type,
-    Enum_Type,
-    Uint_Type,
-    Int64_Type,
-    Uint64_Type,
-    Float_Type,
-    String_Type,
-    Array_Type,
-    Blob_Type,
-    Opaque_Type,
-    Pointer_Type,
-    MemRef_Type,
-    Unused_Pointer_Type,
-};
-
-enum Opaque_Type_TM {
-    BufferObjectReferenceType = 0,
-    BlobType,
-    ClientSideBufferObjectReferenceType,
-    NoopType,
-};
-
 struct OpaqueArg {
     union {
         unsigned int pointer_raw; // Type 1, memory offset
@@ -275,7 +247,7 @@ public:
     const std::string Name() const { return mCallName; }
 
     // Properties always there
-    std::streamoff          mReadPos;
+    std::streamoff          mReadPos = 0;
     unsigned int            mCallNo;
     unsigned int            mTid;
     unsigned int            mCallId; // This ID is not the same with the ID in the binary trace file. It conforms to the ID in api_info.hpp.
@@ -324,8 +296,8 @@ public:
 
     // Properties always there
     std::streamoff          mReadPos;
-    unsigned int            mFirstCallOfThisFrame;
-    unsigned int            mBytes;
+    unsigned int            mFirstCallOfThisFrame = 0;
+    unsigned int            mBytes = 0;
 
     // Properties only exist after been loaded
     std::vector<CallTM*>    mCalls;

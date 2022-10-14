@@ -39,6 +39,7 @@ static int startframe = 0;
 static int lastframe = INT_MAX;
 static bool debug = false;
 static bool dump_to_text = false;
+static bool dump_to_text_current = false;
 static std::string dump_csv_filename;
 static std::set<int> renderpassframes;
 static bool complexity_only_mode = false;
@@ -78,7 +79,7 @@ static inline bool relevant(int frame)
     return (frame >= startframe && frame <= lastframe);
 }
 #define debugstream if (!debug) {} else std::cerr
-#define dumpstream if (!dump_to_text) {} else std::cout
+#define dumpstream if (!dump_to_text_current) {} else std::cout
 #define DEBUG_LOG(...) if (debug) DBG_LOG(__VA_ARGS__)
 
 // For legacy texture functions, merge input format and type into sized internal format
@@ -675,6 +676,11 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *cust
         if (relevant(input.frames))
         {
             startNewRows(az->perframe);
+            if (dump_to_text) dump_to_text_current = true;
+        }
+        else
+        {
+            dump_to_text_current = false;
         }
         az->calls_per_frame.push_back(0);
 
@@ -981,7 +987,7 @@ static bool callback(ParseInterfaceBase& input, common::CallTM *call, void *cust
             access = call->mArgs[3]->GetAsUInt();
         }
 
-        if ((access | GL_MAP_WRITE_BIT) && relevant(input.frames))
+        if ((access & GL_MAP_WRITE_BIT) && relevant(input.frames))
         {
             az->buffer_changed(target);
         }
@@ -1419,6 +1425,7 @@ void AnalyzeTrace::analyze(ParseInterfaceBase& input)
     if (startframe == 0)
     {
         startNewRows(perframe);
+        if (dump_to_text) dump_to_text_current = true;
     }
     startNewRows(perdraw);
     calls_per_frame.push_back(0);
@@ -1472,6 +1479,7 @@ void AnalyzeTrace::analyze(ParseInterfaceBase& input)
         fprintf(fp, "Call,Context,TxIndex,TxId\n");
         for (const auto& ctx : input.contexts)
         {
+            if (ctx.share_context != 0) continue;
             for (const auto& tx : ctx.textures.all())
             {
                 for (const auto& mip : tx.mipmaps)
@@ -1488,9 +1496,24 @@ void AnalyzeTrace::analyze(ParseInterfaceBase& input)
         fprintf(fp, "Call,Frame,TxIndex,TxId,ContextIndex,ContextId\n");
         for (const auto& ctx : input.contexts)
         {
+            if (ctx.share_context != 0) continue;
             for (const auto& tx : ctx.textures.all())
             {
                 if (!tx.used) fprintf(fp, "%d,%d,%d,%d,%d,%d\n", tx.created.call, tx.created.frame, tx.index, (int)tx.id, ctx.index, (int)ctx.id);
+            }
+        }
+        fclose(fp);
+
+        filename = dump_csv_filename.empty() ? "unused_buffers" : dump_csv_filename + "_unused_buffers.csv";
+        fp = fopen(filename.c_str(), "w");
+        assert(fp);
+        fprintf(fp, "Call,Frame,BufIndex,BufId,ContextIndex,ContextId\n");
+        for (const auto& ctx : input.contexts)
+        {
+            if (ctx.share_context != 0) continue;
+            for (const auto& buf : ctx.buffers.all())
+            {
+                if (!buf.used) fprintf(fp, "%d,%d,%d,%d,%d,%d\n", buf.created.call, buf.created.frame, buf.index, (int)buf.id, ctx.index, (int)ctx.id);
             }
         }
         fclose(fp);
@@ -1501,6 +1524,7 @@ void AnalyzeTrace::analyze(ParseInterfaceBase& input)
         fprintf(fp, "Call,Frame,TxIndex,TxId,ContextIndex,ContextId\n");
         for (const auto& ctx : input.contexts)
         {
+            if (ctx.share_context != 0) continue;
             for (const auto& tx : ctx.textures.all())
             {
                 if (tx.uninit_usage) fprintf(fp, "%d,%d,%d,%d,%d,%d\n", tx.created.call, tx.created.frame, tx.index, (int)tx.id, ctx.index, (int)ctx.id);

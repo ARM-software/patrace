@@ -118,7 +118,7 @@ class BHeaderV2 : public BHeader {
 public:
     unsigned int defaultThreadid;
     MyEGLAttribs perThreadEGLConfigs[MAX_RETRACE_THREADS];
-    unsigned int perThreadClientSideBufferSize[MAX_RETRACE_THREADS];
+    unsigned int perThreadClientSideBufferSize[MAX_RETRACE_THREADS] = { 0 };
 
     BHeaderV2(): BHeader()
     {
@@ -398,6 +398,34 @@ inline char* ReadStringArray(char* src, Array<const char*>& arr) {
     return src;
 }
 #endif
+
+enum Value_Type_TM {
+    Void_Type = 1,
+    Int8_Type,
+    Uint8_Type,
+    Int16_Type,
+    Uint16_Type,
+    Int_Type,
+    Enum_Type,
+    Uint_Type,
+    Int64_Type,
+    Uint64_Type,
+    Float_Type,
+    String_Type,
+    Array_Type,
+    Blob_Type,
+    Opaque_Type,
+    Pointer_Type,
+    MemRef_Type,
+    Unused_Pointer_Type,
+};
+
+enum Opaque_Type_TM {
+    BufferObjectReferenceType = 0,
+    BlobType,
+    ClientSideBufferObjectReferenceType,
+    NoopType,
+};
 
 }
 

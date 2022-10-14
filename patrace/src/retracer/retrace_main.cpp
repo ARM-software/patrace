@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <algorithm>
 
 #include <retracer/retracer.hpp>
 #include <retracer/glws.hpp>
@@ -30,7 +31,7 @@ usage(const char *argv0) {
         "  -step use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call (not supported on all platforms)\n"
         "  -ores W H override the resolution of the final onscreen rendering (FBOs used in earlier renderpasses are not affected!)\n"
         "  -msaa SAMPLES enable multi sample anti alias for the final framebuffer\n"
-        "  -msaa_override SAMPLES override any existing MSAA setting for intermediate framebuffers with MSAA\n"
+        "  -overrideMSAA SAMPLES override any existing MSAA setting for intermediate framebuffers with MSAA\n"
         "  -preload START STOP preload the trace file frames from START to STOP. START must be greater than zero.\n"
         "  -all run all calls even those with no side-effects. This is useful for CPU load measurements.\n"
         "  -framerange FRAME_START FRAME_END start fps timer at frame start (inclusive), stop timer and playback before frame end (exclusive).\n"
@@ -48,7 +49,7 @@ usage(const char *argv0) {
         "  -debug output debug messages\n"
         "  -debugfull output all of the current invoked gl functions, with callNo, frameNo and skipped or discarded information\n"
         "  -infojson Dump the header of the trace file in json format, then exit\n"
-        "  -callstats output call statistics to callstats.csv on disk, including the calling number and running time\n"
+        "  -callstats Used with -framerange to output call statistics to callstats.csv on disk, including the calling number and running time\n"
         "  -overrideEGL Red Green Blue Alpha Depth Stencil, example: overrideEGL 5 6 5 0 16 8, for 16 bit color and 16 bit depth and 8 bit stencil\n"
         "  -strict Use strict EGL mode (fail unless the specified EGL configuration is valid)\n"
         "  -strictcolor Same as -strict, but only checks color channels (RGBA). Useful for dumping when we want to be sure returned EGL is same as requested\n"
@@ -56,10 +57,12 @@ usage(const char *argv0) {
         "  -collect Collect performance counters\n"
         "  -perfmon Collect performance counters in the built-in perfmon interface\n"
         "  -instrumentation-delay USECONDS Delay in microseconds that the retracer should sleep for after each present call in the measurement range.\n"
+        "  -skipfence START-END,START-END... Skip some fence waits calls (eglClientWaitSync, eglWaitSync, eglClientWaitSyncKHR, eglWaitSyncKHR, glWaitSync, glClientWaitSync) when within any of the given (comma separated list of) ranges. All ranges include the start frame and the end frame,\n"
         "  -flush Before starting running the defined measurement range, make sure we flush all pending driver work\n"
         "  -multithread Run all threads in the trace\n"
-        "  -shadercache FILENAME Save and load shaders to this cache FILE. Will add .bin and .idx to the given file name.\n"
-        "  -strictshadercache Abort if a wanted shader was not found in the shader cache file.\n"
+        "  -loadcache FILENAME Load shaders from this cache. Will add .bin and .idx to the given file name.\n"
+        "  -savecache FILENAME Save shaders to this cache. Will add .bin and .idx to the given file name.\n"
+        "  -cacheonly Used with -savecache to only populate the shader cache and do not run anything else not needed for that from the trace.\n"
         "  -script Script_PATH FRAME Trigger script on a specific frame.\n"
 #ifndef __APPLE__
         "  -perf START END run Linux perf on selected frame range and save it to disk\n"
@@ -114,9 +117,21 @@ static bool printInstr()
     return true;
 }
 
+const std::vector<std::string> split_string(const std::string& str, const char& delimiter)
+{
+    std::vector<std::string> tokens;
+    std::stringstream ss(str);
+    std::string item;
+
+    for (std::string item; std::getline(ss, item, delimiter); tokens.push_back(item));
+
+    return tokens;
+}
+
 bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
 {
     bool streamline_collector = false;
+    bool usedFramerange = false;
 
     // Parse all except first (executable name)
     for (int i = 1; i < argc; ++i)
@@ -138,11 +153,6 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             }
             DBG_LOG("Overriding default tid with: %d (warning: this is for testing purposes only!)\n", tid);
             mOptions.mRetraceTid = tid;
-        } else if (!strcmp(arg, "-winsize")) {
-            DBG_LOG("WARNING: This option is only useful for very old trace files!");
-            mOptions.mWindowWidth = readValidValue(argv[++i]);
-            mOptions.mWindowHeight = readValidValue(argv[++i]);
-            DBG_LOG("Overriding default winsize with %dx%d\n", mOptions.mWindowWidth, mOptions.mWindowHeight);
         } else if (!strcmp(arg, "-ores")) {
             mOptions.mDoOverrideResolution = true;
             mOptions.mOverrideResW = readValidValue(argv[++i]);
@@ -156,8 +166,10 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             DBG_LOG("WARNING: Please think twice before using -ores - it is usually a mistake!\n");
         } else if (!strcmp(arg, "-msaa")) {
             mOptions.mOverrideConfig.msaa_samples = readValidValue(argv[++i]);
-        } else if (!strcmp(arg, "-msaa_override")) {
+            DBG_LOG("Enable multi sample: %d, for EGL window surface.\n", mOptions.mOverrideConfig.msaa_samples);
+        } else if (!strcmp(arg, "-overrideMSAA")) {
             mOptions.mOverrideMSAA = readValidValue(argv[++i]);
+            DBG_LOG("Override the existing MSAA for fbo attachment with new MSAA: %d\n", mOptions.mOverrideMSAA);
         } else if (!strcmp(arg, "-callstats")) {
             mOptions.mCallStats = true;
         } else if (!strcmp(arg, "-perf")) {
@@ -196,6 +208,7 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
                 DBG_LOG("Start frame must be lower than end frame. (End frame is never played.)\n");
                 return false;
             }
+            usedFramerange = true;
         } else if (!strcmp(arg, "-instrumentation-delay")) {
             mOptions.mInstrumentationDelay = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-all")) {
@@ -271,10 +284,16 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             }
         } else if (!strcmp(arg, "-multithread")) {
             mOptions.mMultiThread = true;
-        } else if (!strcmp(arg, "-shadercache")) {
+        } else if (!strcmp(arg, "-loadcache") && argc > i + 1 && argv[i + 1][0] != '-') {
+            if (mOptions.mShaderCacheFile.size() > 0) gRetracer.reportAndAbort("-savecache cannot be used together with -loadcache");
             mOptions.mShaderCacheFile = argv[++i];
-        } else if(!strcmp(arg, "-strictshadercache")) {
-            mOptions.mShaderCacheRequired = true;
+            mOptions.mShaderCacheLoad = true;
+        } else if (!strcmp(arg, "-savecache") && argc > i + 1 && argv[i + 1][0] != '-') {
+            if (mOptions.mShaderCacheFile.size() > 0) gRetracer.reportAndAbort("-savecache cannot be used together with -loadcache");
+            mOptions.mShaderCacheFile = argv[++i];
+            mOptions.mShaderCacheLoad = false;
+        } else if (!strcmp(arg, "-cacheonly")) {
+            mOptions.mCacheOnly = true;
         } else if (!strcmp(arg, "-insequence")) {
             // nothing, this is always the case now
         } else if (!strcmp(arg, "-singleframe")) {
@@ -317,11 +336,76 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             exit(0);
         } else if (!strcmp(arg, "-dmasharedmem")) {
             mOptions.dmaSharedMemory = true;
-        } else {
+        } else if (!strcmp(arg, "-skipfence")) {
+            char* raw_str_ranges = argv[++i];
+            std::vector<std::string> str_ranges = split_string(std::string(raw_str_ranges), ',');
+            if (str_ranges.size() == 0)
+            {
+                gRetracer.reportAndAbort("Bad value for option -skipfence, must give at least one frame range.");
+            }
+
+            std::vector<std::pair<unsigned int, unsigned int>> ranges;
+            for (auto& str_range : str_ranges)
+            {
+                std::vector<std::string> range = split_string(str_range, '-');
+                try
+                {
+                    ranges.push_back(std::make_pair(std::stoi(range[0]), std::stoi(range[1])));
+                }
+                catch (const std::invalid_argument & e)
+                {
+                    gRetracer.reportAndAbort("Bad value for option -skipfence, must be a comma separated list of integer pairs where each pair is separated by a dash (eg. 0-10,20-22,...).");
+                }
+                catch (const std::out_of_range & e)
+                {
+                    gRetracer.reportAndAbort("Bad value for option -skipfence, one of the frame values were too large to fit in a valid int type.");
+                }
+            }
+
+            std::sort(ranges.begin(), ranges.end());
+
+            unsigned int start = ranges[0].first;
+            unsigned int end = ranges[0].second;
+
+            std::vector<std::pair<unsigned int, unsigned int>> merged_ranges;
+            for (unsigned int i = 0; i < ranges.size() - 1; ++i)
+            {
+                if (ranges[i].second >= ranges[i + 1].first)
+                {
+                    if (ranges[i].second < ranges[i + 1].second)
+                    {
+                        end = ranges[i + 1].second;
+                    }
+                    else
+                    {
+                        i += 1;
+                    }
+                }
+                else
+                {
+                    merged_ranges.push_back(std::make_pair(start, end));
+                    start = ranges[i + 1].first;
+                    end = ranges[i + 1].second;
+                }
+            }
+
+            merged_ranges.push_back(std::make_pair(start, end));
+
+            mOptions.mSkipFence = true;
+            mOptions.mSkipFenceRanges = merged_ranges;
+        }
+        else
+        {
             DBG_LOG("error: unknown option %s\n", arg);
             usage(argv[0]);
             return false;
         }
+    }
+
+    if (mOptions.mCallStats && !usedFramerange)
+    {
+        DBG_LOG("-callstats requires -framerange.\n");
+        return false;
     }
 
     if (mOptions.mSingleSurface != -1 && mOptions.mForceSingleWindow)
@@ -332,6 +416,11 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
     if (mOptions.mLoopTimes && !mOptions.mPreload)
     {
         DBG_LOG("Loop option requires preload\n");
+        return false;
+    }
+    if (mOptions.mCacheOnly && (mOptions.mShaderCacheLoad || mOptions.mShaderCacheFile.size() == 0))
+    {
+        DBG_LOG("-cacheonly requires -savecache\n");
         return false;
     }
 

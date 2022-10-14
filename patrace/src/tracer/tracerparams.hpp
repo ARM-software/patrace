@@ -16,7 +16,7 @@ public:
     std::string SupportedExtensionsString;
     std::string RendererName = "";
     bool DisableBufferStorage = false;
-    bool FlushTraceFileEveryFrame = false;          // Save trace file for each completed frame. Slower but safer.
+    bool FlushTraceFileEveryFrame = true;           // Save trace file for each completed frame. Slower but safer.
     bool StateDumpAfterSnapshot = false;            // Debugging
     bool StateDumpAfterDrawCall = false;            // Debugging
     int UniformBufferOffsetAlignment = 256;         // Enforce an alignment that works crossplatform

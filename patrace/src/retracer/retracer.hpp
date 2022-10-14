@@ -24,6 +24,7 @@
 #include <thread>
 #include <condition_variable>
 #include <unordered_map>
+#include <map>
 #include <mutex>
 
 #ifdef __APPLE__
@@ -123,7 +124,7 @@ public:
     };
     FILE *shaderCacheFile = NULL;
     std::string shaderCacheVersionMD5;
-    std::unordered_map<std::string, uint64_t> shaderCacheIndex; // md5 of shader source to offset of cache file
+    std::map<std::string, uint64_t> shaderCacheIndex; // md5 of shader source to offset of cache file
     std::unordered_map<std::string, ProgramCache> shaderCache; // md5 of shader source to cache struct in mem
     int64_t frameBudget = INT64_MAX;
     int64_t drawBudget = INT64_MAX;
@@ -149,8 +150,9 @@ private:
 
     std::deque<thread_result> results;
 
-    unsigned short mExIdEglSwapBuffers;
-    unsigned short mExIdEglSwapBuffersWithDamage;
+    std::vector<bool> swapvals;
+    std::vector<bool> cachevals;
+    std::vector<bool> syncvals;
 
     int64_t mInitTime = 0;
     int64_t mInitTimeMono = 0;
@@ -206,6 +208,7 @@ void post_glLinkProgram(GLuint shader, GLuint originalShaderName, int status);
 void post_glCompileShader(GLuint program, GLuint originalProgramName);
 void post_glShaderSource(GLuint shader, GLuint originalshaderName, GLsizei count, const GLchar **string, const GLint *length);
 void OpenShaderCacheFile();
+void DeleteShaderCacheFile();
 bool load_from_shadercache(GLuint program, GLuint originalProgramName, int status);
 void hardcode_glBindFramebuffer(int target, unsigned int framebuffer);
 void hardcode_glDeleteBuffers(int n, unsigned int* oldBuffers);

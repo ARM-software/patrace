@@ -64,19 +64,19 @@ public:
     virtual void processStepEvent() override;
 
 protected:
-    struct wl_compositor*     mCompositor;
-    struct wl_shell*          mShell;
-    struct wl_output*         mOutput;
-    struct wl_seat*           mSeat;
-    struct wl_keyboard*       mKeyboard;
-    struct wl_event_queue*    mKBQueue;
+    struct wl_compositor*     mCompositor = nullptr;
+    struct wl_shell*          mShell = nullptr;
+    struct wl_output*         mOutput = nullptr;
+    struct wl_seat*           mSeat = nullptr;
+    struct wl_keyboard*       mKeyboard = nullptr;
+    struct wl_event_queue*    mKBQueue = nullptr;
     struct wl_list            mKeysPressed;
     struct keyboard_state     mKeyboardState;
     struct output_size_properties
                               mOutputProps;
-    struct wl_surface*        mKBFocus;
-    int                       mOutputWidth;
-    int                       mOutputHeight;
+    struct wl_surface*        mKBFocus = nullptr;
+    int                       mOutputWidth = 0;
+    int                       mOutputHeight = 0;
 };
 
 }

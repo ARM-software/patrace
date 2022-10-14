@@ -23,7 +23,10 @@ typedef std::unordered_map<GLuint, void*> BufferIdToData_t;
 
 struct Rectangle
 {
-    int x, y, w, h;
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
 
     inline Rectangle& operator=(const Rectangle& b) {
         x = b.x;
@@ -155,7 +158,6 @@ public:
         _renderbuffer_map.LValue(0) = 0;
         _sampler_map.LValue(0) = 0;
         _query_map.LValue(0) = 0;
-        _programARB_map.LValue(0) = 0;
 #if TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR
         _framebuffer_map.LValue(0) = 1;
 #else
@@ -163,7 +165,6 @@ public:
 #endif
         _array_map.LValue(0) = 0;
         _feedback_map.LValue(0) = 0;
-        _fragmentShaderATI_map.LValue(0) = 0;
         _graphicbuffer_map.LValue(0) = 0;
 
         if (shareContext != NULL)
@@ -221,12 +222,10 @@ public:
     hmap<unsigned int> _query_map;
     std::unordered_map<unsigned int, locationmap > _uniformLocation_map;
     std::unordered_map<unsigned int, stdmap<unsigned int, unsigned int> > _uniformBlockIndex_map;
-    hmap<unsigned int> _programARB_map;
     hmap<unsigned int> _framebuffer_map;
     hmap<unsigned int> _array_map;
     hmap<unsigned int> _feedback_map;
     hmap<unsigned int> _pipeline_map;
-    hmap<unsigned int> _fragmentShaderATI_map;
     hmap<unsigned int> _region_map;
     // Reverse mappings - used for debugging/analyzing traces
     hmap<unsigned int> _query_rev_map;
@@ -249,7 +248,7 @@ public:
 #endif
     std::unordered_map<PixelFormat, unsigned int, std::hash<int> > mAndroidToLinuxPixelMap;
 
-    inline const std::string& getShaderSource(GLuint shader)
+    inline const std::string& getShaderSource(GLuint shader) const
     {
         if (_shareContext) return _shareContext->getShaderSource(shader);
         else return mShaderSources.at(shader);
@@ -265,7 +264,7 @@ public:
         else mShaderSources.erase(shader);
     }
 
-    inline const std::vector<GLuint>& getShaderIDs(GLuint program)
+    inline const std::vector<GLuint>& getShaderIDs(GLuint program) const
     {
         if (_shareContext) return _shareContext->getShaderIDs(program);
         else return mProgramShaders.at(program);
@@ -596,23 +595,23 @@ public:
     void        Reset();
 
     void        InsertContextMap(int oldVal, Context* ctx);
-    Context*    GetContext(int oldVal);
+    Context*    GetContext(int oldVal) const;
     void        RemoveContextMap(int oldVal);
-    int         GetCtx(Context *);
+    int         GetCtx(Context *) const;
 
     void        InsertDrawableMap(int oldVal, Drawable* drawable);
-    Drawable*   GetDrawable(int oldVal);
+    Drawable*   GetDrawable(int oldVal) const;
     void        RemoveDrawableMap(int oldVal);
-    bool        IsInDrawableMap(Drawable* drawable);
-    int         GetDraw(Drawable *);
+    bool        IsInDrawableMap(Drawable* drawable) const;
+    int         GetDraw(Drawable *) const;
 
     void        InsertEGLImageMap(int oldVal, EGLImageKHR image);
-    EGLImageKHR GetEGLImage(int oldVal, bool &found);
+    EGLImageKHR GetEGLImage(int oldVal, bool &found) const;
     void        RemoveEGLImageMap(int oldVal);
-    bool        IsInEGLImageMap(EGLImageKHR image);
+    bool        IsInEGLImageMap(EGLImageKHR image) const;
 
     void        InsertDrawableToWinMap(int drawableVal, int winVal);
-    int         GetWin(int draableVal);
+    int         GetWin(int draableVal) const;
 
     std::vector<GLESThread> mThreadArr;
     Drawable* mSingleSurface;

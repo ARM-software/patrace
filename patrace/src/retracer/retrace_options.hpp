@@ -116,7 +116,8 @@ struct RetraceOptions
     int                 texAfrcRate = -1;
 
     std::string         mShaderCacheFile;
-    bool                mShaderCacheRequired = false;
+    bool                mShaderCacheLoad = true;
+    bool                mCacheOnly = false;
 
     bool                mCollectorEnabled = false;
     Json::Value         mCollectorValue;
@@ -124,6 +125,8 @@ struct RetraceOptions
     std::string         mScriptPath;
     int                 mScriptFrame = -1;
     unsigned int        mInstrumentationDelay = 0;
+    bool                mSkipFence = false;
+    std::vector<std::pair<unsigned int, unsigned int>> mSkipFenceRanges;
 private:
     // Noncopyable because of owned CallSet pointer members
     RetraceOptions(const RetraceOptions&);

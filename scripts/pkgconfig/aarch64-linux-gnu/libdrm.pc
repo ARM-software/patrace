@@ -1,0 +1,9 @@
+prefix=/usr
+libdir=${prefix}/lib/aarch64-linux-gnu
+includedir=${prefix}/lib/aarch64-linux-gnu/include
+
+Name: libdrm
+Description: Userspace interface to kernel DRM services
+Version: 2.4.104
+Libs: -L${libdir} -ldrm
+Cflags: -I${includedir} -I${includedir}/libdrm

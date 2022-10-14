@@ -1,4 +1,4 @@
-#if !defined(RETRACER_CONFIG_HPP_)
+#ifndef RETRACER_CONFIG_HPP_
 #define RETRACER_CONFIG_HPP_
 
 #include <string>

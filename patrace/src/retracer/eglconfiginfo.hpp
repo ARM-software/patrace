@@ -1,4 +1,4 @@
-#if !defined(EGLCONFIGINFO_HPP)
+#ifndef EGLCONFIGINFO_HPP
 #define EGLCONFIGINFO_HPP
 
 #include <string>

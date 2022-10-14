@@ -165,20 +165,17 @@ public:
 
     ClientSideBufferObject()
     : base_address(NULL), size(0), _own_memory(false)
-    , _destinationAddress(0)
     {
     }
 
     ClientSideBufferObject(const void *p, ptrdiff_t s, bool copy = false)
     : base_address(NULL), size(0), _own_memory(false)
-    , _destinationAddress(0)
     {
         set_data(p, s, copy);
     }
 
     ClientSideBufferObject(const ClientSideBufferObject &other)
     : base_address(NULL), size(0), _own_memory(false)
-    , _destinationAddress(0)
     {
         *this = other;
     }
@@ -308,7 +305,7 @@ private:
 
     // If != 0, this will be used as destination by set_data
     // This is used by the glReadMapBufferRange, and glUnmapBuffer functiosn.
-    void* _destinationAddress;
+    void* _destinationAddress = nullptr;
 
     void calculate_md5_digest() const
     {
@@ -343,7 +340,6 @@ public:
         unsigned int type;
         bool normalized;
         size_t stride;
-        ClientSideBufferObjectName obj_name;
     };
 
     VertexAttributeMemoryMerger() {}

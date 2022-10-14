@@ -53,11 +53,8 @@ commands.add('paMandatoryExtensions')
 commands.add('glAssertBuffer_ARM')
 commands.add('glStateDump_ARM')
 commands.add('glLinkProgram2')
-# Need to remove following 2 engtries when extension being merged into spec
-commands.add('glTexStorageAttribs2DEXT')
-commands.add('glTexStorageAttribs3DEXT')
 
-# Remove the 3 lines below when these functions are added to the Khronos XML
+# We're stuck supporting these even though it is not a real extension and nobody should use them
 commands.add('glShadingRateARM')
 commands.add('glShadingRateCombinerOpsARM')
 commands.add('glFramebufferShadingRateARM')
@@ -1016,7 +1013,7 @@ gles_functions = [
     GlFunction(Void, "glMultiDrawArraysIndirectEXT", [(GLenum_mode, "mode"), (GLpointerConst, "indirect"), (GLsizei, "drawcount"), (GLsizei, "stride")]),
     GlFunction(Void, "glMultiDrawElementsIndirectEXT", [(GLenum_mode, "mode"), (GLenum, "type"), (GLpointerConst, "indirect"), (GLsizei, "drawcount"), (GLsizei, "stride")]),
 
-    # ARM_texture_storage_compression
+    # GL_EXT_texture_storage_compression
     GlFunction(Void, "glTexStorageAttribs2DEXT", [(GLenum, "target"), (GLsizei, "levels"), (GLenum, "internalformat"), (GLsizei, "width"), (GLsizei, "height"), (GLAttribList, "attrib_list")]),
     GlFunction(Void, "glTexStorageAttribs3DEXT", [(GLenum, "target"), (GLsizei, "levels"), (GLenum, "internalformat"), (GLsizei, "width"), (GLsizei, "height"), (GLsizei, "depth"), (GLAttribList, "attrib_list")]),
 
@@ -1028,8 +1025,14 @@ gles_functions = [
 
     # GL_ARM_fragment_shading_rate
     GlFunction(Void, "glShadingRateARM", [(GLenum, "rate")]),
-    GlFunction(Void, "glShadingRateCombinerOpsARM", [(Array(Const(GLenum), 2), "combinerOps")]),
+    GlFunction(Void, "glShadingRateCombinerOpsARM", [(GLenum, "combinerOp0"), (GLenum, "combinerOp1")]),
     GlFunction(Void, "glFramebufferShadingRateARM", [(GLenum, "target"), (GLenum, "attachment"), (GLuint, "texture"), (GLint, "baseLayer"), (GLsizei, "numLayers"), (GLsizei, "texelWidth"), (GLsizei, "texelHeight")]),
+
+    # GL_EXT_fragment_shading_rate
+    GlFunction(Void, "glGetFragmentShadingRatesEXT", [(GLsizei, "samples"), (GLsizei, "maxCount"), Out(Pointer(GLsizei), "count"), Out(Pointer(GLenum), "shadingRates")], sideeffects=False),
+    GlFunction(Void, "glShadingRateEXT", [(GLenum, "rate")]),
+    GlFunction(Void, "glShadingRateCombinerOpsEXT", [(GLenum, "combinerOp0"), (GLenum, "combinerOp1")]),
+    GlFunction(Void, "glFramebufferShadingRateEXT", [(GLenum, "target"), (GLenum, "attachment"), (GLuint, "texture"), (GLint, "baseLayer"), (GLsizei, "numLayers"), (GLsizei, "texelWidth"), (GLsizei, "texelHeight")]),
 ]
 
 glesapi = API('GLES')

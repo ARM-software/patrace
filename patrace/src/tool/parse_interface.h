@@ -141,6 +141,8 @@ struct Buffer : public Resource
     intptr_t offset = 0;
 
     int clientsidebuffer = UNBOUND;
+    bool used = false; // actually used in a draw call
+    bool initialized = false;
 
     Buffer(int _id, int _index) : Resource(_id, _index) {}
 };
@@ -256,8 +258,8 @@ private:
 // EGL image
 struct Image : public Resource
 {
-    GLenum type;
-    unsigned value;
+    GLenum type = GL_NONE;
+    unsigned value = 0;
     Image(int _id, int _index) : Resource(_id, _index) {}
 };
 
@@ -298,7 +300,7 @@ struct Texture : public Resource
     SamplerState state;
     Texture(int _id, int _index) : Resource(_id, _index) {}
     bool used = false; // actually used in a draw call
-    bool initialized = false;
+    std::vector<int> initialized = { false }; // int to avoid the broken bool specialization of std::vector
     bool uninit_usage = false;
 
     std::map<int, MipmapGeneration> mipmaps; // call number of glGenerateMipmap : data
@@ -795,7 +797,6 @@ protected:
     virtual void completed_drawcall(int frame, const DrawParams& params, const StateTracker::RenderPass &rp) {}
     virtual void completed_renderpass(const StateTracker::RenderPass &rp) {}
 
-    bool only_default = false; // only parse default tid calls
     std::string mOutputName = "trace";
     bool mForceMultithread = false;
     bool mDumpFramebuffers = false;
@@ -805,6 +806,7 @@ protected:
     bool mDumpRenderpassJson = false;
     bool mRenderpassJSON = false;
     bool mDebug = false;
+    bool only_default; // only parse default tid calls
 };
 
 class ParseInterface : public ParseInterfaceBase
@@ -830,7 +832,6 @@ private:
     common::FrameTM* _curFrame = nullptr;
     unsigned _curCallIndexInFrame = 0;
     int mCallNo = 0;
-    bool only_default; // only parse default tid calls
 };
 
 #endif

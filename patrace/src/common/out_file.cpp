@@ -186,7 +186,7 @@ void OutFile::WriteSigBook(const std::vector<std::string> *sigbook)
     if (sigbook)
     {
         dest = WriteFixed<unsigned int>(dest, sigbook->size() - 1);   // cnt
-        for (unsigned short id = 1; id <= sigbook->size() - 1; ++id)
+        for (unsigned short id = 1; id < sigbook->size(); ++id)
         {
             dest = WriteFixed<unsigned int>(dest, id);
             dest = WriteString(dest, sigbook->at(id).c_str());

@@ -19,7 +19,7 @@ public:
     void setNativeWindow(EGLNativeWindowType window, int viewSize);
 
 private:
-    JavaVM *jvm;
+    JavaVM *jvm = nullptr;
     jclass gNativeCls;
     jmethodID gRequestWindowID;
     jmethodID gResizeWindowID;

@@ -65,6 +65,9 @@ std::vector<TraceThread> gTraceThread(PATRACE_THREAD_LIMIT);
 static std::vector<MyEGLSurface> surfaces;
 static std::vector<MyEGLContext> contexts;
 static std::vector<long long> frameTime;
+static bool extension_list_initialized = false;
+static std::vector<std::string> extension_list;
+static std::string extension_string;
 
 struct MyEGLAttribArray
 {
@@ -73,6 +76,16 @@ struct MyEGLAttribArray
     std::vector<MyEGLAttribs> config;
     unsigned defaultTid = 0;
 };
+
+const std::vector<std::string>& get_extensions()
+{
+    return extension_list;
+}
+
+const std::string& get_extension_string()
+{
+    return extension_string;
+}
 
 static void callback(unsigned int source, unsigned int type, unsigned int id, unsigned int severity, int length, const char* message, const void* userParam)
 {
@@ -971,6 +984,9 @@ void after_eglInitialize(EGLDisplay dpy)
     gTraceOut->mFrameBegTime = os::getTime();
     gTraceOut->mpBinAndMeta->saveAllEGLConfigs(dpy);
     gTraceOut->mpBinAndMeta->writeHeader(false);
+    extension_list_initialized = false;
+    extension_list.clear();
+    extension_string.clear();
 }
 
 void after_eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLSurface surf, EGLint x, EGLint y, EGLint width, EGLint height)
@@ -1005,6 +1021,29 @@ void after_eglCreateContext(EGLContext ctx, EGLDisplay dpy, EGLConfig config, co
     const int idx = contexts.size();
     const uint64_t id = reinterpret_cast<uint64_t>(ctx);
     contexts.push_back({e, profile, idx, id});
+
+    if (extension_list_initialized) return; // only run the below code once
+    extension_list_initialized = true;
+
+    // Make a custom extensions list. This list might in theory be different for different contexts, but
+    // lets hope that is never going to actually be the case because we do not track the current context.
+    for (const std::string& s : tracerParams.SupportedExtensions) extension_list.push_back(s);
+    if (!tracerParams.FilterSupportedExtension) // add nothing else if this is set
+    {
+        GLint ext_count = 0;
+        _glGetIntegerv(GL_NUM_EXTENSIONS, &ext_count);
+        for (int i = 0; i < ext_count; i++)
+        {
+            const std::string extname = (const char*)_glGetStringi(GL_EXTENSIONS, i);
+            bool found = false;
+            for (const std::string& s : tracerParams.SupportedExtensions) if (s == extname) found = true;
+            if (tracerParams.ErrorOutOnBinaryShaders && extname.find("shader_binary") != std::string::npos) found = true;
+            if (tracerParams.ErrorOutOnBinaryShaders && extname.find("program_binary") != std::string::npos) found = true;
+            if (tracerParams.DisableBufferStorage && extname == "GL_EXT_buffer_storage") found = true;
+            if (!found) extension_list.push_back(extname);
+        }
+    }
+    for (const std::string& s : extension_list) extension_string += s + " ";
 }
 
 void after_eglMakeCurrent(EGLDisplay dpy, EGLSurface drawSurf, EGLContext ctx)
@@ -1043,9 +1082,14 @@ void after_eglMakeCurrent(EGLDisplay dpy, EGLSurface drawSurf, EGLContext ctx)
     gTraceThread.at(tid).mCurCtx = traceCtx;
 
     std::map<EGLSurface, TraceSurface*>::iterator itr = gSurfMap.find(drawSurf);
-    if (drawSurf == EGL_NO_SURFACE || itr == gSurfMap.end())
+    if (drawSurf == EGL_NO_SURFACE)
     {
-        DBG_LOG("Note: EGLSurface is EGL_NO_SURFACE or %p doesn't exit!\n", drawSurf);
+        DBG_LOG("Warning: EGLSurface is EGL_NO_SURFACE!\n");
+        gTraceThread.at(tid).mCurSurf = NULL;
+    }
+    else if (itr == gSurfMap.end())
+    {
+        DBG_LOG("Error: EGLSurface %p does not exist!\n", drawSurf);
         gTraceThread.at(tid).mCurSurf = NULL;
     }
     else

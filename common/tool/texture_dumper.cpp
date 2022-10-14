@@ -64,7 +64,7 @@ public:
 private:
     typedef std::map<int, char*> BufferObjectMap;
     BufferObjectMap _bufferObjects;
-    unsigned int activeBufferObject;
+    unsigned int activeBufferObject = 0;
 };
 
 class BufferMangerForThread

@@ -306,13 +306,11 @@ public class GLThread extends Thread {
                 if (parentIntent.hasExtra("multithread")) {
                     js.put("multithread", parentIntent.getBooleanExtra("multithread", false));
                 }
-                if (parentIntent.hasExtra("force_single_window")) {
-                    js.put("forceSingleWindow", parentIntent.getBooleanExtra("force_single_window", false));
+                if (parentIntent.hasExtra("forceSingleWindow")) {
+                    js.put("forceSingleWindow", parentIntent.getBooleanExtra("forceSingleWindow", false));
                 }
                 js.put("file", parentIntent.getStringExtra("fileName") );
                 js.put("threadId", parentIntent.getIntExtra("tid", -1) ); // default in hdr
-                js.put("width", parentIntent.getIntExtra("winW", -1) ); // default in hdr
-                js.put("height", parentIntent.getIntExtra("winH", -1) ); // default in hdr
                 js.put("overrideWidth", parentIntent.getIntExtra("oresW", -1) ); // default off
                 js.put("overrideHeight", parentIntent.getIntExtra("oresH", -1) ); // default off
                 if ( parentIntent.getIntExtra("oresW", -1) > 0 && parentIntent.getIntExtra("oresH", -1) > 0) {
@@ -331,6 +329,10 @@ public class GLThread extends Thread {
                 if (parentIntent.hasExtra("snapshotCallset")) {
                     js.put("snapshotCallset", parentIntent.getStringExtra("snapshotCallset") ); // default off
                 }
+                if (parentIntent.hasExtra("loop"))
+                    js.put("loopTimes", parentIntent.getIntExtra("loop", 0));
+                if (parentIntent.hasExtra("loopSeconds"))
+                    js.put("loopSeconds", parentIntent.getIntExtra("loopSeconds", 0));
 
                 if (parentIntent.hasExtra("perfstart") && parentIntent.hasExtra("perfend")) {
                     int perf_start = parentIntent.getIntExtra("perfstart", -1);
@@ -353,6 +355,9 @@ public class GLThread extends Thread {
                     js.put("scriptframe", parentIntent.getIntExtra("scriptframe", -1));
                 }
 
+                js.put("finishBeforeSwap", parentIntent.getBooleanExtra("finishBeforeSwap", false));
+                js.put("flushWork", parentIntent.getBooleanExtra("flushWork", false));
+                js.put("runAllCalls", parentIntent.getBooleanExtra("runAllCalls", false));
                 js.put("preload", parentIntent.getBooleanExtra("preload", false));
                 js.put("singlesurface", parentIntent.getIntExtra("singlesurface", -1));
                 js.put("noscreen", parentIntent.getBooleanExtra("noscreen", false));
@@ -360,6 +365,9 @@ public class GLThread extends Thread {
                 js.put("offscreenSingleTile", parentIntent.getBooleanExtra("offscreenSingleTile", false)); // equal to "-singleframe"
                 js.put("measurePerFrame", parentIntent.getBooleanExtra("measurePerFrame", false));
                 js.put("instrumentationDelay", parentIntent.getIntExtra("instrumentationDelay", 0));
+                if(parentIntent.hasExtra("skipfence")){
+                    js.put("skipfence", parentIntent.getStringExtra("skipfence"));
+                }
                 js.put("colorBitsRed", parentIntent.getIntExtra("colorBitsRed", -1));
                 js.put("colorBitsGreen", parentIntent.getIntExtra("colorBitsGreen", -1));
                 js.put("colorBitsBlue", parentIntent.getIntExtra("colorBitsBlue", -1));
@@ -371,8 +379,12 @@ public class GLThread extends Thread {
                 js.put("glesTextureCompressionFixedRate", parentIntent.getIntExtra("glesTextureCompressionFixedRate", -1) );
 
                 if (parentIntent.getBooleanExtra("antialiasing", false)) {
-                    js.put("msaaSamples", 4);
+                    js.put("msaa", 4);
                 }
+
+                js.put("msaa", parentIntent.getIntExtra("msaa", -1));
+                js.put("overrideMSAA", parentIntent.getIntExtra("overrideMSAA", -1));
+                js.put("forceVRS", parentIntent.getIntExtra("forceVRS", -1));
 
                 // GUI specific
                 if (parentIntent.hasExtra("use24BitColor")) {

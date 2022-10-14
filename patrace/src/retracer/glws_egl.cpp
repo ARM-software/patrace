@@ -278,7 +278,7 @@ void GlwsEgl::Init(Profile /*profile*/)
             EGLint numDevices = 0;
             _eglQueryDevicesEXT(0, nullptr, &numDevices);
             std::vector<EGLDeviceEXT> eglDevs(numDevices);
-            if (_eglQueryDevicesEXT(numDevices, eglDevs.data(), &numDevices) == EGL_TRUE)
+            if (_eglQueryDevicesEXT(numDevices, eglDevs.data(), &numDevices) == EGL_TRUE && numDevices > 0)
             {
                 DBG_LOG("Detected %d devices -- choosing the first\n", numDevices);
                 PFNEGLGETPLATFORMDISPLAYEXTPROC _eglGetPlatformDisplayEXT = (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
