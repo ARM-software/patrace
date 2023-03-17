@@ -503,7 +503,7 @@ There are three different ways to tell the retracer which parameters that should
 |----------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `-tid THREADID`                              | only the function calls invoked by the given thread ID will be retraced                                                                                                                                                                |
 | `-s CALL_SET`                                | take snapshot for the calls in the specific call set. Example `*/frame` for one snapshot for each frame, or `250/frame` to take a snapshot just of frame 250.                                                                          |
-| `-step`                                      | use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call (only supported on desktop linux)                                                                                                               |
+| `-step`                                      | For desktop Linux, use F1-F4 to step forward frame by frame, F5-F8 to step forward draw call by draw call. For Linux fbdev, press H to see detailed usage.                                                                                                               |
 | `-ores W H`                                  | override the resolution of the final onscreen rendering (FBOs used in earlier renderpasses are not affected!) |
 | `-msaa SAMPLES`                              | Enable multi sample anti alias for the final framebuffer |
 | `-overrideMSAA SAMPLES`                      | Override any existing MSAA settings for intermediate framebuffers that already use MSAA. |
@@ -537,6 +537,7 @@ There are three different ways to tell the retracer which parameters that should
 | `-perfpath filepath`                         | (since r2p5) Path to your perf binary. Mostly useful on embedded systems.                                                                                                                                                              |
 | `-perffreq freq`                             | (since r2p5) Your perf polling frequency. The default is 1000. Can usually go up to 25000.                                                                                                                                             |
 | `-perfout filepath`                          | (since r2p5) Destination file for your -perf data                                                                                                                                                                                      |
+| `-perfevent event`                           | (since r4p3) Capture custom event |
 | `-script scriptPath Frame`                   | (since r3p3) trigger script on the specific frame                                                                                                                                                                                      |
 | `-noscreen`                                  | (since r2p4) Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.                                |
 | `-flush`                                     | (since r2p5) Will try hard to flush all pending CPU and GPU work before starting the selected framerange. This should usually not be necessary.                                                                                        |
@@ -581,6 +582,7 @@ There are three different ways to tell the retracer which parameters that should
 | `--es perfpath`            | Path to your perf binary. The default is `/system/bin/simpleperf`   |
 | `--ei perffreq`            | Your perf polling frequency. The default is 1000.  |
 | `--es perfout`             | Destination file for your perf data. The default is `/sdcard/perf.data`          |
+| `--es perfevent`           | Event you want to capture. The default is "".  |
 | `--ez noscreen`            | true/false(default). Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.                                                                                                                                                              |
 | `--ez finishBeforeSwap`    | True/False(default). Will try hard to flush all pending CPU and GPU work before starting the next frame. This should usually not be necessary.                                                                                                                                                                                                                               |
 | `--ez flushWork`           | True/False(default). Will try hard to flush all pending CPU and GPU work before starting the selected framerange. This should usually not be necessary.                                                                                                                                                                                                                      |
@@ -602,7 +604,7 @@ There are three different ways to tell the retracer which parameters that should
 | `--es jsonData`            | path to a JSON file containing parameters, e.g. /data/apitrace/input.json. Only works together with traceFilePath and resultFile, any other options don't work anymore                                                                                                                                                                                                       |
 | `--es traceFilePath`       | base path to trace file storage, e.g. /data/apitrace                                                                                                                                                                                                                                                                                                                         |
 | `--es resultFile`          | path to output result file, e.g. /data/apitrace/result.json                                                                                                                                                                                                                                                                                                                  |
-| `--ez multithread`         | Enable/Disable(default) Multithread execution mode.                                                                                                                                                                                                                                                                                                                          |
+| `--ez multithread`         | true/false(default) Multithread execution mode.                                                                                                                                                                                                                                                                                                                          |
 | `--ez enOverlay`           | If true(default), enable overlay all the surfaces when there is more then one surface created. If false, all the surfaces will be splited horizontally in a slider container.                                                                                                                                                                                                |
 | `--ei transparent`         | The alpha value of each surface, when using Overlay layout. The default is 100 (opaque).                                                                                                                                                                                                                                                                                     |
 | `--ez forceSingleWindow`   | True/False(default) to force render all the calls onto a single surface. This can't be true with multithread mode enabled.                                                                                                                                                                                                                                                   |
@@ -611,6 +613,8 @@ There are three different ways to tell the retracer which parameters that should
 | `--ei eglSurfaceCompressionFixedRate`    | (since r3p4) Set compression control flag on framebuffer. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate; 2: enable fixed rate compression with lowest rate; 3: enable fixed rate compression with highest rate.  |
 | `--ei eglImageCompressionFixedRate`      | (since r3p4) Set compression control flag on eglImage. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate.   |
 | `--ei glesTextureCompressionFixedRate`   | (since r3p4) Set compression control flag on texture. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate; 2: enable fixed rate compression with lowest rate; 3: enable fixed rate compression with highest rate.  |
+
+| `--ez step`               | true/false(default) Enable step mode. Use "input keyevent <keyname>" to step forward frames/draws. Input N/M/L to step forward 1/10/100 frame, input D to step forward 1 draw call.  |
 
 #### Parameters from JSON file
 
@@ -639,6 +643,7 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | perfpath                     | string     | yes      | Path to your perf binary. Mostly useful on embedded systems.   |
 | perffreq                     | int        | yes      | Your perf polling frequency. The default is 1000. Can usually go up to 25000.     |
 | perfout                      | string     | yes      | Destination file for your perf data      |
+| perfevent                    | string     | yes      | Event you want to capture.   |
 | instrumentationDelay         | int        | yes      | Delay in microseconds that the retracer should sleep for after each present call in the measurement range. |
 | scriptpath                   | string     | yes      | (since r3p3) The script file with path to be executed.           |
 | scriptframe                  | int        | yes      | (since r3p3) The frame number when script begin to execute.      |
@@ -670,6 +675,7 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | loadShaderCache              | string     | yes      | (since r4p2) See 'loadcache' command line option above. |
 | saveShaderCache              | string     | yes      | (since r4p2) See 'savecache' command line option above. |
 | cacheOnly                    | boolean    | yes      | (since r4p2) See 'cacheonly' command line option above. |
+| step                    | boolean    | yes      | (since r4p3) See 'step' option above for desktop Linux and Android.Press H to see detailed usage on uDriver and fbdev. |
 
 This is an example of a JSON parameter file:
 

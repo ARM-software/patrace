@@ -124,6 +124,11 @@ public class NativeAPI
     public static native boolean step();
     public static native void stop(String result);
     public static native boolean opt_getIsPortraitMode();
+    public static native void stepframe1();
+    public static native void stepframe10();
+    public static native void stepframe100();
+    public static native void stepdraw1();
+    public static native void stepmodefinish();
 
     static {
         System.loadLibrary("eglretrace");

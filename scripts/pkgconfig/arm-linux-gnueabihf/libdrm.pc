@@ -1,9 +1,0 @@
-prefix=/usr
-libdir=${prefix}/lib/arm-linux-gnueabihf
-includedir=${prefix}/lib/arm-linux-gnueabihf/include
-
-Name: libdrm
-Description: Userspace interface to kernel DRM services
-Version: 2.4.104
-Libs: -L${libdir} -ldrm
-Cflags: -I${includedir} -I${includedir}/libdrm

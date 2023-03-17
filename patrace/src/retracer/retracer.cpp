@@ -1571,17 +1571,35 @@ void Retracer::PerfStart()
 #ifdef ANDROID
         std::string freqopt = _to_string(mOptions.mPerfFreq);
         std::string mypid = _to_string(parent);
-        const char* args[10] = { mOptions.mPerfPath.c_str(), "record", "-g", "-f", freqopt.c_str(), "-p", mypid.c_str(), "-o", mOptions.mPerfOut.c_str(), nullptr };
         DBG_LOG("Perf tracing %ld from process %ld with freq %ld and output in %s\n", (long)parent, (long)getpid(), (long)mOptions.mPerfFreq, mOptions.mPerfOut.c_str());
-        DBG_LOG("Perf args: %s %s %s %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);
+        const char* args[12] = { mOptions.mPerfPath.c_str(), "record", "-g", "-f", freqopt.c_str(), "-p", mypid.c_str(), "-o", mOptions.mPerfOut.c_str(), "-e", mOptions.mPerfEvent.c_str(), nullptr };
+        if (mOptions.mPerfEvent == "")
+        {
+            args[9] = nullptr;
+            args[10] = nullptr;
+            DBG_LOG("Perf args: %s %s %s %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);
+        }
+        else
+        {
+            DBG_LOG("Perf args: %s %s %s %s %s %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10]);
+        }
 #else
         std::string freqopt = "--freq=" + _to_string(mOptions.mPerfFreq);
         std::string mypid = "--pid=" + _to_string(parent);
         std::string myfilename = mOptions.mPerfOut;
         std::string myfilearg = "--output=" + myfilename;
-        const char* args[7] = { mOptions.mPerfPath.c_str(), "record", "-g", freqopt.c_str(), mypid.c_str(), myfilearg.c_str(), nullptr };
         DBG_LOG("Perf tracing %ld from process %ld with freq %ld and output in %s\n", (long)parent, (long)getpid(), (long)mOptions.mPerfFreq, myfilename.c_str());
-        DBG_LOG("Perf args: %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5]);
+        const char* args[9] = { mOptions.mPerfPath.c_str(), "record", "-g", freqopt.c_str(), mypid.c_str(), myfilearg.c_str(), "-e", mOptions.mPerfEvent.c_str(), nullptr };
+        if (mOptions.mPerfEvent == "")
+        {
+            args[6] = nullptr;
+            args[7] = nullptr;
+            DBG_LOG("Perf args: %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5]);
+        }
+        else
+        {
+            DBG_LOG("Perf args: %s %s %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
+        }
 #endif
         if (execv(args[0], (char* const*)args) == -1)
         {

@@ -93,6 +93,7 @@ struct RetraceOptions
     int                 mPerfStart = -1;
     int                 mPerfStop = -1;
     int                 mPerfFreq = 1000;
+    std::string         mPerfEvent = "";
 
     bool                mFinishBeforeSwap = false;
     bool                mPerfmon = false;

@@ -248,6 +248,11 @@ void BinAndMeta::writeHeader(bool cleanExit)
         index++;
     }
 
+    if ( jsonRoot["threads"].size() > 1 )
+    {
+        jsonRoot["multiThread"] = true;
+    }
+
     for (const MyEGLContext& a : contexts)
     {
         Json::Value v;
@@ -704,9 +709,13 @@ void pre_glUnmapBuffer(GLenum target)
                 {
                     // Store data for newly created CSB
                     _glClientSideBufferData(name, data.length, data.base);
+                    _glCopyClientSideBuffer(target, name);
                 }
-
-                _glCopyClientSideBuffer(target, name);
+                else if (_isClientSideBufferModified(name) || !(data.access & GL_MAP_FLUSH_EXPLICIT_BIT))
+                //only remove CopyCSB when glFlushMappedBufferRange is called and flushed the same range in this map
+                {
+                    _glCopyClientSideBuffer(target, name);
+                }
             }
         }
     }
@@ -1021,29 +1030,6 @@ void after_eglCreateContext(EGLContext ctx, EGLDisplay dpy, EGLConfig config, co
     const int idx = contexts.size();
     const uint64_t id = reinterpret_cast<uint64_t>(ctx);
     contexts.push_back({e, profile, idx, id});
-
-    if (extension_list_initialized) return; // only run the below code once
-    extension_list_initialized = true;
-
-    // Make a custom extensions list. This list might in theory be different for different contexts, but
-    // lets hope that is never going to actually be the case because we do not track the current context.
-    for (const std::string& s : tracerParams.SupportedExtensions) extension_list.push_back(s);
-    if (!tracerParams.FilterSupportedExtension) // add nothing else if this is set
-    {
-        GLint ext_count = 0;
-        _glGetIntegerv(GL_NUM_EXTENSIONS, &ext_count);
-        for (int i = 0; i < ext_count; i++)
-        {
-            const std::string extname = (const char*)_glGetStringi(GL_EXTENSIONS, i);
-            bool found = false;
-            for (const std::string& s : tracerParams.SupportedExtensions) if (s == extname) found = true;
-            if (tracerParams.ErrorOutOnBinaryShaders && extname.find("shader_binary") != std::string::npos) found = true;
-            if (tracerParams.ErrorOutOnBinaryShaders && extname.find("program_binary") != std::string::npos) found = true;
-            if (tracerParams.DisableBufferStorage && extname == "GL_EXT_buffer_storage") found = true;
-            if (!found) extension_list.push_back(extname);
-        }
-    }
-    for (const std::string& s : extension_list) extension_string += s + " ";
 }
 
 void after_eglMakeCurrent(EGLDisplay dpy, EGLSurface drawSurf, EGLContext ctx)
@@ -1119,6 +1105,29 @@ void after_eglMakeCurrent(EGLDisplay dpy, EGLSurface drawSurf, EGLContext ctx)
     int gles_version_major = gGlesFeatures.glesVersion() / 100;
     if (gles_version_major >= 2)
         _glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &traceCtx->mMaxVertexAttribs);
+
+    if (extension_list_initialized) return; // only run the below code once
+    extension_list_initialized = true;
+
+    // Make a custom extensions list. This list might in theory be different for different contexts, but
+    // lets hope that is never going to actually be the case because we do not track the current context.
+    for (const std::string& s : tracerParams.SupportedExtensions) extension_list.push_back(s);
+    if (!tracerParams.FilterSupportedExtension) // add nothing else if this is set
+    {
+        GLint ext_count = 0;
+        _glGetIntegerv(GL_NUM_EXTENSIONS, &ext_count);
+        for (int i = 0; i < ext_count; i++)
+        {
+            const std::string extname = (const char*)_glGetStringi(GL_EXTENSIONS, i);
+            bool found = false;
+            for (const std::string& s : tracerParams.SupportedExtensions) if (s == extname) found = true;
+            if (tracerParams.ErrorOutOnBinaryShaders && extname.find("shader_binary") != std::string::npos) found = true;
+            if (tracerParams.ErrorOutOnBinaryShaders && extname.find("program_binary") != std::string::npos) found = true;
+            if (tracerParams.DisableBufferStorage && extname == "GL_EXT_buffer_storage") found = true;
+            if (!found) extension_list.push_back(extname);
+        }
+    }
+    for (const std::string& s : extension_list) extension_string += s + " ";
 }
 
 void after_eglDestroyContext(EGLContext ctx)
@@ -1661,6 +1670,8 @@ void _glCopyClientSideBuffer(GLenum target, ClientSideBufferObjectName name)
     pCall->errNo = GetCallErrorNo("glCopyClientSideBuffer", tid);
     gTraceOut->Write(gTraceOut->writebuf, dest - gTraceOut->writebuf);
     gTraceOut->callNo++;
+
+    gTraceOut->mCSBufferSet.get_object(tid, name)->save_md5_last_copy();
 }
 
 void _glPatchClientSideBuffer(GLenum target, int length, const void *data)
@@ -1726,6 +1737,12 @@ void _glClientSideBufferSubData(ClientSideBufferObjectName name,
     pCall->toNext = dest-gTraceOut->writebuf;
     gTraceOut->Write(gTraceOut->writebuf, dest-gTraceOut->writebuf);
     gTraceOut->callNo++;
+}
+
+bool _isClientSideBufferModified(ClientSideBufferObjectName name)
+{
+    const unsigned char tid = GetThreadId();
+    return gTraceOut->mCSBufferSet.get_object(tid, name)->modified();
 }
 
 ClientSideBufferObjectName _getOrCreateClientSideBuffer(const ClientSideBufferObject& obj, bool& created)

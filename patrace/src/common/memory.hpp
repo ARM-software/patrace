@@ -270,6 +270,16 @@ public:
         return _md5_digest;
     }
 
+    const bool modified() const
+    {
+        return _md5_last_copy != md5_digest();
+    }
+
+    void save_md5_last_copy()
+    {
+        _md5_last_copy = md5_digest();
+    }
+
     void * translate_address(ptrdiff_t offset) const
     {
         if (offset < size)
@@ -302,6 +312,7 @@ private:
     // Cached MD5 digest
     mutable bool _dirty_md5_digest = true;
     mutable MD5Digest _md5_digest;
+    mutable MD5Digest _md5_last_copy;
 
     // If != 0, this will be used as destination by set_data
     // This is used by the glReadMapBufferRange, and glUnmapBuffer functiosn.

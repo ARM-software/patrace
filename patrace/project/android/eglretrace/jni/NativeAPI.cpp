@@ -85,6 +85,18 @@ JNIEXPORT jboolean JNICALL Java_com_arm_pa_paretrace_NativeAPI_initFromJson(JNIE
     env->ReleaseStringUTFChars(jstrJsonData, jsonData);
     env->ReleaseStringUTFChars(jstrTraceDir, traceDir);
 
+    if (gRetracer.mOptions.mStepMode)
+    {
+        DBG_LOG("Step mode true!\n");
+        if (!GLWS::instance().steppable())
+        {
+            DBG_LOG("Step mode not supported on this platform!\n");
+            return false;
+        }
+        gRetracer.frameBudget = 0;
+        gRetracer.drawBudget = 1; // we need at least one draw to get things started
+    }
+
     return true;
 }
 
@@ -159,3 +171,27 @@ JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_setSurface(JNIEnv* en
     }
 }
 
+JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_stepframe1(JNIEnv *env, jclass)
+{
+    gRetracer.frameBudget++;
+}
+
+JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_stepframe10(JNIEnv *env, jclass)
+{
+    gRetracer.frameBudget+=10;
+}
+
+JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_stepframe100(JNIEnv *env, jclass)
+{
+    gRetracer.frameBudget+=100;
+}
+
+JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_stepdraw1(JNIEnv *env, jclass)
+{
+    gRetracer.drawBudget++;
+}
+
+JNIEXPORT void JNICALL Java_com_arm_pa_paretrace_NativeAPI_stepmodefinish(JNIEnv *env, jclass)
+{
+    gRetracer.mFinish = true;
+}

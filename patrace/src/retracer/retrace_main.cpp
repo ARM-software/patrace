@@ -68,6 +68,7 @@ usage(const char *argv0) {
         "  -perf START END run Linux perf on selected frame range and save it to disk\n"
         "  -perfpath PATH Set path to perf binary\n"
         "  -perffreq FREQ Set frequency for perf\n"
+        "  -perfevent EVENT Capture perf custom event\n"
         "  -perfout FILENAME Set output filename for perf\n"
 #endif
         "  -forceanisolevel LEVEL force all anisotropic filtering levels above 1 to this level\n"
@@ -181,6 +182,8 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             mOptions.mPerfOut = argv[++i];
         } else if (!strcmp(arg, "-perffreq")) {
             mOptions.mPerfFreq = readValidValue(argv[++i]);
+        } else if (!strcmp(arg, "-perfevent")) {
+            mOptions.mPerfEvent = argv[++i];
         } else if (!strcmp(arg, "-s")) {
             mOptions.mSnapshotCallSet = new common::CallSet(argv[++i]);
         } else if (!strcmp(arg, "-framenamesnaps")) {

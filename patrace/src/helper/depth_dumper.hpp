@@ -13,6 +13,7 @@ public:
         Tex2DArray,
         TexCubemap,
         TexCubemapArray,
+        Tex3D,
         TexEnd
     };
     ~DepthDumper();

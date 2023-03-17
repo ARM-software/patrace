@@ -6,7 +6,7 @@ set (PYTHON_EXECUTABLE python)
 message(STATUS "main ar: ${CMAKE_AR}")
 
 set (PATRACE_VERSION_MAJOR 4)
-set (PATRACE_VERSION_MINOR 2)
+set (PATRACE_VERSION_MINOR 3)
 set (PATRACE_VERSION_PATCH 0)
 
 IF(DEFINED ENV{SVN_REVISION})
@@ -31,6 +31,16 @@ IF(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInf
     message(STATUS "*** DEBUG BUILD ***")
     add_definitions(-DREPORT_GL_ERRORS -DDEBUG -gdwarf)
 ENDIF()
+
+if (FFI7)
+    if (WINDOWSYSTEM MATCHES "wayland")
+        if (ARCH MATCHES "aarch64")
+            set(ENV{PKG_CONFIG_PATH} "/usr/lib/aarch64-linux-gnu/pkgconfig/ffi7")
+        elseif (ARCH MATCHES "armhf")
+            set(ENV{PKG_CONFIG_PATH} "/usr/lib/arm-linux-gnueabihf/pkgconfig/ffi7")
+        endif()
+    endif()
+endif()
 
 include(FindPkgConfig)
 

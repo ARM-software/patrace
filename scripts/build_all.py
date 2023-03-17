@@ -162,7 +162,7 @@ def check_log_erros(log_file):
                 print_error(line)
 
 
-def build_project(platform, variant, build_dir, install_dir, project_path, log_file=sys.stdout, make_target='install', cmake_defines=[], stop_early=False, static=False):
+def build_project(platform, variant, build_dir, install_dir, project_path, log_file=sys.stdout, make_target='install', cmake_defines=[], stop_early=False, static=False, ffi7=False):
     sanitizer = 'False'
     if variant == 'sanitizer':
         sanitizer = 'address'
@@ -236,6 +236,9 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
     if platform in ['fbdev_x32', 'fbdev_x64', 'rhe6_x32', 'rhe6_x64']\
             or (platform in ['fbdev_arm_hardfloat', 'fbdev_aarch64'] and static):
         cmake_command += ' -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"'
+
+    if ffi7 and platform in ['wayland_aarch64', 'wayland_arm_hardfloat']:
+        cmake_command += ' -DFFI7=TRUE'
 
     if not os.path.exists(build_dir):
         os.makedirs(build_dir)

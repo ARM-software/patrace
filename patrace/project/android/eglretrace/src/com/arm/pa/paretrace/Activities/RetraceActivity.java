@@ -20,9 +20,11 @@ import android.view.SurfaceView;
 import android.view.TextureView;
 import android.graphics.SurfaceTexture;
 import android.view.WindowManager;
+import android.view.KeyEvent;
 import android.os.Handler;
 import android.os.Message;
 
+import com.arm.pa.paretrace.NativeAPI;
 import com.arm.pa.paretrace.R;
 import com.arm.pa.paretrace.Retracer.GLThread;
 
@@ -48,7 +50,7 @@ public class RetraceActivity extends Activity
                     }
                 }
             };
-
+    private NativeAPI NativeAPI;
     private HashMap<Integer, View> viewIdToViewMap = new HashMap<Integer, View>();
     private GLThread mGLThread = null;
     private GLViewContainer mViewContainer = null;
@@ -232,6 +234,35 @@ public class RetraceActivity extends Activity
         }
 
 		mGLThread = null;
+    }
+
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_N:
+                NativeAPI.stepframe1();
+                Log.i(TAG,"step frame 1");
+                return true;
+            case KeyEvent.KEYCODE_M:
+                NativeAPI.stepframe10();
+                Log.i(TAG,"step frame 10");
+                return true;
+            case KeyEvent.KEYCODE_L:
+                NativeAPI.stepframe100();
+                Log.i(TAG,"step frame 100");
+                return true;
+            case KeyEvent.KEYCODE_D:
+                NativeAPI.stepdraw1();
+                Log.i(TAG,"step draw 1");
+                return true;
+            case KeyEvent.KEYCODE_Q:
+                NativeAPI.stepmodefinish();
+                Log.i(TAG,"step finish");
+                return true;
+            default:
+                Log.i(TAG,"step invalid keyevent");
+                return super.onKeyUp(keyCode, event);
+        }
     }
 
     private class GLSurfaceView extends SurfaceView implements SurfaceHolder.Callback {

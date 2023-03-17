@@ -71,12 +71,12 @@ Drawable* GlwsEglFbdev::CreateDrawable(int width, int height, int /*win*/, EGLin
 static void usage()
 {
     printf("Cmd usage:\n");
-    printf("    s: render one draw call.\n");
-    printf("    n: render one frame.\n");
-    printf("    N: render 10 frames.\n");
-    printf("    m: render 100 frames.\n");
-    printf("    q: exit.\n");
-    printf("    h: show this usage.\n");
+    printf("    D: render one draw call.\n");
+    printf("    N: render one frame.\n");
+    printf("    M: render 10 frames.\n");
+    printf("    L: render 100 frames.\n");
+    printf("    Q: exit.\n");
+    printf("    H: show this usage.\n");
 }
 
 GlwsEglFbdev::GlwsEglFbdev()
@@ -112,27 +112,27 @@ void GlwsEglFbdev::processStepEvent()
 {
     const char cmd = getchar();
 
-    if (cmd == 'n')
+    if (cmd == 'N')
     {
         gRetracer.frameBudget++;
     }
-    else if (cmd == 'N')
+    else if (cmd == 'M')
     {
         gRetracer.frameBudget += 10;
     }
-    else if (cmd == 'm')
+    else if (cmd == 'L')
     {
         gRetracer.frameBudget += 100;
     }
-    else if (cmd == 's')
+    else if (cmd == 'D')
     {
         gRetracer.drawBudget++;
     }
-    else if (cmd == 'q')
+    else if (cmd == 'Q')
     {
         gRetracer.mFinish = true;
     }
-    else if (cmd == 'h')
+    else if (cmd == 'H')
     {
         usage();
     }

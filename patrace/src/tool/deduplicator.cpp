@@ -17,6 +17,7 @@
 #include "common/trace_model.hpp"
 #include "common/gl_utility.hpp"
 #include "common/os.hpp"
+#include "common/memory.hpp"
 #include "eglstate/context.hpp"
 #include "tool/config.hpp"
 #include "base/base.hpp"
@@ -32,6 +33,7 @@
 #define DEDUP_VERTEXATTRIB 128
 #define DEDUP_MAKECURRENT 256
 #define DEDUP_PROGRAMS 512
+#define DEDUP_CSB 1024
 
 static bool replace = false;
 static std::pair<int, int> dedups;
@@ -58,6 +60,7 @@ static void printHelp()
         "  --vertexattr  Deduplicate glVertexAttribPointer calls\n"
         "  --makecurrent Deduplicate eglMakeCurrent calls\n"
         "  --programs    Deduplicate glUseProgram calls\n"
+        "  --csb         Deduplicate client side buffer calls\n"
         "  --all         Deduplicate all the above\n"
         "  --end FRAME   End frame (terminates trace here)\n"
         "  --last FRAME  Stop doing changes at this frame (copies the remaining trace without changes)\n"
@@ -128,11 +131,13 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
     std::pair<int, int> blendfuncs;
     std::pair<int, int> useprograms;
     std::pair<int, int> makecurr;
+    std::pair<int, int> csb;
     int makecurr_harmless = 0;
     int last_swap = 0;
     GLuint current_program_id = 0;
     int old_surface_id = (int64_t)EGL_NO_SURFACE;
     int old_context_id = (int64_t)EGL_NO_CONTEXT;
+    std::pair<int, int> csbdedup_possible = std::make_pair(-1, -1);
 
     // Go through entire trace file
     while ((call = input.next_call()))
@@ -163,6 +168,7 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 dedup(outputFile, useprograms.first);
                 assert(current_program_id == id);
             }
+            csbdedup_possible = std::make_pair(-1, -1);
         }
         else if (call->mCallName == "eglMakeCurrent")
         {
@@ -214,6 +220,7 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
             bindbuffers.second++;
             const GLenum target = call->mArgs[0]->GetAsUInt();
             const GLuint id = call->mArgs[1]->GetAsUInt();
+            if ((int)target == csbdedup_possible.second) csbdedup_possible = std::make_pair(-1, -1);
             if (buffers.count(target) == 0 || buffers.at(target) != id)
             {
                 writeout(outputFile, call);
@@ -450,6 +457,40 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
             if (verbose) DBG_LOG("Ending!\n");
             break;
         }
+        else if (call->mCallName == "glCopyClientSideBuffer" && (flags & DEDUP_CSB))
+        {
+            csb.second++;
+            const GLenum target = call->mArgs[0]->GetAsUInt();
+            const GLuint name = call->mArgs[1]->GetAsUInt();
+            if (csbdedup_possible == std::make_pair((int)name, (int)target))
+            {
+                dedup(outputFile, csb.first);
+                continue;
+            }
+            csbdedup_possible = std::make_pair((int)name, (int)target);
+            writeout(outputFile, call);
+        }
+        else if (call->mCallName == "glUnmapBuffer" && (flags & DEDUP_CSB))
+        {
+            const GLenum target = call->mArgs[0]->GetAsUInt();
+            if ((int)target == csbdedup_possible.second) csbdedup_possible = std::make_pair(-1, -1);
+            writeout(outputFile, call);
+        }
+        else if (call->mCallName == "glClientSideBufferData" && (flags & DEDUP_CSB))
+        {
+            csbdedup_possible = std::make_pair(-1, -1);
+            writeout(outputFile, call);
+        }
+        else if (call->mCallName == "glPatchClientSideBuffer" && (flags & DEDUP_CSB))
+        {
+            csbdedup_possible = std::make_pair(-1, -1);
+            writeout(outputFile, call);
+        }
+        else if (call->mCallName == "glClientSideBufferSubData" && (flags & DEDUP_CSB))
+        {
+            csbdedup_possible = std::make_pair(-1, -1);
+            writeout(outputFile, call);
+        }
         else
         {
             writeout(outputFile, call);
@@ -468,6 +509,7 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
     if (depthfuncs.first) fprintf(fp, "Removed %d / %d depth func calls (%d%%)\n", depthfuncs.first, depthfuncs.second, depthfuncs.first * 100 / depthfuncs.second);
     if (blendfuncs.first) fprintf(fp, "Removed %d / %d blend func calls (%d%%)\n", blendfuncs.first, blendfuncs.second, blendfuncs.first * 100 / blendfuncs.second);
     if (makecurr.first) fprintf(fp, "Removed %d / %d makecurrent calls (%d%%, at least %d were harmless on Mali)\n", makecurr.first, makecurr.second, makecurr.first * 100 / makecurr.second, makecurr_harmless);
+    if (csb.first) fprintf(fp, "Removed %d / %d glCopyClientSideBuffer func calls (%d%%)\n", csb.first, csb.second, csb.first * 100 / csb.second);
 }
 
 int main(int argc, char **argv)
@@ -529,6 +571,10 @@ int main(int argc, char **argv)
         else if (arg == "--programs")
         {
             flags |= DEDUP_PROGRAMS;
+        }
+        else if (arg == "--csb")
+        {
+            flags |= DEDUP_CSB;
         }
         else if (arg == "--makecurrent")
         {

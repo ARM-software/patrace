@@ -6,4 +6,4 @@ SET(WINDOWSYSTEM wayland)
 SET(ARCH armhf)
 
 set(CC_HOST "arm-linux-gnueabihf")
-set(ENV{PKG_CONFIG_PATH} "./scripts/pkgconfig/arm-linux-gnueabihf")
+set(ENV{PKG_CONFIG_PATH} "/usr/lib/arm-linux-gnueabihf/pkgconfig")

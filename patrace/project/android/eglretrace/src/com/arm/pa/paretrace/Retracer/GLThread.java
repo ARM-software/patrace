@@ -334,6 +334,10 @@ public class GLThread extends Thread {
                 if (parentIntent.hasExtra("loopSeconds"))
                     js.put("loopSeconds", parentIntent.getIntExtra("loopSeconds", 0));
 
+                if(parentIntent.hasExtra("step")){
+                    js.put("step", parentIntent.getBooleanExtra("step", false));
+                }
+
                 if (parentIntent.hasExtra("perfstart") && parentIntent.hasExtra("perfend")) {
                     int perf_start = parentIntent.getIntExtra("perfstart", -1);
                     int perf_end = parentIntent.getIntExtra("perfend", -1);
@@ -345,6 +349,9 @@ public class GLThread extends Thread {
                 }
                 if(parentIntent.hasExtra("perffreq")){
                     js.put("perffreq", parentIntent.getIntExtra("perffreq", 1000));
+                }
+                if(parentIntent.hasExtra("perfevent")){
+                    js.put("perfevent", parentIntent.getStringExtra("perfevent"));
                 }
                 if(parentIntent.hasExtra("perfout")){
                     js.put("perfout", parentIntent.getStringExtra("perfout"));

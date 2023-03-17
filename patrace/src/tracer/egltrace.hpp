@@ -287,6 +287,7 @@ __eglMustCastToProperFunctionPointerType _wrapProcAddress(
 bool _need_user_arrays();
 void _trace_user_arrays(int maxindex, int instancecount = 0);
 #if ENABLE_CLIENT_SIDE_BUFFER
+bool _isClientSideBufferModified(common::ClientSideBufferObjectName name);
 common::ClientSideBufferObjectName _getOrCreateClientSideBuffer(const common::ClientSideBufferObject& obj, bool& created);
 common::ClientSideBufferObjectName _getOrCreateClientSideBuffer(const void *p, ptrdiff_t size, bool& created);
 unsigned int _glClientSideBufferData(const void *p, ptrdiff_t size);

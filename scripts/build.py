@@ -34,6 +34,9 @@ if __name__ == '__main__':
     parser.add_argument('type', default='debug',
                         help='the build type. Possible values: debug, release, sanitizer')
 
+    parser.add_argument('--ffi7', type=bool, default=False,
+                        help='build wayland_aarch64 with libffi.7.so. Default to build with libffi.6.so')
+
     parser.add_argument('--static', type=bool, default=False,
                         help='build patrace statically. Defaults to \'false\'')
 
@@ -46,6 +49,9 @@ if __name__ == '__main__':
         ))
         if args.static and args.platform not in exclude:
             args.build_dir += '_static'
+        else:
+            if args.ffi7 and args.platform in ['wayland_aarch64', 'wayland_arm_hardfloat']:
+                args.build_dir += '_ffi7'
 
     if not args.install_dir:
         args.install_dir = os.path.abspath(os.path.join(
@@ -53,6 +59,9 @@ if __name__ == '__main__':
         ))
         if args.static and args.platform not in exclude:
             args.install_dir += '_static'
+        else:
+            if args.ffi7 and args.platform in ['wayland_aarch64', 'wayland_arm_hardfloat']:
+                args.install_dir += '_ffi7'
 
     if args.platform == 'android':
         # Run CMake first to create generated files
@@ -77,7 +86,8 @@ if __name__ == '__main__':
             install_dir=args.install_dir,
             project_path=os.path.abspath(os.path.join(script_dir, '..', 'patrace', 'project', 'cmake')),
             cmake_defines=[],
-            static=args.static
+            static=args.static,
+            ffi7=args.ffi7
         )
 
     sys.exit(returncode)

@@ -163,7 +163,7 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
     options.mPerfOut = value.get("perfout","perf.data").asString();
 #endif
     options.mPerfFreq = value.get("perffreq",1000).asInt();
-
+    options.mPerfEvent = value.get("perfevent", "").asString();
     options.mPreload = value.get("preload", false).asBool();
     options.mRunAll = value.get("runAllCalls", false).asBool();
 
@@ -263,6 +263,11 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
     if (value.get("perfmon", false).asBool())
     {
         options.mPerfmon = true;
+    }
+
+    if (value.get("step", false).asBool())
+    {
+        options.mStepMode = true;
     }
 
     options.eglAfrcRate = value.get("eglSurfaceCompressionFixedRate", -1).asInt();

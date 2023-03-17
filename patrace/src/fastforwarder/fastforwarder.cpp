@@ -62,6 +62,7 @@ struct FastForwardOptions
     unsigned int mEndFrame;
     unsigned int mFlags;
     unsigned int mFbo0Repeat;
+    bool mResetFrameNumber;
 
     FastForwardOptions()
         : mOutputFileName("fastforward.pat")
@@ -71,6 +72,7 @@ struct FastForwardOptions
         , mEndFrame(UINT32_MAX)
         , mFlags(FASTFORWARD_RESTORE_TEXTURES)
         , mFbo0Repeat(0)
+        , mResetFrameNumber(false)
     {}
 };
 
@@ -1093,10 +1095,13 @@ public:
         TexTypeInfo info2dArray("2D_Array", GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BINDING_2D_ARRAY, TraceCommandEmitter::Tex3D);
         TexTypeInfo infoCubemap("Cubemap", GL_TEXTURE_CUBE_MAP, GL_TEXTURE_BINDING_CUBE_MAP, TraceCommandEmitter::Tex2D);
         TexTypeInfo infoCubemapArray("Cubemap_Array", GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_BINDING_CUBE_MAP_ARRAY, TraceCommandEmitter::Tex3D);
+        TexTypeInfo info3d("3D", GL_TEXTURE_3D, GL_TEXTURE_BINDING_3D, TraceCommandEmitter::Tex3D);
+
         texTypeToInfo[DepthDumper::Tex2D] = info2d;
         texTypeToInfo[DepthDumper::Tex2DArray] = info2dArray;
         texTypeToInfo[DepthDumper::TexCubemap] = infoCubemap;
         texTypeToInfo[DepthDumper::TexCubemapArray] = infoCubemapArray;
+        texTypeToInfo[DepthDumper::Tex3D] = info3d;
 
         depthDumper.initializeDepthCopyer();
     }
@@ -1222,6 +1227,7 @@ public:
             // These methods will return false if it's not a texture of this type.
 
             // supports GL_TEXTURE_2D, GL_TEXTURE_2D_ARRAY, GL_TEXTURE_CUBE_MAP, GL_TEXTURE_CUBE_MAP_ARRAY textures for now
+            // add support for GL_TEXTURE_3D
             for (unsigned int i = DepthDumper::Tex2D; i < DepthDumper::TexEnd; ++i)
             {
                 ok = saveTexture(static_cast<DepthDumper::TexType>(i), traceCommandEmitter, traceTextureId, retraceTextureId);
@@ -1276,16 +1282,17 @@ private:
 
     bool isArrayTex(DepthDumper::TexType type)
     {
-        if (type == DepthDumper::Tex2D || type == DepthDumper::TexCubemap)
-            return false;
-        return true;
+        return !(type == DepthDumper::Tex2D || type == DepthDumper::TexCubemap || type == DepthDumper::Tex3D);
     }
 
     bool isCubemapTex(DepthDumper::TexType type)
     {
-        if (type == DepthDumper::TexCubemap)
-            return true;
-        return false;
+        return type == DepthDumper::TexCubemap;
+    }
+
+    bool is3DTex(DepthDumper::TexType type)
+    {
+        return type == DepthDumper::Tex3D;
     }
 
     struct TextureInfo
@@ -1478,6 +1485,7 @@ private:
         const TexTypeInfo &typeInfo = typeInfoIter->second;
         bool isArray = isArrayTex(texType);
         bool isCubemap = isCubemapTex(texType);
+        bool is3D = is3DTex(texType);
         checkError("saveTexture" + typeInfo.name + " begin");
 
         // Remember currently bound texture
@@ -1680,7 +1688,7 @@ private:
                 }
             }
 
-            size_t textureSize = _gl_image_size(readTexFormat, readTexType, mipmapSize.width, mipmapSize.height, 1, true);
+            size_t textureSize = _gl_image_size(readTexFormat, readTexType, mipmapSize.width, mipmapSize.height, mipmapSize.depth, true);
             assert(textureSize > 0);
 
 
@@ -1733,7 +1741,7 @@ private:
 
                 if (readTexFormat == GL_DEPTH_COMPONENT || readTexFormat == GL_DEPTH_STENCIL) {
 #ifdef ENABLE_X11
-                    if (isArray) {
+                    if (isArray || is3D) {
                         _glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, retraceTextureId, curMipmapLevel, i);
                     }
                     else {
@@ -1756,7 +1764,7 @@ private:
 #endif  // ENABLE_X11 end
                 }
                 else {
-                    if (isArray) {
+                    if (isArray || is3D) {
                         _glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, retraceTextureId, curMipmapLevel, i);
                     }
                     else {
@@ -1841,6 +1849,11 @@ private:
                         break;
                     case DepthDumper::TexCubemapArray:
                         target = GL_TEXTURE_CUBE_MAP_ARRAY;
+                        zoffset = i;
+                        depth = 1;
+                        break;
+                    case DepthDumper::Tex3D:
+                        target = GL_TEXTURE_3D;
                         zoffset = i;
                         depth = 1;
                         break;
@@ -3224,6 +3237,7 @@ usage(const char *argv0)
         "  --version Output the version of this program\n"
         "  --restorefbo0 <repeat_times> Repeat to inject a draw call commands and swapbuffer the given number of times to restore the last default FBO. Suggest repeating 3~4 times if setDamageRegionKHR, else repeating 1 time.\n"
         "  --txu Remove the unused textures and related function calls.\n"
+        "  --restartframenum Set the flag restartFrameNumbering to true.\n"
         "\n"
         , argv0);
 }
@@ -3332,6 +3346,10 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
         {
             ffOptions.mFlags |= FASTFORWARD_REMOVE_UNUSED_TEXTURE;
         }
+        else if(!strcmp(arg, "--restartframenum"))
+        {
+            ffOptions.mResetFrameNumber = true;
+        }
         else
         {
             DBG_LOG("error: unknown option %s\n", arg);
@@ -3424,6 +3442,9 @@ int main(int argc, char** argv)
 
     // Prepare ffJson
     {
+        // Set restart frame numbering flag
+        if (ffOptions.mResetFrameNumber == true)
+            ffJson["restartFrameNumbering"] = ffOptions.mResetFrameNumber;
         // Target frame
         ffJson["originalFrame"] = ffOptions.mTargetFrame;
         // Target draw call no

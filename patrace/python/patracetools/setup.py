@@ -129,6 +129,7 @@ setup(
             'pat-edit-header=patracetools.edit_header:main',
             'pat-dump-textures=patracetools.dump_textures:main',
             'pat-get-call-numbers=patracetools.get_call_numbers:main',
+            'pat-set-hints=patracetools.set_hints:main',
         ],
     },
 )
