@@ -404,6 +404,7 @@ struct Shader : public Resource
     bool contains_optimize_off_pragma = false;
     bool contains_debug_on_pragma = false;
     bool contains_invariant_all_pragma = false;
+    bool used = false;
     std::unordered_map<std::string, GLSLSampler> samplers;
     int varying_locations_used = 0;
     int lowp_varyings = 0;

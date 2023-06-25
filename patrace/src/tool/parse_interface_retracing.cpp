@@ -1377,7 +1377,7 @@ void ParseInterfaceRetracing::cleanup()
     GLWS::instance().Cleanup();
 }
 
-void ParseInterfaceRetracing::outputTexUsage(std::unordered_set<unsigned int>& unusedMipgen, std::unordered_set<unsigned int>& unusedTexture)
+void ParseInterfaceRetracing::outputTexUsage(std::unordered_set<unsigned int>& unusedMipgen, std::unordered_set<unsigned int>& unusedTexture, std::unordered_set<unsigned int>& unusedShader)
 {
     for (const auto& ctx : contexts)
     {
@@ -1388,6 +1388,11 @@ void ParseInterfaceRetracing::outputTexUsage(std::unordered_set<unsigned int>& u
             {
                 if (!mip.second.used) unusedMipgen.insert(mip.first);
             }
+        }
+        for (const auto& sh : ctx.shaders.all())
+        {
+            if (!sh.used) 
+                unusedShader.insert(sh.index);
         }
     }
 }

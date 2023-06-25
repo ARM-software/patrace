@@ -96,11 +96,14 @@ public:
 };
 
 GlobalTextureIdTracer gTextureIdTracer;
+GlobalTextureIdTracer gShaderIdTracer;
 std::unordered_set<unsigned int> gUnusedMipgen; // call id of redundant glGenerateMipmap()
 std::unordered_set<unsigned int> gUnusedTexture; // global id of redundant textures
+std::unordered_set<unsigned int> gUnusedShader;
 unsigned int gRemovedMipgen  = 0;
 unsigned int gRemovedTexFunc = 0;
 unsigned int gRemovedTexture = 0;
+unsigned int gRemovedShaderFunc = 0;
 
 namespace RetraceAndTrim
 {
@@ -2934,6 +2937,26 @@ bool checkUnusedTexture()
             return true;
         }
     }
+
+    else if (strstr(funcName, "glCreateShader"))
+    {
+        char* src = gRetracer.src;
+        int type;
+        src = common::ReadFixed(src, type);
+        unsigned int ret;
+        src = common::ReadFixed<unsigned int>(src, ret);
+        if (gShaderIdTracer.remap.count(ret) == 0) gShaderIdTracer.add(ret);
+        
+    }
+
+    else if (strstr(funcName, "glDeleteShader"))
+    {
+        char* src = gRetracer.src;
+        unsigned int shader;
+        src = common::ReadFixed<unsigned int>(src, shader);
+        if (gShaderIdTracer.remap.count(shader) != 0) gShaderIdTracer.remove(shader);
+    }
+
     if (strstr(funcName, "glTexImage")
         || strstr(funcName, "glTexStorage")
         || strstr(funcName, "glTexSubImage")
@@ -2954,6 +2977,41 @@ bool checkUnusedTexture()
             gRemovedTexFunc++;
             return true;
         }
+    }
+
+    if (strcmp(funcName, "glShaderSource") == 0
+        || strcmp(funcName, "glCompileShader") == 0
+        || strcmp(funcName, "glAttachShader") == 0)
+    {
+        char* src = gRetracer.src;
+        GLuint shader;
+        src = common::ReadFixed<GLenum>(src, shader);
+        if (strcmp(funcName, "glAttachShader") == 0)
+        {
+            src = common::ReadFixed<GLenum>(src, shader);
+        }
+        unsigned int globalShaderId = gShaderIdTracer.remap.at(shader);
+        if (gUnusedShader.count(globalShaderId) && shader != 0)
+        {
+            gRemovedShaderFunc++;
+            return true;
+        }
+    }
+    if (strstr(funcName, "glLinkProgram"))
+    {
+        char* src = gRetracer.src;
+        GLuint p;
+        src = common::ReadFixed<GLenum>(src, p);
+        Context& context = gRetracer.getCurrentContext();
+        unsigned int retracePId = context.getProgramMap().RValue((unsigned int)p);
+        for (const GLuint retraceShId : gRetracer.getCurrentContext().getShaderIDs(retracePId))
+        {
+            unsigned int traceShId = context.getShaderRevMap().RValue((unsigned int)retraceShId);
+            unsigned int globalShaderId = gShaderIdTracer.remap.at(traceShId);
+            if (!gUnusedShader.count(globalShaderId)) return false;
+        }
+        gRemovedShaderFunc++;
+        return true;
     }
 
     return false;
@@ -3419,7 +3477,7 @@ int main(int argc, char** argv)
         parser.ff_endframe = (ffOptions.mEndFrame > INT32_MAX) ? INT32_MAX : ffOptions.mEndFrame; // incase mEndFrame(uint) is out of int range
 
         parser.loop([](ParseInterfaceBase& input, common::CallTM *call, void *data) {return (input.frames <= input.ff_endframe);}, nullptr);
-        parser.outputTexUsage(gUnusedMipgen, gUnusedTexture);
+        parser.outputTexUsage(gUnusedMipgen, gUnusedTexture, gUnusedShader);
         std::string fileName = gRetracer.mOptions.mFileName;
         parser.cleanup();
         gRetracer.~Retracer();
@@ -3489,7 +3547,7 @@ int main(int argc, char** argv)
     retraceAndTrim(out, ffOptions, ffJson);
 
     if (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE)
-        DBG_LOG("%d mipmap generation calls are removed, %d textures are removed, %d texture calls are removed.\n", gRemovedMipgen, gRemovedTexture, gRemovedTexFunc);
+        DBG_LOG("%d mipmap generation calls are removed, %d textures are removed, %d texture calls are removed, %d shader calls are removed.\n", gRemovedMipgen, gRemovedTexture, gRemovedTexFunc, gRemovedShaderFunc);
 
     // Add our conversion to the list
     addConversionEntry(jsonRoot, "fastforward", gRetracer.mOptions.mFileName, ffJson);

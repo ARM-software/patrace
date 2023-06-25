@@ -1867,6 +1867,15 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                     contexts[context_index].program_index = program_index;
                 }
                 else callstats[call->mCallName].dupes++;
+                if (frames >= ff_startframe && frames <= ff_endframe)
+                {
+                    StateTracker::Program& p = contexts[context_index].programs[program_index];
+                    for (const auto it : p.shaders)
+                    {
+                        StateTracker::Shader &shader = contexts[context_index].shaders[it.second];
+                        shader.used = true;
+                    }
+                }
             }
         }
         else if (contexts[context_index].program_index != UNBOUND)
@@ -1942,6 +1951,14 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             {
                 const int shader_index = p.shaders[type];
                 code += contexts[context_index].shaders[shader_index].source_code;
+            }
+        }
+        if (frames >= ff_startframe && frames <= ff_endframe)
+        {
+            for (const auto it : p.shaders)
+            {
+                StateTracker::Shader &shader = contexts[context_index].shaders[it.second];
+                shader.used = true;
             }
         }
         p.md5sum = common::MD5Digest(code).text_lower();
@@ -2245,6 +2262,15 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
                 if (stages & pair.first)
                 {
                     pipe.program_stages[pair.second] = program_index;
+                }
+            }
+            StateTracker::Program& p = contexts[context_index].programs[program_index];
+            if (frames >= ff_startframe && frames <= ff_endframe)
+            {
+                for (const auto it : p.shaders)
+                {
+                    StateTracker::Shader &shader = contexts[context_index].shaders[it.second];
+                    shader.used = true;
                 }
             }
         }
