@@ -657,7 +657,10 @@ int main(int argc, char **argv)
             return 1;
         }
         Json::Value info;
-        addConversionEntry(header, "deduplicate", source_trace_filename, info);
+        std::string cmdline;
+        for (int i = 1; i < argc - 2; i++) { cmdline += argv[i]; if (i >= argc - 2) cmdline += std::string(" "); }
+        info["command_line"] = cmdline;
+        addConversionEntry(header, "deduplicator", source_trace_filename, info);
         Json::FastWriter writer;
         const std::string json_header = writer.write(header);
         outputFile.mHeader.jsonLength = json_header.size();

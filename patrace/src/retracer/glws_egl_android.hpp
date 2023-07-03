@@ -18,7 +18,7 @@ public:
     virtual void ReleaseDrawable(NativeWindow *window) override;
     void setNativeWindow(EGLNativeWindowType window, int viewSize);
     virtual bool steppable() override { return true; }
-    virtual void processStepEvent() override {};
+    virtual void processStepEvent() override;
 
 private:
     JavaVM *jvm = nullptr;

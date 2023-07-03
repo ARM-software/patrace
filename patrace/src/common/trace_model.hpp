@@ -320,6 +320,7 @@ public:
 
     bool Open(const char* name, bool readHeaderAndExit = false, const std::string& ra_target = std::string());
     void Close();
+    void ResetCurFrameIndex();
     CallTM *NextCall() const;
     CallTM *NextCallInFrame(unsigned int frameIndex) const;
 

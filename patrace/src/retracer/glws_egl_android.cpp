@@ -222,6 +222,20 @@ void GlwsEglAndroid::setNativeWindow(EGLNativeWindowType window, int viewSize)
     mViewSize = viewSize;
 }
 
+void GlwsEglAndroid::processStepEvent()
+{
+    while (1)
+    {
+        sleep(1);
+        if (gRetracer.frameBudget > 0 || gRetracer.drawBudget > 0)
+        {
+            //DBG_LOG("wait for step mode input");
+            return;
+        }
+    }
+   
+}
+
 GLWS& GLWS::instance()
 {
     static GlwsEglAndroid g;

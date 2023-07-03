@@ -184,8 +184,12 @@ static void list_surfaces(common::TraceFileTM &inputFile)
         {
             int mret = call->mRet.GetAsInt();
             int display = call->mArgs[0]->GetAsInt();
-            surface_remapping[mret] = surfaces.size(); // generate id<->idx table
-            surfaces.push_back(surf(mret, display, call->mCallNo, frames, surfaces.size()));
+            int ret = call->mRet.GetAsInt();
+            if (ret != 0)
+            {
+                surface_remapping[mret] = surfaces.size(); // generate id<->idx table
+                surfaces.push_back(surf(mret, display, call->mCallNo, frames, surfaces.size()));
+            }
         }
         else if (call->mCallName.compare(0, uncomprtexfunc.size(), uncomprtexfunc) == 0
                  || call->mCallName.compare(0, uncomprtexfunc2.size(), uncomprtexfunc2) == 0

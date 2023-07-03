@@ -1260,6 +1260,13 @@ void TraceFileTM::Close()
     mpInFileRA->Close();
 }
 
+void TraceFileTM::ResetCurFrameIndex()
+{
+    mCurFrameIndex = 0;
+    mCurCallIndexInFrame = 0;
+    mCallBatchIndex = 0;
+}
+
 TraceFileTM::TraceFileTM(const char *name, bool readHeaderAndExit, size_t callBatchSize)
 : mpInFileRA(new InFileRA),
   mCurFrameIndex(0),
@@ -1416,6 +1423,7 @@ CallTM *TraceFileTM::NextCallInFrame(unsigned int frameIndex) const
     }
     return curFrame->mCalls[mCurCallIndexInFrame++];
 }
+
 
 unsigned int TraceFileTM::FindNext(unsigned int callNo, const char* name)
 {

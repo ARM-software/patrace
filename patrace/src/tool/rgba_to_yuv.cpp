@@ -349,6 +349,7 @@ int convert(const string &source_name, const string &target_name, PixelFormat fo
         // 2nd step, pick up all the calls need to be excluded
         map<int, vector<CallWithExclude> > exclude_map;         // tid -> vector of excluded calls
         map<int, vector<CallWithName> >    call_no_map;         // tid -> vector of all calls
+        source_file.ResetCurFrameIndex();
         while ((call = source_file.NextCall()))
         {
             int tid = call->mTid;
@@ -372,34 +373,40 @@ int convert(const string &source_name, const string &target_name, PixelFormat fo
             idx_map.insert(make_pair(it->first, 0));
         }
         bool firstBindTexture = true;
-        unordered_map<unsigned int, unsigned int> texToImage_map;
-        unordered_map<unsigned int, unordered_map<unsigned int, unsigned int> > imageToLastCallId_map;
-        unsigned int image_counter = 1;
-        unsigned int image_id = 0;
+        map<int, unordered_map<unsigned int, unsigned int> > tex_image_map; // tid -> tex_id -> image_id
+        map<int, unsigned int> last_call_id_map; // tid -> last_call_id
+        map<int, unsigned int> image_counter_map; // tid-> image_counter
+        map<int, unsigned int> image_id_map; // tid -> image_id of the current thread
+        source_file.ResetCurFrameIndex();
         while ((call = source_file.NextCall()))
         {
             int tid = call->mTid;
             int id = idx_map[tid];
+
+            if (image_counter_map.find(tid) == image_counter_map.end()) {
+                image_counter_map[tid] = 1;
+            }
+
             if ((id < (long)exclude_map[tid].size()) && ((long)call->mCallNo == exclude_map[tid][id].callNo)) {
                 ++idx_map[tid];
                 if (call->mCallName == "glGenTextures") {
                     common::ValueTM *value = call->mArgs[1];
                     int tex_id = value->mArray[0].GetAsInt();
-                    texToImage_map[tex_id] = image_counter++;
+                    tex_image_map[tid][tex_id] = image_counter_map[tid]++;
                 }
                 else if (call->mCallName == "glBindTexture") {
                     if (firstBindTexture) {
                         int tex_id = call->mArgs[1]->GetAsInt();
-                        auto it = texToImage_map.find(tex_id);
-                        if (it == texToImage_map.end()) {
+                        auto it = tex_image_map[tid].find(tex_id);
+                        if (it == tex_image_map[tid].end()) {
                             DBG_LOG("Cannot find tex %d in texToImage_map!\n", tex_id);
                             exit(EXIT_FAILURE);
                         }
                         else {
-                            image_id = it->second;
+                            image_id_map[tid] = it->second;
                             firstBindTexture = false;
-                            imageToLastCallId_map[tid][image_id] = call->mCallNo + 1;
-                            DBG_LOG("bind texture call = %d, last of %d\n", call->mCallNo + 1, image_id);
+                            last_call_id_map[tid] = call->mCallNo + 1;
+                            DBG_LOG("bind texture call = %d, last of %d\n", call->mCallNo + 1, image_id_map[tid]);
                         }
                     }
                     else {
@@ -408,13 +415,13 @@ int convert(const string &source_name, const string &target_name, PixelFormat fo
                 }
             }
             else if (call->mCallName == "eglCreateImageKHR") {
-                imageToLastCallId_map[tid][image_id] = call->mCallNo;
+                last_call_id_map[tid] = call->mCallNo;
             }
         }
 
-        texToImage_map.clear();
-        image_counter = 1;
-        image_id = 0;
+        tex_image_map.clear();
+        image_counter_map.clear();
+        image_id_map.clear();
         bool needToGenGraphicBuffer = false;
         firstBindTexture = true;
 
@@ -423,15 +430,21 @@ int convert(const string &source_name, const string &target_name, PixelFormat fo
         for (auto it = exclude_map.begin(); it != exclude_map.end(); ++it) {
             idx_map.insert(make_pair(it->first, 0));
         }
+        source_file.ResetCurFrameIndex();
         while ((call = source_file.NextCall())) {
             int tid = call->mTid;
             int id = idx_map[tid];
+
+            if (image_counter_map.find(tid) == image_counter_map.end()) {
+                image_counter_map[tid] = 1;
+            }
+
             if ((id < (long)exclude_map[tid].size()) && ((long)call->mCallNo == exclude_map[tid][id].callNo)) {
                 ++idx_map[tid];
                 if (call->mCallName == "glGenTextures") {
                     common::ValueTM *value = call->mArgs[1];
                     int tex_id = value->mArray[0].GetAsInt();
-                    texToImage_map[tex_id] = image_counter++;
+                    tex_image_map[tid][tex_id] = image_counter_map[tid]++;
                     needToGenGraphicBuffer = true;
                     if (!exclude_map[tid][id].exclude) {
                         writeout(target_file, call);
@@ -440,13 +453,13 @@ int convert(const string &source_name, const string &target_name, PixelFormat fo
                 else if (call->mCallName == "glBindTexture") {
                     if (firstBindTexture) {
                         int tex_id = call->mArgs[1]->GetAsInt();
-                        auto it = texToImage_map.find(tex_id);
-                        if (it == texToImage_map.end()) {
+                        auto it = tex_image_map[tid].find(tex_id);
+                        if (it == tex_image_map[tid].end()) {
                             DBG_LOG("Cannot find tex %d in texToImage_map!\n", tex_id);
                             exit(EXIT_FAILURE);
                         }
                         else {
-                            image_id = it->second;
+                            image_id_map[tid] = it->second;
                             firstBindTexture = false;
                         }
                     }
@@ -467,32 +480,32 @@ int convert(const string &source_name, const string &target_name, PixelFormat fo
                         genGraphicBuffer.mArgs.push_back(new common::ValueTM(height));      // height
                         genGraphicBuffer.mArgs.push_back(new common::ValueTM(format));      // format
                         genGraphicBuffer.mArgs.push_back(new common::ValueTM(usage));       // usage
-                        genGraphicBuffer.mRet = common::ValueTM(image_id);                  // id
+                        genGraphicBuffer.mRet = common::ValueTM(image_id_map[tid]);         // id
                         writeout(target_file, &genGraphicBuffer);
                         needToGenGraphicBuffer = false;
                     }
 
                     common::CallTM graphicBufferData("glGraphicBufferData_ARM");
                     graphicBufferData.mTid = tid;
-                    graphicBufferData.mArgs.push_back(new common::ValueTM(image_id));   // name
+                    graphicBufferData.mArgs.push_back(new common::ValueTM(image_id_map[tid]));   // name
                     graphicBufferData.mArgs.push_back(new common::ValueTM(yuv_size));   // size
                     graphicBufferData.mArgs.push_back(new common::ValueTM(reinterpret_cast<char *>(yuv_data), yuv_size));    // data
                     graphicBufferData.mRet = common::ValueTM();          // void
                     writeout(target_file, &graphicBufferData);
 
-                    if (inject_delete && imageToLastCallId_map.at(tid).at(image_id) == call->mCallNo) {
+                    if (inject_delete && last_call_id_map.at(tid) == call->mCallNo) {
                         common::CallTM deleteGraphicBuffer("glDeleteGraphicBuffer_ARM");
                         deleteGraphicBuffer.mTid = tid;
-                        deleteGraphicBuffer.mArgs.push_back(new common::ValueTM(image_id));       // name
+                        deleteGraphicBuffer.mArgs.push_back(new common::ValueTM(image_id_map[tid]));       // name
                         deleteGraphicBuffer.mRet = common::ValueTM();          // void
                         writeout(target_file, &deleteGraphicBuffer);
                     }
                 }
                 else if (call->mCallName == "eglCreateImageKHR") {
-                    if (inject_delete && imageToLastCallId_map.at(tid).at(image_id) == call->mCallNo) {
+                    if (inject_delete && last_call_id_map.at(tid) == call->mCallNo) {
                         common::CallTM deleteGraphicBuffer("glDeleteGraphicBuffer_ARM");
                         deleteGraphicBuffer.mTid = tid;
-                        deleteGraphicBuffer.mArgs.push_back(new common::ValueTM(image_id));       // name
+                        deleteGraphicBuffer.mArgs.push_back(new common::ValueTM(image_id_map[tid]));       // name
                         deleteGraphicBuffer.mRet = common::ValueTM();          // void
                         writeout(target_file, &deleteGraphicBuffer);
                     }
@@ -501,14 +514,14 @@ int convert(const string &source_name, const string &target_name, PixelFormat fo
             else if (call->mCallName == "eglCreateImageKHR") {
                 call->mArgs[1] = new common::ValueTM(0);
                 call->mArgs[2] = new common::ValueTM(0x3140);       // 0x3140=EGL_NATIVE_BUFFER_ANDROID
-                call->mArgs[3] = new common::ValueTM(image_id);
+                call->mArgs[3] = new common::ValueTM(image_id_map[tid]);
                 process_eglCreateImageKHR(call, no_crop);
                 writeout(target_file, call);
 
-                if (inject_delete && imageToLastCallId_map.at(tid).at(image_id) == call->mCallNo) {
+                if (inject_delete && last_call_id_map.at(tid) == call->mCallNo) {
                     common::CallTM deleteGraphicBuffer("glDeleteGraphicBuffer_ARM");
                     deleteGraphicBuffer.mTid = tid;
-                    deleteGraphicBuffer.mArgs.push_back(new common::ValueTM(image_id));       // name
+                    deleteGraphicBuffer.mArgs.push_back(new common::ValueTM(image_id_map[tid]));       // name
                     deleteGraphicBuffer.mRet = common::ValueTM();          // void
                     writeout(target_file, &deleteGraphicBuffer);
                 }

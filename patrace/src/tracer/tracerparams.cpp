@@ -23,7 +23,7 @@ static bool get_env_bool(const char* name, int fallback)
 TracerParams::TracerParams()
 {
 #ifdef ANDROID
-    const char *strFilePath = "/system/lib/egl/tracerparams.cfg";
+    const char *strFilePath = "/data/apitrace/tracerparams.cfg";
 #else
     const char *strFilePath = "tracerparams.cfg";
 #endif

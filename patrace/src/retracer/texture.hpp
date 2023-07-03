@@ -55,7 +55,7 @@ struct Texture
         case 0x9102: // GL_TEXTURE_2D_MULTISAMPLE_ARRAY
             return 0x9105; // GL_TEXTURE_BINDING_2D_MULTISAMPLE_ARRAY
         default:
-            DBG_LOG("WARNING: Unhandled texture target.\n");
+            DBG_LOG("WARNING: Unhandled texture target 0x%04x\n", target);
             return 0;
         }
     }

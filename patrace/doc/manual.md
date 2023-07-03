@@ -109,10 +109,17 @@ Add the tools and platform-tools folders located in the android SDK installation
     export ANDROID_HOME=<SDK_ROOT>
     export PATH=$PATH:${ANDROID_HOME}/tools
     export PATH=$PATH:${ANDROID_HOME}/platform-tools
+    export PATH=$PATH:${ANDROID_HOME}/ndk/21.1.6352462
 
 Make sure you have java installed:
 
     apt-get install openjdk-8-jdk
+
+Make sure javac, javah and java are belonging to the same openjdk version (the version that the version require you to install)
+
+    sudo update-alternatives --config javac
+    sudo update-alternatives --config javah
+    sudo update-alternatives --config java
 
 You may also have to install these (if it complains about missing 'aapt' program):
 
@@ -232,6 +239,8 @@ Return value is "true" means your device supports Treble. Then you need to use t
     mv /vendor/lib/egl/libGLES_mali.so /vendor/lib/egl/lib_mali.so  
     mount -o ro,remount /vendor  
 
+Note that in case of error remounting /vendor even as root, look at the section GLES Layer.
+
 ### Installing interceptor on Android 8
 
 Similarly, install the interceptor to /vendor/lib(64)/egl and configure it:
@@ -256,6 +265,8 @@ Similarly, install the interceptor to /vendor/lib(64)/egl and configure it:
 
     mkdir /data/apitrace  
     chmod 777 /data/apitrace  
+    
+Note that in case of error remounting /vendor even as root, look at the section GLES Layer. 
 
 ### Installing fakedriver on Android 9
 
@@ -382,7 +393,7 @@ The most useful keyword is 'FilterSupportedExtension', which, if set to 'true', 
 
 ### Special features of PaTrace Tracer
 
-You may enable or disable extensions, this is useful to create traces that don't use certain extensions. Limiting the extensions an app 'sees' is useful when you want to create a tracefile that is compatible with devices that don't support a given extension. How it works; when an app calls `glGetString(GL_EXTENSIONS)`, only the ones enabled in `/system/lib/egl/tracerparams.cfg` will be returned to the app. Unfortunately, some applications ignore or don't use this information, and may use certain extensions, anyways.The tracer will ignore some extensions like the binary shader extensions by default. You can override this by explicitly listing the extensions to use in `tracerparams.cfg`, as described 
+You may enable or disable extensions, this is useful to create traces that don't use certain extensions. Limiting the extensions an app 'sees' is useful when you want to create a tracefile that is compatible with devices that don't support a given extension. How it works; when an app calls `glGetString(GL_EXTENSIONS)`, only the ones enabled in `/data/apitrace/tracerparams.cfg` will be returned to the app. Unfortunately, some applications ignore or don't use this information, and may use certain extensions, anyways.The tracer will ignore some extensions like the binary shader extensions by default. You can override this by explicitly listing the extensions to use in `tracerparams.cfg`, as described 
 above.The full list of extensions that the device supports will be saved in the trace header.
 
 We never want binary shaders in the resulting trace file, since it can then only be retraced on the same platform. Since binary shaders are supported in GLES3, merely disabling the binary shader extensions may not be enough. You may have to go into Android app settings, and flush all app caches before you run the app to make sure the shader caches are cleared, 
@@ -411,13 +422,13 @@ Then, enable GLES Layer for specified target application (`libGLES_layer_arm.so`
     adb shell settings put global gpu_debug_layers_gles libGLES_layer_arm64.so
     adb shell settings put global gpu_debug_app  application_package_name_wantToTrace
 
-#### Enable GLES Layer on S21
+#### Enable GLES Layer on S21 and similar contemporary and more modern devices
 First, enable GLES layer by running `adb shell setprop debug.gles.layers libGLES_layer_arm64.so`.
 Then, find which directory to place the GLES layer by running `adb logcat | grep libEGL`, while starting the game. It will list where it is searching for the GLES layer. Copy the GLES layer to this directory, and give it 755 permission.
 
 ### Tracing on Android
 Create the output trace directory in advance, which will be named `/data/apitrace/<package_name>`. Give it 777 permission, and run `chcon u:object_r:app_data_file:s0:c512,c768 /data/apitrace/<package_name>`
-After that, run the application and tracing begins automatically.
+After that, run the application and tracing will begin automatically.
 
 Retracing
 ---------
@@ -533,11 +544,13 @@ There are three different ways to tell the retracer which parameters that should
 | `-version`                                   | Output the version of this program                                                                                                                                                                                                     |
 | `-callstats`                                 | (since r2p4) Output GLES API call statistics to disk, time spent in API calls measured in nanoseconds. Required to use with -framerange.                                                                                                                                |
 | `-collect`                                   | (since r2p4) Collect performance information and save it to disk. It enables some default libcollector collectors. For fine-grained control over libcollector behaviour, use the JSON interface instead.                               |
-| `-perf FRAME_START FRAME_END`                | (since r2p5) Create perf callstacks of the selected frame range and save it to disk. It calls "perf record -g" in a separate thread once your selected frame range begins.                                                             |
+| `-perfrange FRAME_START FRAME_END`           | (since r2p5) Create perf callstacks of the selected frame range and save it to disk. It calls "perf record -g" in a separate thread once your selected frame range begins.                                                             |
 | `-perfpath filepath`                         | (since r2p5) Path to your perf binary. Mostly useful on embedded systems.                                                                                                                                                              |
 | `-perffreq freq`                             | (since r2p5) Your perf polling frequency. The default is 1000. Can usually go up to 25000.                                                                                                                                             |
 | `-perfout filepath`                          | (since r2p5) Destination file for your -perf data                                                                                                                                                                                      |
 | `-perfevent event`                           | (since r4p3) Capture custom event |
+| `-perfcmd "customized perf params input"`    | (since r5p1) Input all perf params in one option. Default value for --pid and --freq=1000 |
+| `-fpslimit FPS`                              | (since r5p1) Limit the fps of replaying |
 | `-script scriptPath Frame`                   | (since r3p3) trigger script on the specific frame                                                                                                                                                                                      |
 | `-noscreen`                                  | (since r2p4) Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.                                |
 | `-flush`                                     | (since r2p5) Will try hard to flush all pending CPU and GPU work before starting the selected framerange. This should usually not be necessary.                                                                                        |
@@ -583,6 +596,8 @@ There are three different ways to tell the retracer which parameters that should
 | `--ei perffreq`            | Your perf polling frequency. The default is 1000.  |
 | `--es perfout`             | Destination file for your perf data. The default is `/sdcard/perf.data`          |
 | `--es perfevent`           | Event you want to capture. The default is "".  |
+| `--es perfcmd`             | Input all perf params. Might need to add \ before " .Default value for -p and -f 1000 |
+| `--ei fpslimit`            | FPS. (since r5p1) Limit the fps of replaying.  |
 | `--ez noscreen`            | true/false(default). Render without visual output using a pbuffer render target. This can be significantly slower, but will work on some setups where trying to render to a visual output target will not work.                                                                                                                                                              |
 | `--ez finishBeforeSwap`    | True/False(default). Will try hard to flush all pending CPU and GPU work before starting the next frame. This should usually not be necessary.                                                                                                                                                                                                                               |
 | `--ez flushWork`           | True/False(default). Will try hard to flush all pending CPU and GPU work before starting the selected framerange. This should usually not be necessary.                                                                                                                                                                                                                      |
@@ -614,7 +629,7 @@ There are three different ways to tell the retracer which parameters that should
 | `--ei eglImageCompressionFixedRate`      | (since r3p4) Set compression control flag on eglImage. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate.   |
 | `--ei glesTextureCompressionFixedRate`   | (since r3p4) Set compression control flag on texture. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate; 2: enable fixed rate compression with lowest rate; 3: enable fixed rate compression with highest rate.  |
 
-| `--ez step`               | true/false(default) Enable step mode. Use "input keyevent <keyname>" to step forward frames/draws. Input N/M/L to step forward 1/10/100 frame, input D to step forward 1 draw call.  |
+| `--ez step`                              | true/false(default) Enable step mode. Use "input keyevent <keyname>" to step forward frames/draws. Input N/M/L to step forward 1/10/100 frame, input D to step forward 1 draw call.  Images dumped to /sdcared/.   |
 
 #### Parameters from JSON file
 
@@ -644,6 +659,7 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | perffreq                     | int        | yes      | Your perf polling frequency. The default is 1000. Can usually go up to 25000.     |
 | perfout                      | string     | yes      | Destination file for your perf data      |
 | perfevent                    | string     | yes      | Event you want to capture.   |
+| perfcmd                      | string     | yes      | All perf params. Default value for pid and frequency=1000            |
 | instrumentationDelay         | int        | yes      | Delay in microseconds that the retracer should sleep for after each present call in the measurement range. |
 | scriptpath                   | string     | yes      | (since r3p3) The script file with path to be executed.           |
 | scriptframe                  | int        | yes      | (since r3p3) The frame number when script begin to execute.      |
@@ -676,6 +692,7 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | saveShaderCache              | string     | yes      | (since r4p2) See 'savecache' command line option above. |
 | cacheOnly                    | boolean    | yes      | (since r4p2) See 'cacheonly' command line option above. |
 | step                    | boolean    | yes      | (since r4p3) See 'step' option above for desktop Linux and Android.Press H to see detailed usage on uDriver and fbdev. |
+| fpslimit                     | int        | yes      | (since r5p1) Limit the fps of replaying. |
 
 This is an example of a JSON parameter file:
 

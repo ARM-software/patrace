@@ -478,7 +478,7 @@ gles_functions = [
     # GL_EXT_separate_shader_objects
     GlFunction(Void, "glUseProgramStagesEXT", [(GLpipeline, "pipeline"), (GLbitfield_shader, "stages"), (GLprogram, "program")]),
     GlFunction(Void, "glActiveShaderProgramEXT", [(GLpipeline, "pipeline"), (GLprogram, "program")]),
-    GlFunction(GLprogram, "glCreateShaderProgramvEXT", [(GLenum, "type"), (GLsizei, "count"), (Array(GLstringConst, "count"), "strings")]),
+    GlFunction(GLprogram, "glCreateShaderProgramvEXT", [(GLenum, "type"), (GLsizei, "count"), (Const(Array(GLstringConst, "count")), "strings")]),
     GlFunction(Void, "glBindProgramPipelineEXT", [(GLpipeline, "pipeline")]),
     GlFunction(Void, "glDeleteProgramPipelinesEXT", [(GLsizei, "n"), (Array(Const(GLuint), "n"), "pipelines")]),
     GlFunction(Void, "glGenProgramPipelinesEXT", [(GLsizei, "n"), Out(Array(GLpipeline, "n"), "pipelines")]),
@@ -662,7 +662,7 @@ gles_functions = [
     # GL_OES_copy_image
     GlFunction(Void, "glCopyImageSubDataOES", [(GLuint, "srcName"), (GLenum, "srcTarget"), (GLint, "srcLevel"), (GLint, "srcX"), (GLint, "srcY"), (GLint, "srcZ"), (GLuint, "dstName"), (GLenum, "dstTarget"), (GLint, "dstLevel"), (GLint, "dstX"), (GLint, "dstY"), (GLint, "dstZ"), (GLsizei, "srcWidth"), (GLsizei, "srcHeight"), (GLsizei, "srcDepth")]),
 
-    # QCOM_alpha_test
+    # GL_QCOM_alpha_test
     GlFunction(Void, "glAlphaFuncQCOM", [(GLenum, "func"), (GLclampf, "ref")]),
 
     # GL_EXT_disjoint_timer_query
@@ -1033,6 +1033,55 @@ gles_functions = [
     GlFunction(Void, "glShadingRateEXT", [(GLenum, "rate")]),
     GlFunction(Void, "glShadingRateCombinerOpsEXT", [(GLenum, "combinerOp0"), (GLenum, "combinerOp1")]),
     GlFunction(Void, "glFramebufferShadingRateEXT", [(GLenum, "target"), (GLenum, "attachment"), (GLuint, "texture"), (GLint, "baseLayer"), (GLsizei, "numLayers"), (GLsizei, "texelWidth"), (GLsizei, "texelHeight")]),
+
+    # GL_EXT_EGL_image_storage
+    # see eglapi.py
+
+    # GL_EXT_blend_func_extended
+    GlFunction(Void, "glBindFragDataLocationIndexedEXT", [(GLuint, "program"), (GLuint, "colorNumber"), (GLuint, "index"), (Const(GLstring), "name")]),
+    GlFunction(GLint, "glGetFragDataIndexEXT", [(GLuint, "program"), (Const(GLstring), "name")], sideeffects=False),
+    GlFunction(Void, "glBindFragDataLocationEXT", [(GLuint, "program"), (GLuint, "colorNumber"), (Const(GLstring), "name")]),
+    GlFunction(GLint, "glGetProgramResourceLocationIndexEXT", [(GLuint, "program"), (GLenum, "programInterface"), (Const(GLstring), "name")], sideeffects=False),
+
+    # GL_EXT_memory_object
+    #GlFunction(Void, "glGetUnsignedBytevEXT", [(GLenum, "pname"), Out(Pointer(GLubyte), "data")], sideeffects=False),
+    #GlFunction(Void, "glGetUnsignedBytei_vEXT", [(GLenum, "target"), (GLuint, "index"), Out(Pointer(GLubyte), "data")], sideeffects=False),
+    GlFunction(Void, "glDeleteMemoryObjectsEXT", [(GLsizei, "n"), (Array(Const(GLuint), "n"), "memoryObjects")]),
+    GlFunction(GLboolean, "glIsMemoryObjectEXT", [(GLuint, "memoryObject")]),
+    GlFunction(Void, "glCreateMemoryObjectsEXT", [(GLsizei, "n"), (Array(GLuint, "n"), "memoryObjects")]),
+    #GlFunction(Void, "glMemoryObjectParameterivEXT", [(GLuint, "memoryObject"), (GLenum, "pname"), (const GLint *params)]),
+    #GlFunction(Void, "glGetMemoryObjectParameterivEXT", [(GLuint, "memoryObject", (GLenum, "pname", (GLint *params)], sideeffects=False),
+    GlFunction(Void, "glTexStorageMem2DEXT", [(GLenum, "target"), (GLsizei, "levels"), (GLenum, "internalFormat"), (GLsizei, "width"), (GLsizei, "height"), (GLuint, "memory"), (GLuint64, "offset")]),
+    GlFunction(Void, "glTexStorageMem2DMultisampleEXT", [(GLenum, "target"), (GLsizei, "samples"), (GLenum, "internalFormat"), (GLsizei, "width"), (GLsizei, "height"), (GLboolean, "fixedSampleLocations"), (GLuint, "memory"), (GLuint64, "offset")]),
+    GlFunction(Void, "glTexStorageMem3DEXT", [(GLenum, "target"), (GLsizei, "levels"), (GLenum, "internalFormat"), (GLsizei, "width"), (GLsizei, "height"), (GLsizei, "depth"), (GLuint, "memory"), (GLuint64, "offset")]),
+    GlFunction(Void, "glTexStorageMem3DMultisampleEXT", [(GLenum, "target"), (GLsizei, "samples"), (GLenum, "internalFormat"), (GLsizei, "width"), (GLsizei, "height"), (GLsizei, "depth"), (GLboolean, "fixedSampleLocations"), (GLuint, "memory"), (GLuint64, "offset")]),
+    GlFunction(Void, "glBufferStorageMemEXT", [(GLenum, "target"), (GLsizeiptr, "size"), (GLuint, "memory"), (GLuint64, "offset")]),
+
+    # GL_EXT_memory_object_fd
+    GlFunction(Void, "glImportMemoryFdEXT", [(GLuint, "memory"), (GLuint64, "size"), (GLenum, "handleType"), (GLint, "fd")]),
+
+    # GL_EXT_shader_framebuffer_fetch_non_coherent
+    GlFunction(Void, "glFramebufferFetchBarrierEXT", []),
+
+    # GL_OES_texture_view
+    GlFunction(Void, "glTextureViewOES", [(GLuint, "texture"), (GLenum, "target"), (GLuint, "origtexture"), (GLenum, "internalformat"), (GLuint, "minlevel"), (GLuint, "numlevels"), (GLuint, "minlayer"), (GLuint, "numlayers")]),
+
+    # GL_QCOM_motion_estimation
+    GlFunction(Void, "glTexEstimateMotionQCOM", [(GLuint, "ref"), (GLuint, "target"), (GLuint, "output")]),
+    GlFunction(Void, "glTexEstimateMotionRegionsQCOM", [(GLuint, "ref"), (GLuint, "target"), (GLuint, "output"), (GLuint, "mask")]),
+
+    # GL_QCOM_frame_extrapolation
+    GlFunction(Void, "glExtrapolateTex2DQCOM", [(GLuint, "src1"), (GLuint, "src2"), (GLuint, "output"), (GLfloat, "scaleFactor")]),
+
+    # GL_QCOM_texture_foveated
+    GlFunction(Void, "glTextureFoveationParametersQCOM", [(GLuint, "texture"), (GLuint, "layer"), (GLuint, "focalPoint"), (GLfloat, "focalX"), (GLfloat, "focalY"), (GLfloat, "gainX"), (GLfloat, "gainY"), (GLfloat, "foveaArea")]),
+
+    # GL_QCOM_shader_framebuffer_fetch_noncoherent
+    # nothing
+
+    # GL_QCOM_tiled_rendering
+    GlFunction(Void, "glStartTilingQCOM", [(GLuint, "x"), (GLuint, "y"), (GLuint, "width"), (GLuint, "height"), (GLbitfield, "preserveMask")]),
+    GlFunction(Void, "glEndTilingQCOM", [(GLbitfield, "preserveMask")]),
 ]
 
 glesapi = API('GLES')

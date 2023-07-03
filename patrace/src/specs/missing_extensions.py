@@ -24,6 +24,11 @@ for line in fd:
             handled.append(ext)
         except:
             pass
+        try:
+            ext = re.search('# (GL_.*)', line).group(1).strip()
+            handled.append(ext)
+        except:
+            pass
 fd.close()
 
 # Parse gl.xml
@@ -43,7 +48,7 @@ for extension in root.findall('extensions/extension'):
         continue # no functions, not relevant
     if name in handled:
         continue
-    if not 'GL_OES' in name and not 'GL_EXT' in name and not 'GL_KHR' in name and not 'GL_ARM' in name and not 'GL_ANGLE' in name: # only want official ones
+    if not 'GL_OES' in name and not 'GL_EXT' in name and not 'GL_KHR' in name and not 'GL_QCOM' in name and not 'GL_ARM' in name and not 'GL_ANGLE' in name and not 'GL_ARB' in name: # only want official ones
         continue
     print('%s' % name)
 
@@ -59,8 +64,6 @@ for extension in root.findall('extensions/extension'):
     funcs = []
     for command in extension.findall('require/command'):
         funcs.append(command.get('name'))
-    if supported == 'egl':
-        continue
     if len(funcs) == 0:
         continue # no functions, not relevant
     if name in handled:

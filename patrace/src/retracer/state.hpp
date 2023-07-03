@@ -212,7 +212,6 @@ public:
     hmap<unsigned int>& getSamplerRevMap();
 
     stdmap<unsigned long long, GLsync>& getSyncMap();
-    stdmap<unsigned long long, EGLSyncKHR>& getEGLSyncMap();
 
     hmap<unsigned int>& getGraphicBufferMap();
 
@@ -292,7 +291,6 @@ private:
     hmap<unsigned int> _renderbuffer_map; // shared
     hmap<unsigned int> _sampler_map; // shared
     stdmap<unsigned long long, GLsync> _sync_map; // shared
-    stdmap<unsigned long long, EGLSyncKHR> _eglsync_map; // shared
     // Reverse mappings - used for debugging/analyzing traces
     hmap<unsigned int> _texture_rev_map; // shared
     hmap<unsigned int> _buffer_rev_map; // shared
@@ -507,18 +505,6 @@ inline stdmap<unsigned long long, GLsync>& Context::getSyncMap()
     }
 }
 
-inline stdmap<unsigned long long, EGLSyncKHR>& Context::getEGLSyncMap()
-{
-    if (_shareContext)
-    {
-        return _shareContext->getEGLSyncMap();
-    }
-    else
-    {
-        return _eglsync_map;
-    }
-}
-
 class GLESThread
 {
 public:
@@ -619,11 +605,14 @@ public:
     EGLDisplay mEglDisplay;
     EGLConfig  mEglConfig;
 
+    stdmap<unsigned long long, EGLSyncKHR> mEGLSyncMap;
+
 private:
     std::unordered_map<int, Drawable*>    mDrawableMap;
     std::unordered_map<int, Context*>     mContextMap;
     std::unordered_map<int, EGLImageKHR>  mEGLImageKHRMap;
     std::unordered_map<int, int>          mDrawableToWinMap;
+
 };
 
 }

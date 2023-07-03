@@ -1253,8 +1253,7 @@ PUBLIC void retrace_eglCreateSyncKHR(char* src)
 
     EGLSyncKHR new_result = _eglCreateSyncKHR(d, type, attrib_list);
 
-    Context& context = gRetracer.getCurrentContext();
-    context.getEGLSyncMap().LValue(old_result) = new_result;
+    gRetracer.mState.mEGLSyncMap.LValue(old_result) = new_result;
 }
 
 PUBLIC void retrace_eglClientWaitSyncKHR(char* src)
@@ -1271,8 +1270,7 @@ PUBLIC void retrace_eglClientWaitSyncKHR(char* src)
     src = ReadFixed(src, timeout);
     src = ReadFixed(src, result);
 
-    Context& context = gRetracer.getCurrentContext();
-    EGLSyncKHR new_sync = context.getEGLSyncMap().RValue(sync);
+    EGLSyncKHR new_sync = gRetracer.mState.mEGLSyncMap.RValue(sync);
 
     EGLDisplay d = gRetracer.mState.mEglDisplay;
 
@@ -1288,8 +1286,7 @@ PUBLIC void retrace_eglDestroySyncKHR(char* src)
     src = ReadFixed(src, dpy);
     src = ReadFixed(src, sync);
 
-    Context& context = gRetracer.getCurrentContext();
-    EGLSyncKHR new_sync = context.getEGLSyncMap().RValue(sync);
+    EGLSyncKHR new_sync = gRetracer.mState.mEGLSyncMap.RValue(sync);
 
     EGLDisplay d = gRetracer.mState.mEglDisplay;
 
@@ -1307,8 +1304,7 @@ PUBLIC void retrace_eglSignalSyncKHR(char* src)
     src = ReadFixed(src, sync);
     src = ReadFixed(src, mode);
 
-    Context& context = gRetracer.getCurrentContext();
-    EGLSyncKHR new_sync = context.getEGLSyncMap().RValue(sync);
+    EGLSyncKHR new_sync = gRetracer.mState.mEGLSyncMap.RValue(sync);
 
     EGLDisplay d = gRetracer.mState.mEglDisplay;
 

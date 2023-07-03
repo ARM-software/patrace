@@ -32,6 +32,7 @@ static bool onlycount = false;
 static bool verbose = false;
 static int endframe = -1;
 static bool waitsync = false;
+static bool removesync = false;
 static std::set<int> unused_mipmaps; // call numbers
 static std::set<std::pair<int, int>> unused_textures; // context index + texture index
 static std::set<std::pair<int, int>> unused_buffers; // context index + buffer index
@@ -45,6 +46,7 @@ static void printHelp()
         "Usage : converter [OPTIONS] trace_file.pat new_file.pat\n"
         "Options:\n"
         "  --waitsync    Add a non-zero timeout to glClientWaitSync and glWaitSync calls\n"
+        "  --removesync  Remove all sync calls\n"
         "  --mipmap FILE Remove unused glGenerateMipmap calls. Need a usage CSV file from analyze_trace as input\n"
         "  --tex FILE    Remove unused texture calls. Need an uninitialized CSV file from analyze_trace as input\n"
         "  --buf FILE    Remove unused buffer calls. Need an uninitialized CSV file from analyze_trace as input\n"
@@ -92,13 +94,23 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
         if (call->mCallName == "glClientWaitSync")
         {
             const uint64_t timeout = call->mArgs[2]->GetAsUInt64();
-            if (timeout == 0)
+            if (timeout == 0 && waitsync)
             {
                 call->mArgs[2]->mUint64 = UINT64_MAX;
                 count++;
             }
-            writeout(outputFile, call);
+            if (!removesync) writeout(outputFile, call);
+            else count++;
         }
+        else if (call->mCallName == "glDeleteSync" && removesync) { count++; }
+        else if (call->mCallName == "glFenceSync" && removesync) { count++; }
+        else if (call->mCallName == "glGetSynciv" && removesync) { count++; }
+        else if (call->mCallName == "glIsSync" && removesync) { count++; }
+        else if (call->mCallName == "glWaitSync" && removesync) { count++; }
+        else if (call->mCallName == "eglGetSyncAttribKHR" && removesync) { count++; }
+        else if (call->mCallName == "eglDestroySyncKHR" && removesync) { count++; }
+        else if (call->mCallName == "eglCreateSyncKHR" && removesync) { count++; }
+        else if (call->mCallName == "eglClientWaitSyncKHR" && removesync) { count++; }
         else if (call->mCallName == "glGenerateMipmap" && unused_mipmaps.count(call->mCallNo) > 0)
         {
             count++;
@@ -282,6 +294,10 @@ int main(int argc, char **argv)
         {
             waitsync = true;
         }
+        else if (arg == "--removesync")
+        {
+            removesync = true;
+        }
         else if (arg == "-c")
         {
             onlycount = true;
@@ -390,6 +406,7 @@ int main(int argc, char **argv)
         Json::Value info;
         info["count"] = count;
         if (waitsync) info["waitsync"] = true;
+        if (removesync) info["removesync"] = true;
         if (unused_mipmaps.size() > 0) info["remove_unused_mipmaps"] = true;
         if (unused_textures.size() > 0) info["remove_unused_textures"] = true;
         if (uninit_textures.size() > 0) info["remove_uninitialized_textures"] = true;

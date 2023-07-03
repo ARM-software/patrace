@@ -281,6 +281,8 @@ static void adjust_sampler_state(common::CallTM* call, GLenum pname, StateTracke
             break;
         case GL_TEXTURE_SWIZZLE_A:
             state.swizzle[3] = arg->GetAsUInt();
+	case GL_TEXTURE_ASTC_DECODE_PRECISION_EXT:
+            state.astc_decode_precision = arg->GetAsUInt();
             break;
         default:
             DBG_LOG("Unsupported texture parameter for %s: 0x%04x (%s)\n", call->mCallName.c_str(), pname, texEnum(pname).c_str());

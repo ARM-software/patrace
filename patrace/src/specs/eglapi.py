@@ -439,4 +439,12 @@ eglapi.addFunctions([
 
     # EGL_KHR_partial_update
     GlFunction(EGLBoolean, "eglSetDamageRegionKHR", [(EGLDisplay, "dpy"), (EGLSurface, "surface"), (EGLRectList, "rects"), (EGLint, "n_rects")]),
+
+    # EGL_KHR_debug
+    GlFunction(EGLint, "eglDebugMessageControlKHR", [(EGLDEBUGPROCKHR, "callback"), (EGLAttribList2, "attrib_list")]),
+    GlFunction(EGLBoolean, "eglQueryDebugKHR", [(EGLint, "attribute"), (EGLAttribList2, "attrib_list")]),
+    #GlFunction(EGLint, "eglLabelObjectKHR", [(EGLDisplay, "display"), (EGLenum, "objectType"), (EGLObjectKHR, "object"), (EGLLabelKHR, "label")]),
+
+    # EGL_ANGLE_sync_control_rate
+    GlFunction(EGLBoolean, "eglGetMscRateANGLE", [(EGLDisplay, "dpy"), (EGLSurface, "surface"), Out(Pointer(EGLint), "numerator"), Out(Pointer(EGLint), "denominator")], sideeffects=False),
 ])

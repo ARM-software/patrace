@@ -578,8 +578,8 @@ void after_glMapBufferRange(GLenum target, GLsizeiptr length, GLbitfield access,
     {
         DBG_LOG("WARNING! GL_MAP_PERSISTENT_BIT is set to parameter 'access' of glMapBufferRange(). \n");
         DBG_LOG("It may cause the trace to work abnormal.\n");
-        DBG_LOG("Suggest adding a parameter to /system/lib/egl/tracerparams.cfg to disable the GL_EXT_buffer_storage extension:\n");
-        DBG_LOG("    echo \"DisableBufferStorage true\" >> /system/lib/egl/tracerparams.cfg\n");
+        DBG_LOG("Suggest adding a parameter to /data/apitrace/tracerparams.cfg to disable the GL_EXT_buffer_storage extension:\n");
+        DBG_LOG("    echo \"DisableBufferStorage true\" >> /data/apitrace/tracerparams.cfg\n");
     }
 }
 
@@ -1093,6 +1093,9 @@ void after_eglMakeCurrent(EGLDisplay dpy, EGLSurface drawSurf, EGLContext ctx)
     // 3. Set the gles version, so that the dispatcher will know which DLL(gles1.so or gles2.so) to forward these gl function calls
     SetGLESVersion(traceCtx->profile);
     gTraceOut->mpBinAndMeta->saveExtensions();
+    gGlesFeatures.Update();
+    //profile is the clinet GLversion required by eglCreateContext
+    //gGlesFeatures.glesVersion() is the gles version that current context can support, might larger than profile.
 
     if (!tracerParams.DisableErrorReporting)
     {
@@ -1241,7 +1244,7 @@ void insert_glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsiz
     gTraceOut->callNo++;
 }
 
-GLuint pre_eglCreateImageKHR(EGLImageKHR image, EGLenum target, EGLClientBuffer buffer, const EGLint *attrib_list)
+GLuint pre_eglCreateImageKHR(EGLDisplay dpy, EGLImageKHR image, EGLenum target, EGLClientBuffer buffer, const EGLint *attrib_list)
 {
     // Fetch EGLImage as a texture
     GLint level = 0;
@@ -1280,6 +1283,14 @@ GLuint pre_eglCreateImageKHR(EGLImageKHR image, EGLenum target, EGLClientBuffer 
             attrib_list += 2;
         }
     }
+    //Textures related APIs need current context.
+    unsigned char tid = GetThreadId();
+    if (_eglGetCurrentContext() == EGL_NO_CONTEXT)
+    {
+        EGLint Attribs[] = { EGL_CONTEXT_MAJOR_VERSION, 2, EGL_NONE };
+        EGLContext _ctx = inject_eglCreateContext(dpy, 0, 0, Attribs);
+        inject_eglMakeCurrent(dpy, 0, 0, _ctx);
+    }
     image_info* info = _EGLImageKHR_get_image_info(image, target, w, h);
     if (info)
     {
@@ -1297,7 +1308,6 @@ GLuint pre_eglCreateImageKHR(EGLImageKHR image, EGLenum target, EGLClientBuffer 
     GLuint textureId = 0;
     inject_glGenTextures(1, &textureId);
 
-    unsigned char tid = GetThreadId();
     gTraceOut->callMutex.lock();
 
     insert_glBindTexture(GL_TEXTURE_2D, textureId, tid);
@@ -1317,9 +1327,9 @@ GLuint pre_eglCreateImageKHR(EGLImageKHR image, EGLenum target, EGLClientBuffer 
     return textureId;
 }
 
-GLuint pre_eglCreateImage(EGLImageKHR image, EGLenum target, EGLClientBuffer buffer, const EGLAttrib *attrib_list)
+GLuint pre_eglCreateImage(EGLDisplay dpy, EGLImageKHR image, EGLenum target, EGLClientBuffer buffer, const EGLAttrib *attrib_list)
 {
-    return pre_eglCreateImageKHR(image, target, buffer, (const EGLint*)attrib_list);
+    return pre_eglCreateImageKHR(dpy, image, target, buffer, (const EGLint*)attrib_list);
 }
 
 GLuint pre_glEGLImageTargetTexture2DOES(EGLImageKHR image, EGLint *&attrib_list)

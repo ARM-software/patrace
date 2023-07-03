@@ -91,6 +91,8 @@ internal_functions = [
     'glGenTextures',
     'glDeleteTextures',
     'glBindBuffer',
+    'eglCreateContext',
+    'eglMakeCurrent',
 ]
 
 array_pointer_function_names = set((
@@ -433,7 +435,7 @@ class Tracer:
         if func.name in ['eglCreateImage', 'eglCreateImageKHR']:
             print('    // Create a texture based on the the newly created EGLImage.')
             print('    // The texture created, will be used as an EGLImage when retracing.')
-            print('    GLuint textureId = pre_%s(_result, target, buffer, attrib_list);' % func.name)
+            print('    GLuint textureId = pre_%s(dpy, _result, target, buffer, attrib_list);' % func.name)
             print()
             print('    // Use texture created in pre_eglCreateImageKHR')
             print('    ctx = _eglGetCurrentContext();')

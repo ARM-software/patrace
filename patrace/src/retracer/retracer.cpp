@@ -457,10 +457,10 @@ Retracer::~Retracer()
     delete mCollectors;
 
 #ifndef NDEBUG
-    if (mVBODataSize) DBG_LOG("VBO data size : %d\n", mVBODataSize);
-    if (mTextureDataSize) DBG_LOG("Uncompressed texture data size : %d\n", mTextureDataSize);
-    if (mCompressedTextureDataSize) DBG_LOG("Compressed texture data size : %d\n", mCompressedTextureDataSize);
-    if (mClientSideMemoryDataSize) DBG_LOG("Client-side memory data size : %d\n", mClientSideMemoryDataSize);
+    if (mVBODataSize) DBG_LOG("VBO data size : %u\n", mVBODataSize);
+    if (mTextureDataSize) DBG_LOG("Uncompressed texture data size : %u\n", mTextureDataSize);
+    if (mCompressedTextureDataSize) DBG_LOG("Compressed texture data size : %u\n", mCompressedTextureDataSize);
+    if (mClientSideMemoryDataSize) DBG_LOG("Client-side memory data size : %u\n", mClientSideMemoryDataSize);
 #endif
 }
 
@@ -725,7 +725,11 @@ void Retracer::StepShot(unsigned int callNo, unsigned int frameNo, const char *f
                 }
 
                 std::stringstream ss;
-                ss << "framebuffer" << "_c" << attachmentIndex << ".png";
+#ifdef ANDROID
+                    ss << "/sdcard/framebuffer" << "_c" << attachmentIndex << ".png";
+#else
+                    ss << "framebuffer" << "_c" << attachmentIndex << ".png";
+#endif
                 filenameToBeUsed = ss.str();
 
                 if (src->writePNG(filenameToBeUsed.c_str()))
@@ -1303,8 +1307,8 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
                     fclose(fp);
                 }
                 const double f = 1024.0 * 1024.0;
-                DBG_LOG("Frame %d memory (mb): %.02f max RSS, %.02f current RSS, %.02f available, %.02f client side memory, %.02f loaded file data\n",
-                        mCurFrameNo, (double)usage.ru_maxrss / 1024.0, (double)curr_rss / f, (double)available / f, (double)mClientSideMemoryDataSize / f, (double)mFile.memoryUsed() / f);
+                DBG_LOG("Frame %d memory (mb): %.02f max RSS, %.02f current RSS, %.02f available, %u client side memory, %.02f loaded file data\n",
+                        mCurFrameNo, (double)usage.ru_maxrss / 1024.0, (double)curr_rss / f, (double)available / f, mClientSideMemoryDataSize, (double)mFile.memoryUsed() / f);
             }
 
             const int secs = (os::getTime() - mTimerBeginTime) / os::timeFrequency;
@@ -1447,6 +1451,11 @@ void Retracer::Retrace()
     results.resize(1);
     thread_remapping[mCurCall.tid] = 0;
     results[0].our_tid = mCurCall.tid;
+    if (mOptions.mFixedFps != 0)
+    {
+        mMaxDuration = 1.0/mOptions.mFixedFps;
+        mFixedFpsOldTime = os::getTime();
+    }
     RetraceThread(0, mCurCall.tid); // run the first thread on this thread
 
     for (std::thread &t : threads)
@@ -1533,12 +1542,25 @@ void Retracer::OnNewFrame()
             if (mOptions.mPerfmon) perfmon_init();
         }
         // Per frame measurement
-        if (mCollectors && mCurFrameNo > mOptions.mBeginMeasureFrame && mCurFrameNo <= mOptions.mEndMeasureFrame)
+        if (mCurFrameNo > mOptions.mBeginMeasureFrame && mCurFrameNo <= mOptions.mEndMeasureFrame)
         {
             if (mOptions.mInstrumentationDelay > 0) {
                 usleep(mOptions.mInstrumentationDelay);
             }
-            mCollectors->collect();
+            if (mCollectors) mCollectors->collect();
+        }
+        if (mOptions.mFixedFps != 0) //Limited fps replay mode
+        {
+            int64_t curr_time;
+            double duration = getDuration(mFixedFpsOldTime, &curr_time);
+            double time_need_to_wait = (mMaxDuration-duration)*1000000.0 + mLegacyTime;
+            if (time_need_to_wait >= 0)
+            {
+                usleep(time_need_to_wait);
+                mLegacyTime = 0;
+            }
+            else mLegacyTime = time_need_to_wait;
+            mFixedFpsOldTime = os::getTime();
         }
     }
 }
@@ -1568,42 +1590,95 @@ void Retracer::PerfStart()
     }
     else if (child == 0)
     {
+        if (mOptions.mPerfCmd != "")
+        {
+            bool isFreqdefined = false;
+            const char* args[20];
+            args[0] = mOptions.mPerfPath.c_str();
+            DBG_LOG("Perf tracing %ld from process %ld with input cmd %s\n", (long)parent, (long)getpid(), mOptions.mPerfCmd.c_str());
+            DBG_LOG("Perf path: %s\n", mOptions.mPerfPath.c_str());
+            int i=1;
+            args[i] = strtok(const_cast<char *>(mOptions.mPerfCmd.c_str())," ");
+            while (args[i] != NULL)
+            {
 #ifdef ANDROID
-        std::string freqopt = _to_string(mOptions.mPerfFreq);
-        std::string mypid = _to_string(parent);
-        DBG_LOG("Perf tracing %ld from process %ld with freq %ld and output in %s\n", (long)parent, (long)getpid(), (long)mOptions.mPerfFreq, mOptions.mPerfOut.c_str());
-        const char* args[12] = { mOptions.mPerfPath.c_str(), "record", "-g", "-f", freqopt.c_str(), "-p", mypid.c_str(), "-o", mOptions.mPerfOut.c_str(), "-e", mOptions.mPerfEvent.c_str(), nullptr };
-        if (mOptions.mPerfEvent == "")
-        {
-            args[9] = nullptr;
-            args[10] = nullptr;
-            DBG_LOG("Perf args: %s %s %s %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);
-        }
-        else
-        {
-            DBG_LOG("Perf args: %s %s %s %s %s %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10]);
-        }
+                if (strcmp(args[i],"-f") == 0) isFreqdefined = true;
 #else
-        std::string freqopt = "--freq=" + _to_string(mOptions.mPerfFreq);
-        std::string mypid = "--pid=" + _to_string(parent);
-        std::string myfilename = mOptions.mPerfOut;
-        std::string myfilearg = "--output=" + myfilename;
-        DBG_LOG("Perf tracing %ld from process %ld with freq %ld and output in %s\n", (long)parent, (long)getpid(), (long)mOptions.mPerfFreq, myfilename.c_str());
-        const char* args[9] = { mOptions.mPerfPath.c_str(), "record", "-g", freqopt.c_str(), mypid.c_str(), myfilearg.c_str(), "-e", mOptions.mPerfEvent.c_str(), nullptr };
-        if (mOptions.mPerfEvent == "")
-        {
-            args[6] = nullptr;
-            args[7] = nullptr;
-            DBG_LOG("Perf args: %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5]);
+                if (strncmp(args[i],"--freq",6) == 0)  isFreqdefined = true;
+#endif
+                i++;
+                args[i] = strtok(NULL, " ");
+            }
+            std::string defaultargs;
+#ifdef ANDROID
+            std::string mypid = _to_string(parent);
+            args[i++] = "-p";
+            args[i++] = mypid.c_str();
+            defaultargs = "-p " + mypid;
+            if (!isFreqdefined)
+            {
+                std::string freqopt = _to_string(mOptions.mPerfFreq);
+                args[i++] = "-f";
+                args[i++] = freqopt.c_str();
+                defaultargs += " -f " + freqopt;
+            }
+#else
+            std::string mypid = "--pid=" + _to_string(parent);
+            args[i++] = mypid.c_str();
+            defaultargs = mypid;
+            if (!isFreqdefined)
+            {
+                std::string freqopt = "--freq=" + _to_string(mOptions.mPerfFreq);
+                args[i++] = freqopt.c_str();
+                defaultargs += " "+ freqopt;
+            }
+#endif
+            args[i] = nullptr;
+            DBG_LOG("Perf default options: %s\n", defaultargs.c_str());
+            if (execv(args[0], (char* const*)args) == -1)
+            {
+                DBG_LOG("Failed execv() for perf: %s\n", strerror(errno));
+            }
         }
         else
         {
-            DBG_LOG("Perf args: %s %s %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
-        }
+#ifdef ANDROID
+            std::string freqopt = _to_string(mOptions.mPerfFreq);
+            std::string mypid = _to_string(parent);
+            DBG_LOG("Perf tracing %ld from process %ld with freq %ld and output in %s\n", (long)parent, (long)getpid(), (long)mOptions.mPerfFreq, mOptions.mPerfOut.c_str());
+            const char* args[12] = { mOptions.mPerfPath.c_str(), "record", "-g", "-f", freqopt.c_str(), "-p", mypid.c_str(), "-o", mOptions.mPerfOut.c_str(), "-e", mOptions.mPerfEvent.c_str(), nullptr };
+            if (mOptions.mPerfEvent == "")
+            {
+                args[9] = nullptr;
+                args[10] = nullptr;
+                DBG_LOG("Perf args: %s %s %s %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8]);
+            }
+            else
+            {
+                DBG_LOG("Perf args: %s %s %s %s %s %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], args[8], args[9], args[10]);
+            }
+#else
+            std::string freqopt = "--freq=" + _to_string(mOptions.mPerfFreq);
+            std::string mypid = "--pid=" + _to_string(parent);
+            std::string myfilename = mOptions.mPerfOut;
+            std::string myfilearg = "--output=" + myfilename;
+            DBG_LOG("Perf tracing %ld from process %ld with freq %ld and output in %s\n", (long)parent, (long)getpid(), (long)mOptions.mPerfFreq, myfilename.c_str());
+            const char* args[9] = { mOptions.mPerfPath.c_str(), "record", "-g", freqopt.c_str(), mypid.c_str(), myfilearg.c_str(), "-e", mOptions.mPerfEvent.c_str(), nullptr };
+            if (mOptions.mPerfEvent == "")
+            {
+                args[6] = nullptr;
+                args[7] = nullptr;
+                DBG_LOG("Perf args: %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5]);
+            }
+            else
+            {
+                DBG_LOG("Perf args: %s %s %s %s %s %s %s %s\n", args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7]);
+            }
 #endif
-        if (execv(args[0], (char* const*)args) == -1)
-        {
-            DBG_LOG("Failed execv() for perf: %s\n", strerror(errno));
+            if (execv(args[0], (char* const*)args) == -1)
+            {
+                DBG_LOG("Failed execv() for perf: %s\n", strerror(errno));
+            }
         }
     }
     else
@@ -1672,6 +1747,7 @@ void Retracer::saveResult(Json::Value& result)
     unsigned int numOfFrames = mCurFrameNo - mOptions.mBeginMeasureFrame;
 
     if(mTimerBeginTime != 0) {
+        if (mLegacyTime < 0) DBG_LOG("FPS requird is too high! \n");
         const float fps = ((double)numOfFrames * std::max(1, mLoopTimes)) / duration;
         const float loopDuration = getDuration(mLoopBeginTime, &endTime);
         const float loopFps = ((double)numOfFrames) / loopDuration;
@@ -2119,7 +2195,7 @@ void post_glLinkProgram(GLuint program, GLuint originalProgramName, int status)
         vector<unsigned int>::iterator result = find(gRetracer.mOptions.mLinkErrorWhiteListCallNum.begin(), gRetracer.mOptions.mLinkErrorWhiteListCallNum.end(), gRetracer.GetCurCallId());
         if(result != gRetracer.mOptions.mLinkErrorWhiteListCallNum.end())
         {
-            DBG_LOG("Error in linking program %u: %s. But this call has already been added to whitelist. So ignore this error and continue retracing, skip shadercache.\n", originalProgramName, infoLog ? infoLog : "(n/a)");
+            if (gRetracer.mOptions.mDebug) DBG_LOG("Error in linking program %u: %s. But this call has already been added to whitelist. So ignore this error and continue retracing (and skip shadercache).\n", originalProgramName, infoLog ? infoLog : "(n/a)");
             bSkipShadercache = true;
         }
         else
@@ -2130,7 +2206,7 @@ void post_glLinkProgram(GLuint program, GLuint originalProgramName, int status)
     }
     else if (linkStatus == GL_FALSE && status == 0)
     {
-        DBG_LOG("Error in linking program %u(retraceProg %u) both in trace and retrace, skip shadercache.\n", originalProgramName, program);
+        if (gRetracer.mOptions.mDebug) DBG_LOG("Error in linking program %u(retraceProg %u) both in trace and retrace (skip it in shadercache).\n", originalProgramName, program);
         bSkipShadercache = true;
     }
 

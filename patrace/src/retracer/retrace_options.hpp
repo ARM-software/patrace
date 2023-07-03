@@ -44,6 +44,7 @@ struct RetraceOptions
     unsigned int        mEndMeasureFrame = INT32_MAX;
     int                 mLoopTimes = 0;
     int                 mLoopSeconds = 0;
+    int                 mFixedFps = 0;
 
     int                 mWindowWidth = 0;
     int                 mWindowHeight = 0;
@@ -94,6 +95,7 @@ struct RetraceOptions
     int                 mPerfStop = -1;
     int                 mPerfFreq = 1000;
     std::string         mPerfEvent = "";
+    std::string         mPerfCmd = "";
 
     bool                mFinishBeforeSwap = false;
     bool                mPerfmon = false;

@@ -65,16 +65,18 @@ usage(const char *argv0) {
         "  -cacheonly Used with -savecache to only populate the shader cache and do not run anything else not needed for that from the trace.\n"
         "  -script Script_PATH FRAME Trigger script on a specific frame.\n"
 #ifndef __APPLE__
-        "  -perf START END run Linux perf on selected frame range and save it to disk\n"
+        "  -perfrange START END run Linux perf on selected frame range and save it to disk\n"
         "  -perfpath PATH Set path to perf binary\n"
         "  -perffreq FREQ Set frequency for perf\n"
         "  -perfevent EVENT Capture perf custom event\n"
         "  -perfout FILENAME Set output filename for perf\n"
+        "  -perfcmd \"perf params\" Input all customer perf params\n"
 #endif
         "  -forceanisolevel LEVEL force all anisotropic filtering levels above 1 to this level\n"
         "  -noscreen Render without visual output (using pbuffer render target)\n"
         "  -singlesurface SURFACE Render all surfaces except the given one to pbuffer render targets instead\n"
         "  -flushonswap Call explicit flush before every call to swap the backbuffer\n"
+        "  -fpslimit FPS Limit the fps of replaying\n"
         "  -cpumask Set explicit CPU mask (written as a string of ones and zeroes)\n"
         "  -libEGL PATH Set path to libEGL.so\n"
         "  -libGLESv1 PATH Set path to libGLESv1_CM.so\n"
@@ -173,6 +175,11 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             DBG_LOG("Override the existing MSAA for fbo attachment with new MSAA: %d\n", mOptions.mOverrideMSAA);
         } else if (!strcmp(arg, "-callstats")) {
             mOptions.mCallStats = true;
+        } else if (!strcmp(arg, "-perfrange")) {
+            mOptions.mPerfStart = readValidValue(argv[++i]);
+            mOptions.mPerfStop = readValidValue(argv[++i]);
+        } else if (!strcmp(arg, "-fpslimit")) {
+            mOptions.mFixedFps = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-perf")) {
             mOptions.mPerfStart = readValidValue(argv[++i]);
             mOptions.mPerfStop = readValidValue(argv[++i]);
@@ -184,6 +191,8 @@ bool ParseCommandLine(int argc, char** argv, RetraceOptions& mOptions)
             mOptions.mPerfFreq = readValidValue(argv[++i]);
         } else if (!strcmp(arg, "-perfevent")) {
             mOptions.mPerfEvent = argv[++i];
+        } else if (!strcmp(arg, "-perfcmd")) {
+            mOptions.mPerfCmd = argv[++i];
         } else if (!strcmp(arg, "-s")) {
             mOptions.mSnapshotCallSet = new common::CallSet(argv[++i]);
         } else if (!strcmp(arg, "-framenamesnaps")) {
@@ -461,6 +470,14 @@ int main(int argc, char** argv)
         return 1;
     }
 
+    std::string cmds;
+    for (int i = 0; i < argc; i++)
+    {
+        cmds += std::string(argv[i]);
+        if (i + 1 < argc) cmds += " ";
+    }
+    DBG_LOG("Input cmdline : %s\n",cmds.c_str());
+
     if (gRetracer.mOptions.mFileName.empty())
     {
         std::cerr << "No trace file name specified.\n";
@@ -515,12 +532,6 @@ int main(int argc, char** argv)
     }
     gRetracer.Retrace();
     Json::Value results;
-    std::string cmds;
-    for (int i = 0; i < argc; i++)
-    {
-        cmds += std::string(argv[i]);
-        if (i + 1 < argc) cmds += " ";
-    }
     results["cmdline"] = cmds;
     gRetracer.saveResult(results);
     return 0;

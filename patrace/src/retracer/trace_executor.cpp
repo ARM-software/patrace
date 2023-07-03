@@ -54,6 +54,11 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
         options.mLoopSeconds = value["loopSeconds"].asInt();
     }
 
+    if (value.isMember("fpslimit"))
+    {
+        options.mFixedFps = value["fpslimit"].asInt();
+    }
+
     if (value.get("finishBeforeSwap", false).asBool())
     {
         options.mFinishBeforeSwap = true;
@@ -164,6 +169,7 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
 #endif
     options.mPerfFreq = value.get("perffreq",1000).asInt();
     options.mPerfEvent = value.get("perfevent", "").asString();
+    options.mPerfCmd = value.get("perfcmd", "").asString();
     options.mPreload = value.get("preload", false).asBool();
     options.mRunAll = value.get("runAllCalls", false).asBool();
 
@@ -366,6 +372,9 @@ void TraceExecutor::overrideDefaultsWithJson(Json::Value &value)
 
     DBG_LOG("Thread: %d - override: %s (%d, %d)\n",
             options.mRetraceTid, options.mDoOverrideResolution ? "Yes" : "No", options.mOverrideResW, options.mOverrideResH);
+    Json::FastWriter json_write;
+    std::string str = json_write.write(value);
+    DBG_LOG("Input parameters %s",str.c_str());
 }
 
 /**

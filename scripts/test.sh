@@ -362,7 +362,7 @@ function replayer_test()
 	${X11_PATRACE_BIN}/paretrace -infojson $TESTTRACE2
 	${X11_PATRACE_BIN}/paretrace -info $TESTTRACE2
 	${X11_PATRACE_BIN}/paretrace -overrideEGL 8 8 8 8 24 8 -noscreen -debug -framerange 3 9 -flush -collect $TESTTRACE3
-	${X11_PATRACE_BIN}/paretrace -noscreen -debug -framerange 3 9 -msaa_override 2 $TESTTRACE_MSAA
+	${X11_PATRACE_BIN}/paretrace -noscreen -debug -framerange 3 9 -overrideMSAA 2 $TESTTRACE_MSAA
 	set +x
 }
 

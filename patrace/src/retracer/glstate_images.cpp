@@ -293,17 +293,20 @@ void getTexRenderBufInfo(GLenum attachment, GLenum &readTexFormat, GLenum &readT
         {
             isDepth = true;
             bytesPerPixel = 4;
-            DBG_LOG("Couldn't figure out format to use for internalformat 0x%x\n", internalFormat);
+            DBG_LOG("Couldn't figure out format to use for depth internalformat 0x%x (r=%d g=%d b=%d)\n", internalFormat, redSize, greenSize, blueSize);
         }
     }
     if (!isDepth)
         bytesPerPixel = (redSize + greenSize + blueSize + alphaSize) / 8;
-    GLint implReadFormat, implReadType;
-    _glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_FORMAT, &implReadFormat);
-    _glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_TYPE,   &implReadType);
-    DBG_LOG("readTexFormat = 0x%x, readTexType = 0x%x\n", readTexFormat, readTexType);
-    DBG_LOG("implTexFormat = 0x%x, implTexType = 0x%x\n", implReadFormat, implReadType);
-    DBG_LOG("isDepth = %d, bytesPerPixel = %d\n", isDepth, bytesPerPixel);
+    if (gRetracer.mOptions.mDebug)
+    {
+        GLint implReadFormat, implReadType;
+        _glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_FORMAT, &implReadFormat);
+        _glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_TYPE,   &implReadType);
+        DBG_LOG("readTexFormat = 0x%x, readTexType = 0x%x\n", readTexFormat, readTexType);
+        DBG_LOG("implTexFormat = 0x%x, implTexType = 0x%x\n", implReadFormat, implReadType);
+        DBG_LOG("isDepth = %d, bytesPerPixel = %d\n", isDepth, bytesPerPixel);
+    }
 }
 
 void getDimensions(int drawFramebuffer, GLenum attachment, int& width, int& height, GLenum &format, GLenum &type, int &bytesPerPixel, int &channel, int &internalFormat)
@@ -421,7 +424,7 @@ image::Image* getDrawBufferImage(int attachment, int _width, int _height, GLenum
     GLenum error = _glGetError();
     if (error != GL_NO_ERROR) {
         do {
-            DBG_LOG("warning: 0x%x while getting snapshot\n", error);
+            DBG_LOG("warning: GL error 0x%x while getting snapshot\n", error);
             error = _glGetError();
         } while(error != GL_NO_ERROR);
         delete image;

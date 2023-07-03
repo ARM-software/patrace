@@ -149,42 +149,23 @@ struct Buffer : public Resource
 
 struct SamplerState
 {
-    GLenum swizzle[4];
-    GLenum min_filter;
-    GLenum mag_filter;
-    GLenum texture_wrap_s;
-    GLenum texture_wrap_t;
-    GLenum texture_wrap_r;
-    GLenum texture_compare_func;
-    GLenum texture_compare_mode;
-    GLint min_lod;
-    GLint max_lod;
-    GLint base_level;
-    GLint max_level;
-    GLenum depth_stencil_mode;
+    GLenum swizzle[4] = { GL_RED, GL_GREEN, GL_BLUE, GL_ALPHA };
+    GLenum min_filter = GL_NEAREST_MIPMAP_LINEAR;
+    GLenum mag_filter = GL_LINEAR;
+    GLenum texture_wrap_s = GL_REPEAT;
+    GLenum texture_wrap_t = GL_REPEAT;
+    GLenum texture_wrap_r = GL_REPEAT;
+    GLenum texture_compare_func = GL_LEQUAL;
+    GLenum texture_compare_mode = GL_NONE;
+    GLint min_lod = -1000;
+    GLint max_lod = 1000;
+    GLint base_level = 0;
+    GLint max_level = 1000;
+    GLenum depth_stencil_mode = GL_DEPTH_COMPONENT;
     GLfloat anisotropy = 1.0;
     GLenum srgb_decode = GL_DECODE_EXT;
     GLfloat border[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-    SamplerState()
-    {
-        // Set to OpenGL defaults
-        swizzle[0] = GL_RED;
-        swizzle[1] = GL_GREEN;
-        swizzle[2] = GL_BLUE;
-        swizzle[3] = GL_ALPHA;
-        min_filter = GL_NEAREST_MIPMAP_LINEAR;
-        mag_filter = GL_LINEAR;
-        texture_wrap_s = GL_REPEAT;
-        texture_wrap_t = GL_REPEAT;
-        texture_wrap_r = GL_REPEAT;
-        max_level = 1000;
-        base_level = 0;
-        min_lod = -1000;
-        max_lod = 1000;
-        texture_compare_mode = GL_NONE;
-        texture_compare_func = GL_LEQUAL;
-        depth_stencil_mode = GL_DEPTH_COMPONENT;
-    }
+    GLenum astc_decode_precision = GL_RGBA16F;
 };
 
 template<typename T>

@@ -164,6 +164,10 @@ private:
     int64_t mTimerBeginTimeMonoRaw = 0;
     int64_t mTimerBeginTimeBoot = 0;
     int64_t mFinishSwapTime = 0;
+    //For fixed fps command
+    double mMaxDuration = 0;
+    int64_t mFixedFpsOldTime = 0;
+    double mLegacyTime = 0;
 
     StateLogger mStateLogger;
     common::HeaderVersion mFileFormatVersion = common::INVALID_VERSION;
