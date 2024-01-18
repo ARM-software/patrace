@@ -182,7 +182,9 @@ if (NOT FF_ONLY)
 
     if (${CMAKE_SYSTEM_NAME} MATCHES "Linux" AND NOT WINDOWSYSTEM MATCHES "udriver")
         add_subdirectory(egltrace)
-        add_subdirectory(fakedriver)
+        if (NOT DISABLE_FAKEDRIVER)
+            add_subdirectory(fakedriver)
+        endif ()
     endif ()
 endif ()
 
