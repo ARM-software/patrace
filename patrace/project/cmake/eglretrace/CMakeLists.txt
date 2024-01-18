@@ -74,4 +74,4 @@ add_dependencies(paretrace
     glxml_header
 )
 
-install(TARGETS paretrace RUNTIME DESTINATION bin)
+install(TARGETS paretrace RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
