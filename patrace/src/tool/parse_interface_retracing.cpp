@@ -734,7 +734,7 @@ common::CallTM* ParseInterfaceRetracing::next_call()
             if (location >= 0) p.uniformNames[location] = tmp;
             for (int j = 0; location >= 0 && j < size; ++j)
             {
-                if (isUniformSamplerType(type))
+                if (isUniformSamplerType(type) || isImageSamplerType(type))
                 {
                     GLint param = 0;
                     _glGetUniformiv(newid, location + j, &param); // arrays are guaranteed to be in sequential location
@@ -1377,10 +1377,13 @@ void ParseInterfaceRetracing::cleanup()
     GLWS::instance().Cleanup();
 }
 
-void ParseInterfaceRetracing::outputTexUsage(std::unordered_set<unsigned int>& unusedMipgen, std::unordered_set<unsigned int>& unusedTexture, std::unordered_set<unsigned int>& unusedShader)
+void ParseInterfaceRetracing::outputTexUsage(std::unordered_set<unsigned int>& unusedMipgen, std::map<int, std::unordered_set<unsigned int>> & map_unusedTexture, std::map<int, std::unordered_set<unsigned int>> & map_unusedBuffer, std::map<int, std::unordered_set<unsigned int>> & map_unusedShader)
 {
     for (const auto& ctx : contexts)
     {
+        std::unordered_set<unsigned int> unusedTexture;
+        std::unordered_set<unsigned int> unusedBuffer;
+        std::unordered_set<unsigned int> unusedShader;
         for (const auto& tx : ctx.textures.all())
         {
             if (!tx.used) unusedTexture.insert(tx.index);
@@ -1391,8 +1394,16 @@ void ParseInterfaceRetracing::outputTexUsage(std::unordered_set<unsigned int>& u
         }
         for (const auto& sh : ctx.shaders.all())
         {
-            if (!sh.used) 
+            if (!sh.used)
                 unusedShader.insert(sh.index);
         }
+        for (const auto& bf : ctx.buffers.all())
+        {
+            if (!bf.used)
+                unusedBuffer.insert(bf.index);
+        }
+        map_unusedTexture.emplace(ctx.index, unusedTexture);
+        map_unusedBuffer.emplace(ctx.index, unusedBuffer);
+        map_unusedShader.emplace(ctx.index, unusedShader);
     }
 }

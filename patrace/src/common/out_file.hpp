@@ -18,7 +18,7 @@ public:
     OutFile(const char *name);
     ~OutFile();
 
-    bool Open(const char* name = NULL, bool writeSigBook = true, const std::vector<std::string> *sigbook = NULL);
+    bool Open(const char* name = NULL, bool writeSigBook = true, const std::vector<std::string> *sigbook = NULL, bool write_timestamp = false);
     void Close();
     void Flush();
     void WriteHeader(const char* buf, unsigned int len, bool verbose = true);
@@ -86,7 +86,7 @@ private:
 
     void FlushHeader();
 
-    void WriteSigBook(const std::vector<std::string> *sigbook);
+    void WriteSigBook(const std::vector<std::string> *sigbook, bool write_timestamp = false);
 
     os::String AutogenTraceFileName();
 

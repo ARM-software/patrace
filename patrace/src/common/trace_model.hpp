@@ -15,13 +15,9 @@
 
 #include <string>
 #include <vector>
+#include <set>
 #include <fstream>
 #include <sstream>
-
-#define RED_COM(x)      (((x)&0xff000000)>>24)
-#define GREEN_COM(x)    (((x)&0x00ff0000)>>16)
-#define BLUE_COM(x)     (((x)&0x0000ff00)>>8)
-#define ALPHA_COM(x)    ((x)&0x000000ff)
 
 namespace common {
 
@@ -209,9 +205,7 @@ public:
     : mCallNo(0),
       mTid(0),
       mCallId(0),
-      mCallErrNo(CALL_GL_NO_ERROR),
-      mBkColor(0xffffffff),
-      mTxtColor(0x000000ff)
+      mCallErrNo(CALL_GL_NO_ERROR)
     {
         mRet.mName = "ret";
     }
@@ -221,9 +215,7 @@ public:
       mTid(0),
       mCallId(0),
       mCallErrNo(CALL_GL_NO_ERROR),
-      mCallName(name),
-      mBkColor(0xffffffff),
-      mTxtColor(0x000000ff)
+      mCallName(name)
     {
         mRet.mName = "ret";
 
@@ -256,14 +248,10 @@ public:
     ValueTM                 mRet;
     std::vector<ValueTM*>   mArgs;
 
-    unsigned int            mBkColor;
-    unsigned int            mTxtColor;
-
     bool mInjected = false;
 
     std::string ToStr(bool isAbbreviate = true);
     char* Serialize(char* dest, int overrideID = -1, bool injected = false);
-    void Stylize();
 
 private:
     CallTM(const CallTM &);
@@ -339,6 +327,8 @@ public:
     std::vector<FrameTM*>   mFrames;
 
     common::InFileRA*       mpInFileRA;
+
+    std::set<int>           mPbufferSurfaces;
 
 private:
     TraceFileTM(const TraceFileTM &);

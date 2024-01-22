@@ -162,7 +162,7 @@ def check_log_erros(log_file):
                 print_error(line)
 
 
-def build_project(platform, variant, build_dir, install_dir, project_path, log_file=sys.stdout, make_target='install', cmake_defines=[], stop_early=False, static=False, ffi7=False):
+def build_project(platform, variant, build_dir, install_dir, project_path, log_file=sys.stdout, make_target='install', cmake_defines=[], stop_early=False, static=False, ffi7=False, ffi8=False):
     sanitizer = 'False'
     if variant == 'sanitizer':
         sanitizer = 'address'
@@ -240,6 +240,9 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
     if ffi7 and platform in ['wayland_aarch64', 'wayland_arm_hardfloat']:
         cmake_command += ' -DFFI7=TRUE'
 
+    if ffi8 and platform in ['wayland_aarch64', 'wayland_arm_hardfloat']:
+        cmake_command += ' -DFFI8=TRUE'
+
     if not os.path.exists(build_dir):
         os.makedirs(build_dir)
 
@@ -265,6 +268,19 @@ def build_project(platform, variant, build_dir, install_dir, project_path, log_f
 
     run_command(make_command, log_file)
 
+    if not os.path.islink(install_dir+"/lib/libEGL.so.1.4.0"):
+        os.symlink("libEGL.so", "libEGL.so.1")
+        os.symlink("libEGL.so", "libEGL.so.1.4.0")
+        os.symlink("libGLESv1_CM.so", "libGLESv1_CM.so.1")
+        os.symlink("libGLESv1_CM.so", "libGLESv1_CM.so.1.1.0")
+        os.symlink("libGLESv2.so", "libGLESv2.so.2")
+        os.symlink("libGLESv2.so", "libGLESv2.so.2.1.0")
+        os.rename("./libEGL.so.1", install_dir+"/lib/libEGL.so.1")
+        os.rename("./libEGL.so.1.4.0", install_dir+"/lib/libEGL.so.1.4.0")
+        os.rename("./libGLESv1_CM.so.1", install_dir+"/lib/libGLESv1_CM.so.1")
+        os.rename("./libGLESv1_CM.so.1.1.0", install_dir+"/lib/libGLESv1_CM.so.1.1.0")
+        os.rename("./libGLESv2.so.2", install_dir+"/lib/libGLESv2.so.2")
+        os.rename("./libGLESv2.so.2.1.0", install_dir+"/lib/libGLESv2.so.2.1.0")
 
 def install(src, dst):
     print("Installing: {src} -> {dst}".format(src=src, dst=dst))

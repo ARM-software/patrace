@@ -466,6 +466,7 @@ int pat_extract(const string &source_name, const string &target_name_, bool mult
             function_value[genIdName(index++, "call_no")] = call->mCallNo;
             function_value[genIdName(index++, "tid")] = call->mTid;
             function_value[genIdName(index++, "func_name")] = call->mCallName;
+            function_value[genIdName(index++, "injected")] = call->mInjected;
             function_value[genIdName(index++, "return_type")] = value_type[call->mRet.mType];
             setJsonValue(function_value, genIdName(index++, "return_value"), call->mRet, call, false);
             Json::Value arg_value;

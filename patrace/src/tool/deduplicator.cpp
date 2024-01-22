@@ -79,14 +79,14 @@ static void printVersion()
     std::cout << PATRACE_VERSION << std::endl;
 }
 
-static void writeout(common::OutFile &outputFile, common::CallTM *call)
+static void writeout(common::OutFile &outputFile, common::CallTM *call, bool injected = false)
 {
     dedups.second++;
     if (onlycount) return;
     const unsigned int WRITE_BUF_LEN = 150*1024*1024;
     static char buffer[WRITE_BUF_LEN];
     char *dest = buffer;
-    dest = call->Serialize(dest);
+    dest = call->Serialize(dest, -1, injected);
     outputFile.Write(buffer, dest-buffer);
 }
 
@@ -96,7 +96,7 @@ static void dedup(common::OutFile& outputFile, int &stat)
     {
         common::CallTM enable("glEnable");
         enable.mArgs.push_back(new common::ValueTM((GLenum)GL_INVALID_INDEX));
-        writeout(outputFile, &enable);
+        writeout(outputFile, &enable, true);
     }
     dedups.first++;
     stat++;
@@ -196,11 +196,6 @@ void deduplicate(ParseInterface& input, common::OutFile& outputFile, int endfram
                 || (surface == (int64_t)EGL_NO_SURFACE && input.surface_index != UNBOUND))
             {
                 writeout(outputFile, call);
-            }
-            else if (context == (int64_t)EGL_NO_CONTEXT || surface == (int64_t)EGL_NO_SURFACE)
-            {
-                if (flags & DEDUP_MAKECURRENT) dedup(outputFile, makecurr.first);
-                else writeout(outputFile, call);
             }
             else if (old_context_id == context && old_surface_id == surface && (flags & DEDUP_MAKECURRENT))
             {

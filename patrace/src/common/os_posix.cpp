@@ -216,6 +216,11 @@ log(const char *format, ...)
 #ifdef ANDROID
     __android_log_vprint(ANDROID_LOG_INFO, android_name, format, ap);
 #else
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    char time_buf[100];
+    strftime(time_buf, sizeof time_buf, "%T", gmtime(&ts.tv_sec));
+    fprintf(stderr, "%s.%06ld: ", time_buf, ts.tv_nsec/1000);
     vfprintf(stderr, format, ap);
 #endif
     va_end(ap);

@@ -27,6 +27,7 @@ public:
     bool EnableRandomVersion = true;               //  Enable to append a random to GL_VERSION
     std::string RandomVersion = "";
     bool CloseTraceFileByTerminate = false;         // close current trace and create new on when calling  eglTerminate
+    bool Timestamping = false;                      // Inject a timestamp into the command stream for each call with sideeffects
     bool Support2xMSAA = false;                     // Pretend to support 2x MSAA even if the underlying system does not
 
     std::string _tmp_extensions;

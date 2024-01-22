@@ -35,12 +35,12 @@ static common::FrameTM* _curFrame = NULL;
 static unsigned _curFrameIndex = 0;
 static unsigned _curCallIndexInFrame = 0;
 
-static void writeout(common::OutFile &outputFile, common::CallTM *call)
+static void writeout(common::OutFile &outputFile, common::CallTM *call, bool injected = false)
 {
     const unsigned int WRITE_BUF_LEN = 150*1024*1024;
     static char buffer[WRITE_BUF_LEN];
     char *dest = buffer;
-    dest = call->Serialize(dest);
+    dest = call->Serialize(dest, -1, injected);
     outputFile.Write(buffer, dest-buffer);
 }
 
@@ -138,7 +138,7 @@ int main(int argc, char **argv)
                 swap.mArgs.push_back(new common::ValueTM(surface));
                 swap.mRet = common::ValueTM((int)EGL_TRUE);
                 swap.mTid = tid;
-                writeout(outputFile, &swap);
+                writeout(outputFile, &swap, true);
                 printf("injected eglSwapBuffers(%d, %d) into thread %d\n", display, surface, tid);
             }
             display = new_display;

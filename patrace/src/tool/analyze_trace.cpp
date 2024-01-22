@@ -55,7 +55,7 @@ static bool write_usage = false;
 /// Helper to prune empty lists from a JSON object
 static void prune(Json::Value& v)
 {
-    for (const auto s : v.getMemberNames())
+    for (const auto& s : v.getMemberNames())
     {
         if (v[s].isArray() && v[s].size() == 0)
         {

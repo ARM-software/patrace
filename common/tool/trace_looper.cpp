@@ -283,17 +283,15 @@ void TraceLooper::print_trace_info() {
 }
 
 
-void TraceLooper::add_call(const common::CallTM* incall) {
+void TraceLooper::add_call(const common::CallTM* incall)
+{
     common::CallTM* outcall = new common::CallTM(incall->mCallName.c_str());
-
     outcall->mReadPos = incall->mReadPos;
     outcall->mCallNo = incall->mCallNo;
     outcall->mTid = incall->mTid;
     outcall->mCallId = incall->mCallId;
     outcall->mCallErrNo = incall->mCallErrNo;
     outcall->mRet = incall->mRet;
-    outcall->mBkColor = incall->mBkColor;
-    outcall->mTxtColor = incall->mTxtColor;
 
     int num_args = incall->mArgs.size();
     outcall->mArgs.resize(num_args);

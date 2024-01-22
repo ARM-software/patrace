@@ -78,16 +78,10 @@ void glPatchClientSideBuffer(GLenum target, int _size, const char* _data)
 }
 
 void glClientSideBufferData(unsigned int _name, int _size, const char* _data) {
-#ifndef NDEBUG
-    gRetracer.mClientSideMemoryDataSize += _size;
-#endif
     gRetracer.mCSBuffers.object_data(gRetracer.getCurTid(), _name, _size, _data, true);
 }
 
 void glClientSideBufferSubData(unsigned int _name, int _offset, int _size, const char* _data) {
-#ifndef NDEBUG
-    gRetracer.mClientSideMemoryDataSize += _size;
-#endif
     gRetracer.mCSBuffers.object_subdata(gRetracer.getCurTid(), _name, _offset, _size, _data);
 }
 

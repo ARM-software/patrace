@@ -21,6 +21,17 @@ const GLchar *DepthDumper::depthCopyFSCode =
      fragColor = texture(u_Texture, v_TexCoordinate).x;\n\
  }";
 
+const GLchar *DepthDumper::D32FS8_FSCode =
+"#version 310 es\n\
+ uniform highp sampler2D u_Texture;\n\
+ in highp vec2 v_TexCoordinate;\n\
+ out highp vec2 fragColor;\n\
+ void main() {\n\
+     highp float depth = texture(u_Texture, v_TexCoordinate).x;\n\
+     highp float stencil = texture(u_Texture, v_TexCoordinate).y/255.0;\n\
+     fragColor = vec2(depth, stencil);\n\
+ }";
+
 const GLchar *DepthDumper::DS_dFSCode =
 "#version 310 es\n\
  uniform highp sampler2D u_Texture;\n\
@@ -111,10 +122,12 @@ DepthDumper::~DepthDumper()
     _glDeleteShader(depthCopyCubeFS);
     _glDeleteShader(DSCopy_dFS);
     _glDeleteShader(DSCopy_sFS);
+    _glDeleteShader(D32FS8Copy_FS);
     _glDeleteProgram(depthCopyProgram);
     _glDeleteProgram(depthCopyCubeProgram);
     _glDeleteProgram(depthDSCopyProgram);
     _glDeleteProgram(stencilDSCopyProgram);
+    _glDeleteProgram(D32FS8CopyProgram);
     _glDeleteFramebuffers(1, &depthFBO);
 }
 
@@ -193,6 +206,15 @@ void DepthDumper::initializeDepthCopyer()
     if (frag_status == GL_FALSE)
         printShaderInfoLog(DSCopy_sFS, "D24S8 stencilCopy fragment shader");
 
+    // fragment shader for D32FS8
+    D32FS8Copy_FS = _glCreateShader(GL_FRAGMENT_SHADER);
+    _glShaderSource(D32FS8Copy_FS, 1, &D32FS8_FSCode, 0);
+    _glCompileShader(D32FS8Copy_FS);
+
+    _glGetShaderiv(D32FS8Copy_FS, GL_COMPILE_STATUS, &frag_status);
+    if (frag_status == GL_FALSE)
+        printShaderInfoLog(D32FS8Copy_FS, "D32FS8 Copy fragment shader");
+
     // fragment shader for 2DArray depth
     depthArrayCopyFS = _glCreateShader(GL_FRAGMENT_SHADER);
     _glShaderSource(depthArrayCopyFS, 1, &depthArrayCopyFSCode, 0);
@@ -247,6 +269,20 @@ void DepthDumper::initializeDepthCopyer()
     _glUseProgram(stencilDSCopyProgram);
 
     u_Texture_location = getUniLoc(stencilDSCopyProgram, "u_Texture");    // get uniform location
+    _glUniform1i(u_Texture_location, 0);             // set uniform variables
+
+    // program for D32FS8
+    D32FS8CopyProgram = _glCreateProgram();
+    _glAttachShader(D32FS8CopyProgram, depthCopyVS);
+    _glAttachShader(D32FS8CopyProgram, D32FS8Copy_FS);
+    _glBindAttribLocation(D32FS8CopyProgram, 0, "a_Position");
+    _glLinkProgram(D32FS8CopyProgram);
+    _glGetProgramiv(D32FS8CopyProgram, GL_LINK_STATUS, &link_status);
+    if (link_status == GL_FALSE)
+        printProgramInfoLog(D32FS8CopyProgram, "depthD32FS8Copy program");
+    _glUseProgram(D32FS8CopyProgram);
+
+    u_Texture_location = getUniLoc(D32FS8CopyProgram, "u_Texture");    // get uniform location
     _glUniform1i(u_Texture_location, 0);             // set uniform variables
 
     // program for cubemap
@@ -336,6 +372,12 @@ void DepthDumper::get_depth_texture_image(GLuint sourceTexture, int width, int h
         format = GL_RGBA;
         type = GL_UNSIGNED_BYTE;
     }
+    else if (internalFormat == GL_DEPTH32F_STENCIL8)
+    {
+        texFormat = GL_RG32F;
+        format = GL_RG;
+        type = GL_FLOAT;
+    }
     _glBindTexture(GL_TEXTURE_2D, depthTexture);
     _glTexImage2D(GL_TEXTURE_2D, 0, texFormat, width, height, 0, format, type, 0);
 
@@ -391,6 +433,10 @@ void DepthDumper::get_depth_texture_image(GLuint sourceTexture, int width, int h
     if (internalFormat == GL_DEPTH24_STENCIL8)
     {
         _glUseProgram(depthDSCopyProgram);
+    }
+    else if (internalFormat == GL_DEPTH32F_STENCIL8)
+    {
+        _glUseProgram(D32FS8CopyProgram);
     }
     else {
         _glUseProgram(depthCopyProgram);

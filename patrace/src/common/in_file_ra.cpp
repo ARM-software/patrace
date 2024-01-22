@@ -273,10 +273,20 @@ void InFileRA::ReadSigBook()
     for (unsigned short id = 1; id <= mMaxSigId; ++id)
     {
         unsigned int id_notused;
-        src = ReadFixed<unsigned int>(src, id_notused);
-        char *str;
-        src = ReadString(src, str);
-        mExIdToName[id] = str ? str : "";
+        char *src_tmp = nullptr;
+        src_tmp = ReadFixed<unsigned int>(src, id_notused);
+        if(id == id_notused)
+        {
+            src = src_tmp;
+            char *str;
+            src = ReadString(src, str);
+            mExIdToName[id] = str ? str : "";
+        }
+        else
+        {
+            mExIdToName[id] = "";
+            continue;
+        }
     }
 
     if (mExIdToLen) delete [] mExIdToLen;

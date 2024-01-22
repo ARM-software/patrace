@@ -281,7 +281,7 @@ struct Texture : public Resource
     SamplerState state;
     Texture(int _id, int _index) : Resource(_id, _index) {}
     bool used = false; // actually used in a draw call
-    std::vector<int> initialized = { false }; // int to avoid the broken bool specialization of std::vector
+    std::vector<uint8_t> initialized = { false }; // uint8_t to avoid the broken bool specialization of std::vector
     bool uninit_usage = false;
 
     std::map<int, MipmapGeneration> mipmaps; // call number of glGenerateMipmap : data

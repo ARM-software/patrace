@@ -329,7 +329,7 @@ Find out the package name of the app you want to trace (i.e. `com.arm.mali.Timbu
 
 Add the name to `/system/lib/egl/appList.cfg` (32 bit) or `/system/lib64/egl/appList.cfg` (64 bit). This is a newline-separated list of the names of the apps that you want to trace (the full package name, not the icon name).
 
-If `/system/lib[64]/egl/` does not exist, you can also use `/system/vendor/lib/egl/` is also OK.
+If `/system/lib[64]/egl/` does not exist, you can also use `/system/vendor/lib/egl/`.
 
 Create the output trace directory in advance, which will be named /data/apitrace/&lt;package name&gt;. Give it 777 permissions.
 
@@ -362,15 +362,31 @@ If the fakedriver doesn't seem to be picked up (nothing relevant printed in logc
 
 ### Tracing on Linux
 
-Put the libegltrace.so file you built somewhere where you can access it, then run:
+On Linux, we need to set some env variables. Here are our recommended usage:
+1. Set `LD_LIBRARY_PATH`  to the path of the built fake driver.
+2. Set `INTERCEPTOR_LIB`  to the location of the built interceptor libegltrace.so
+3. Set `TRACE_LIBEGL`  to the location of DDK driver libEGL.so.
+4. Set `TRACE_LIBGLES1`  to the location of DDK driver libGLESv1_CM.so.
+5. Set `TRACE_LIBGLES2`  to the location of DDK driver libGLESv2.so.
+6. Set `OUT_TRACE_FILE`  variable as the path and filename of the captured trace.
 
-    LD_PRELOAD=/my/path/libegltrace.so OUT_TRACE_FILE=myGLB2 ./glbenchmark2
+Step 1-2 are to make all API calls go through our tracer.
 
-Use the `OUT_TRACE_FILE` variable to set the path and filename of the captured trace. The filename will be appended with an index followed by `.pat`. If `%u` appears in `OUT_TRACE_FILE`, it will be used as a placeholder for the index. E.g. `foo-%u-bar.pat`. If the `OUT_TRACE_FILE` variable is omitted, then the hard coded pattern, `trace.%u.pat`, will be used.
+Steps 3-5 are to make our tracer find the real graphics driver to keep the program running properly.
 
-You may also specify the environment variables `TRACE_LIBEGL`, `TRACE_LIBGLES1` and `TRACE_LIBGLES2` to tell the tracer exactly where the various GLES DDK files are found. If you use these, you may be able to use `LD_LIBRARY_PATH` to the fakedriver instead of `LD_PRELOAD` of the tracer directly. In this latter case, set `INTERCEPTOR_LIB` to point to your tracer library.
+Step 6 is to set the output filename. The filename will be appended with an index followed by `.pat`. If `%u` appears in `OUT_TRACE_FILE`, it will be used as a placeholder for the index. E.g. `foo-%u-bar.pat`. If the `OUT_TRACE_FILE` variable is omitted, then the hard coded pattern, `trace.%u.pat`, will be used.
 
-The fakedriver may be hard to use on desktop Linux. We have poor experience using the Mali emulator as well, and recommend using a proper GLES capable driver.
+Here is an example:
+
+    export LD_LIBRARY_PATH=~/patrace/fbdev_aarch64/release/lib/
+    export INTERCEPTOR_LIB=~/patrace/fbdev_aarch64/release/lib/libegltrace.so
+    export TRACE_LIBEGL=/usr/lib/aarch64-linux-gnu/mali/fbdev/libEGL.so
+    export TRACE_LIBGLES1=/usr/lib/aarch64-linux-gnu/mali/fbdev/libGLESv1_CM.so
+    export TRACE_LIBGLES2=/usr/lib/aarch64-linux-gnu/mali/fbdev/libGLESv2.so
+
+    OUT_TRACE_FILE=mytrace ./gfxbench5/tfw-pkg/bin/testfw_app --gfx eglfbdev -t gl_manhattan
+  
+A file called mytrace.1.pat will be output in the same directory.
 
 ### Tracer configuration file
 
@@ -388,6 +404,7 @@ The tracer can be configured through a special configuration file `$PWD/tracerpa
 -   SupportedExtension - Use this to specify which extensions to report to the application. One extension per keyword.
 -   DisableErrorReporting - Disable GLES error reporting callbacks. Set DisableErrorReporting to false if debug-callback error occurs, it's a Debug option.
 -   EnableRandomVersion  - Enable to append a random to the gl_version when gl_renderer begins with "Mali". Default to True.
+-   Timestamping  - Inject paTimestamp call after each call with side effects. Normally used to merge several traces. Default to False.
 
 The most useful keyword is 'FilterSupportedExtension', which, if set to 'true', will fake the list of supported extensions reported to the application only a limited list of extensions. In this case, put each extension you want to support in the configuration file on a separate line with the 'SupportedExtension' keyword.
 
@@ -413,8 +430,8 @@ From Android Q, Android introduces GLES Layer similar with Vulkan layer that cha
 ### Enable GLES Layer on Android
 First, deploy layer into the hard coded system directory:
 
-    adb push libGLES_layer_arm64.so /data/local/debug/gles
-    adb push libGLES_layer_arm.so   /data/local/debug/gles
+    adb push libGLES_layer_arm64.so /data/local/debug/gles/
+    adb push libGLES_layer_arm.so   /data/local/debug/gles/
 
 Then, enable GLES Layer for specified target application (`libGLES_layer_arm.so` for 32bit):
 
@@ -556,7 +573,7 @@ There are three different ways to tell the retracer which parameters that should
 | `-flush`                                     | (since r2p5) Will try hard to flush all pending CPU and GPU work before starting the selected framerange. This should usually not be necessary.                                                                                        |
 | `-flushonswap`                               | (since r2p15) Will try hard to flush all pending CPU and GPU work before starting the next frame. This should usually not be necessary. |
 | `-cpumask`                                   | (since r2p15) Lock all work associated with this replay to the specified CPU cores, given as a string of one or zero for each core. |
-| `-multithread`                               | Enable to run the calls in all the threads recorded in the pat file. These calls will be dispatched to corresponding work threads and run simultaneously. The execution sequence of calls between different threads is not guaranteed. |
+| `-multithread`                               | Enable to run the calls in all the threads recorded in the pat file. The calls will still be serialized to avoid multithreading issues and enforce deterministic replay. |
 | `-dmasharedmem`                              | (since r2p16) The retracer would use shared memory feature of linux to handle dma buffer. Recommended on model. |
 | `-egl_surface_compression_fixed_rate flag`   | (since r3p4)  Set compression control flag on framebuffer. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate; 2: enable fixed rate compression with lowest rate; 3: enable fixed rate compression with highest rate.  |
 | `-egl_image_compression_fixed_rate flag`     | (since r3p4)  Set compression control flag on eglImage. 0: disable fixed rate compression; 1: enable fixed rate compression with default rate.  |
@@ -681,7 +698,7 @@ A JSON file can be passed to the retracer via the -jsonParameters option. In thi
 | storeProgramInformation      | boolean    | yes      | In the result file, store information about a program after each glLinkProgram. Such as, active attributes and compile errors.                                                                                                         |
 | threadId                     | int        | yes      | Retrace this specified thread id. **DO NOT USE** except for debugging!                                                                                                                                                                 |
 | offscreenSingleTile          | boolean    | yes      | Draw only one frame for each buffer swap in offscreen mode.                                                                                                                                                                            |
-| multithread                  | boolean    | yes      | Enable to run the calls in all the threads recorded in the pat file. These calls will be dispatched to corresponding work threads and run simultaneously. The execution sequence of calls between different threads is not guaranteed. |
+| multithread                  | boolean    | yes      | Enable to run the calls in all the threads recorded in the pat file. The calls will still be serialized to avoid multithreading issues and enforce deterministic replay. |
 | forceSingleWindow            | boolean    | yes      | Force render all the calls onto a single surface. This can't be true with multithread mode enabled.                                                                                                                                    |
 | cpumask                      | string     | yes      | See 'cpumask' command line option above. |
 | dmaSharedMem                 | bool       | yes      | If it is true, the retracer would use shared memory feature of linux to handle dma buffer. Recommended on model.|
@@ -760,7 +777,8 @@ On Android, you can set parameter of fastforward by ADB shell or a JSON file.
 | --ez norestoretex          | yes      | When generating a fastforward trace, don't inject commands to restore the contents of textures to what the would've been when retracing the original. (NOTE: NOT RECOMMEND)                                                                                                                                                                            |
 | --ez version               | yes      | Output the version of this program                                                                                                                                                                                                                                                                                                                                                     |
 | --ei restorefbo0           | yes      | Repeat to inject a draw call commands and swapbuffer the given number of times to restore the last default FBO. Suggest repeating 3~4 times if set DamageRegionKHR, else repeating 1 time.                                                                                                                                                                                 |
-| --ez txu                   | yes      | Remove the unused textures and related function calls                                                                                                                                                                                                                                                                                                                                             |
+| --ez shu                   | yes      | Remove the unused shader related function calls                                                                                                                                                                                                                                                                                                                                                       |
+| --ez txu                   | yes      | Remove the unused textures, buffers and related function calls                                                                                                                                                                                                                                                                                                                                             |
 
 #### Example of a JSON file
 
@@ -829,11 +847,11 @@ After a successful build, files in the `libs` and `obj` directories are created.
 
 Upload `./libs/armeabi-v7a/libinterceptor_patrace.so` to your Android device to `/system/lib/egl`
 
-    adb push ./libs/armeabi-v7a/libinterceptor_patrace.so /system/lib/egl
+    adb push ./libs/armeabi-v7a/libinterceptor_patrace.so /system/lib/egl/
 
 Upload `./libs/armeabi-v7a/gdbserver` to your Android device to `/data/local`
 
-    adb push ./libs/armeabi-v7a/gdbserver /data/local
+    adb push ./libs/armeabi-v7a/gdbserver /data/local/
 
 `./libs/armeabi-v7a/gdb.setup` is a configuration file for the gdb client. It instructs gdb where to search for libraries and source code. In this case, where to find the unstripped version of `libinterceptor_patrace.so`.
 

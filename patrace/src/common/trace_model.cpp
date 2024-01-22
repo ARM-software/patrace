@@ -1016,7 +1016,7 @@ ValueTM * CreateBufferReferenceOpaqueValue(unsigned int offset)
 }
 
 CallTM::CallTM(InFileRA &infile, unsigned callNo, const BCall_vlen &call)
- : mCallNo(callNo), mTid(call.tid), mCallId(call.funcId), mBkColor(0xffffffff), mTxtColor(0x000000ff)
+ : mCallNo(callNo), mTid(call.tid), mCallId(call.funcId)
 {
     const std::string name = infile.ExIdToName(mCallId);
     const void *fptr = parse_callbacks.at(name).first;
@@ -1025,11 +1025,11 @@ CallTM::CallTM(InFileRA &infile, unsigned callNo, const BCall_vlen &call)
     mReadPos = infile.GetReadPos();
     char *src = infile.dataPointer();
     mInjected = (call.source > 0);
-    (*(ParseFunc)fptr)(src, *this, infile);
+    (*(ParseFunc)fptr)(src, *this, infile.getHeaderVersion());
 }
 
 CallTM::CallTM(InFile &infile, unsigned callNo, const BCall_vlen &call)
- : mCallNo(callNo), mTid(call.tid), mCallId(call.funcId), mBkColor(0xffffffff), mTxtColor(0x000000ff)
+ : mCallNo(callNo), mTid(call.tid), mCallId(call.funcId)
 {
     const std::string name = infile.ExIdToName(mCallId);
     const void *fptr = parse_callbacks.at(name).first;
@@ -1038,7 +1038,7 @@ CallTM::CallTM(InFile &infile, unsigned callNo, const BCall_vlen &call)
     mReadPos = 0;
     char *src = infile.dataPointer();
     mInjected = (call.source > 0);
-    (*(ParseFunc)fptr)(src, *this, infile);
+    (*(ParseFunc)fptr)(src, *this, infile.getHeaderVersion());
 }
 
 bool CallTM::Load(InFileRA *infile)
@@ -1058,15 +1058,13 @@ bool CallTM::Load(InFileRA *infile)
 
     if (fptr)
     {
-        (*(ParseFunc)fptr)(src, *this, *infile);
+        (*(ParseFunc)fptr)(src, *this, infile->getHeaderVersion());
     }
     else
     {
         mCallName = infile->ExIdToName(curCall.funcId);
         mCallId = curCall.funcId;
     }
-
-    this->Stylize();
 
     return true;
 }
@@ -1147,23 +1145,6 @@ char* CallTM::Serialize(char* dest, int overrideID, bool injected)
         pCallVlen->toNext = (dest - (char*)pCallVlen);
 
     return dest;
-}
-
-void CallTM::Stylize()
-{
-    static const string strDraw = "glDraw";
-    static const string strBindFB = "glBindFramebuffer";
-
-    if (strDraw.compare(0, strDraw.length(), mCallName.c_str(), strDraw.length()) == 0)
-        mTxtColor = 0x00ff00ff;
-    if (strBindFB.compare(mCallName) == 0)
-        mTxtColor = 0xff0000ff;
-    if (mTid != 0)
-        mBkColor = 0xffff8fff;
-    if (mCallErrNo != CALL_GL_NO_ERROR) {
-        mTxtColor = 0xffffffff;
-        mBkColor = 0x000000ff;
-    }
 }
 
 void FrameTM::LoadCalls(InFileRA *infile, bool loadQuery, const std::string &loadFilter)
@@ -1305,7 +1286,10 @@ bool TraceFileTM::Open(const char* name, bool readHeaderAndExit, const std::stri
         return true;
 
     unsigned short eglSwapBuffers_id = mpInFileRA->NameToExId("eglSwapBuffers");
-    unsigned short eglSwapBuffersWithDamage_id = mpInFileRA->NameToExId("eglSwapBuffersWithDamageKHR");
+    unsigned short eglSwapBuffersWithDamageKHR_id = mpInFileRA->NameToExId("eglSwapBuffersWithDamageKHR");
+    unsigned short eglSwapBuffersWithDamageEXT_id = mpInFileRA->NameToExId("eglSwapBuffersWithDamageEXT");
+    unsigned short eglCreatePbufferSurface_id = mpInFileRA->NameToExId("eglCreatePbufferSurface");
+    unsigned short eglDestroySurface_id = mpInFileRA->NameToExId("eglDestroySurface");
 
     void *fptr = nullptr;
     common::BCall_vlen curCall;
@@ -1327,14 +1311,28 @@ bool TraceFileTM::Open(const char* name, bool readHeaderAndExit, const std::stri
         // eglDestroySurface call of retraced thread
         if ((curCall.tid == tid || multithread) &&
             (curCall.funcId == eglSwapBuffers_id ||
-             curCall.funcId == eglSwapBuffersWithDamage_id)) {
-                newFrame->SetCallCount(callNo-newFrame->mFirstCallOfThisFrame+1);
-                newFrame->mBytes = mpInFileRA->GetReadPos() - newFrame->mReadPos;
-                mFrames.push_back(newFrame);
+             curCall.funcId == eglSwapBuffersWithDamageKHR_id ||
+             curCall.funcId == eglSwapBuffersWithDamageEXT_id)) {
+                if (mPbufferSurfaces.count(mpInFileRA->getDpySurface(src))==0)
+                {
+                    newFrame->SetCallCount(callNo-newFrame->mFirstCallOfThisFrame+1);
+                    newFrame->mBytes = mpInFileRA->GetReadPos() - newFrame->mReadPos;
+                    mFrames.push_back(newFrame);
 
-                newFrame = new FrameTM;
-                newFrame->mReadPos = mpInFileRA->GetReadPos();
-                newFrame->mFirstCallOfThisFrame = callNo+1;
+                    newFrame = new FrameTM;
+                    newFrame->mReadPos = mpInFileRA->GetReadPos();
+                    newFrame->mFirstCallOfThisFrame = callNo+1;
+                }
+        }
+
+        if (curCall.funcId == eglCreatePbufferSurface_id)
+        {
+            mPbufferSurfaces.insert(mpInFileRA->getCreatePbufferSurfaceRet(src));
+        }
+
+        if (curCall.funcId == eglDestroySurface_id)
+        {
+            mPbufferSurfaces.erase(mpInFileRA->getDpySurface(src));
         }
 
         // Save the position after each successful call reading

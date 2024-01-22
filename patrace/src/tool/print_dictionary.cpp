@@ -95,7 +95,7 @@ int main(int argc, char **argv)
 	}
 	else if (version < common::HEADER_VERSION_4)
 	{
-		printf("Error: Trace file too bad - must be at least version 4\n");
+		printf("Error: Trace file too old - must be at least version 4\n");
 		exit(1);
 	}
 	myread(&jsonLength, sizeof(jsonLength), in, "jsonlength");

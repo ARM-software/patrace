@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 #include <string>
+#include <set>
 
 #include <common/trace_limits.hpp>
 #include <common/gl_utility.hpp>
@@ -606,6 +607,7 @@ public:
     EGLConfig  mEglConfig;
 
     stdmap<unsigned long long, EGLSyncKHR> mEGLSyncMap;
+    std::set<Drawable*> pDrawableSet;
 
 private:
     std::unordered_map<int, Drawable*>    mDrawableMap;

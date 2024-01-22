@@ -7,7 +7,7 @@
 namespace common {
 
 class InFileBase;
-typedef void (*ParseFunc)(char*, CallTM& callTM, const InFileBase &);
+typedef void (*ParseFunc)(char*, CallTM& callTM, common::HeaderVersion headerVersion);
 
 extern const common::EntryMap parse_callbacks;
 

@@ -36,6 +36,28 @@ public:
         return 0;
     }
 
+    inline int getCreatePbufferSurfaceRet(char *src)
+    {
+        int dpy;
+        int config;
+        Array<unsigned int> attrib_list;
+        int ret;
+        src = ReadFixed(src, dpy);
+        src = ReadFixed(src, config);
+        src = Read1DArray(src, attrib_list);
+        src = ReadFixed(src, ret);
+        return ret;
+    }
+
+    inline int getDpySurface(char *src)
+    {
+        int dpy;
+        int surface;
+        src = ReadFixed(src, dpy);
+        src = ReadFixed(src, surface);
+        return surface;
+    }
+
     void setFrameRange(unsigned startFrame, unsigned endFrame, int tid, bool preload, bool keep_all = false);
 
     inline int getMaxSigId() const { return mMaxSigId; }
@@ -65,7 +87,10 @@ protected:
     int mEndFrame = 2147483647; // or INT32_MAX (which does not work on Android)
     int mTraceTid = -1;
     int eglSwapBuffers_id = -1;
-    int eglSwapBuffersWithDamage_id = -1;
+    int eglSwapBuffersWithDamageKHR_id = -1;
+    int eglSwapBuffersWithDamageEXT_id = -1;
+    int eglCreatePbufferSurface_id = -1;
+    int eglDestroySurface_id = -1;
     bool mPreload = false;
 
     HeaderVersion mHeaderVer = HEADER_VERSION_1;

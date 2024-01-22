@@ -152,7 +152,8 @@ BinAndMeta::BinAndMeta()
     free(bn);
 
     traceFile = new OutFile;
-    traceFile->Open(binName.str());
+    if (tracerParams.Timestamping) traceFile->Open(binName.str(), true, NULL, true);
+    else traceFile->Open(binName.str());
 
     // Reset per thread counters
     timesEGLConfigIdUsed.clear();
@@ -205,6 +206,11 @@ void BinAndMeta::writeHeader(bool cleanExit)
     jsonRoot["tracer"] = PATRACE_VERSION;
     jsonRoot["tracer_extensions"] = tracerParams.SupportedExtensionsString;
 
+    if (tracerParams.Timestamping)
+    {
+        jsonRoot["timestamping"] = true;
+        jsonRoot["first_timestamp"] = (Json::UInt64)os::getTimeType(CLOCK_MONOTONIC);
+    }
     // add date of trace capture
     char tmpstr[40];
     time_t t = time(nullptr);
@@ -851,7 +857,7 @@ bool pre_glLinkProgram(unsigned char tid, unsigned int program)
 void after_glDeleteProgram(unsigned char tid, GLuint program)
 {
     // attributes
-    if (program == 0) // silly AnTuTu
+    if (program == 0 || GetCurTraceContext(tid)==nullptr)
     {
          return;
     }
@@ -1012,6 +1018,25 @@ void after_eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLSurface s
     gTraceOut->mpBinAndMeta->updateWinSurfSize(width, height);
     const int idx = surfaces.size();
     const uint64_t id = reinterpret_cast<uint64_t>(surf);
+    surfaces.push_back({e, x, y, width, height, idx, id});
+}
+
+void after_eglCreatePbufferSurface(EGLDisplay dpy, EGLConfig config, EGLSurface surf)
+{
+    EGLint configId = 0;
+    _eglQuerySurface(dpy, surf, EGL_CONFIG_ID, &configId);
+    const MyEGLAttribs &e = configIdToConfigAttribsMap.at(configId);
+
+    if (gSurfMap.find(surf) == gSurfMap.end())
+    {
+        new TraceSurface(surf, configId);
+    }
+
+    EGLint x = 0, y = 0, width = 0, height = 0;
+    const int idx = surfaces.size();
+    const uint64_t id = reinterpret_cast<uint64_t>(surf);
+    _eglQuerySurface(dpy, surf, EGL_WIDTH, (EGLint*) &width);
+    _eglQuerySurface(dpy, surf, EGL_HEIGHT, (EGLint*) &height);
     surfaces.push_back({e, x, y, width, height, idx, id});
 }
 

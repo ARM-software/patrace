@@ -53,6 +53,7 @@ commands.add('paMandatoryExtensions')
 commands.add('glAssertBuffer_ARM')
 commands.add('glStateDump_ARM')
 commands.add('glLinkProgram2')
+commands.add('paTimestamp')
 
 # We're stuck supporting these even though it is not a real extension and nobody should use them
 commands.add('glShadingRateARM')
@@ -480,7 +481,7 @@ gles_functions = [
     GlFunction(Void, "glActiveShaderProgramEXT", [(GLpipeline, "pipeline"), (GLprogram, "program")]),
     GlFunction(GLprogram, "glCreateShaderProgramvEXT", [(GLenum, "type"), (GLsizei, "count"), (Const(Array(GLstringConst, "count")), "strings")]),
     GlFunction(Void, "glBindProgramPipelineEXT", [(GLpipeline, "pipeline")]),
-    GlFunction(Void, "glDeleteProgramPipelinesEXT", [(GLsizei, "n"), (Array(Const(GLuint), "n"), "pipelines")]),
+    GlFunction(Void, "glDeleteProgramPipelinesEXT", [(GLsizei, "n"), (Array(Const(GLpipeline), "n"), "pipelines")]),
     GlFunction(Void, "glGenProgramPipelinesEXT", [(GLsizei, "n"), Out(Array(GLpipeline, "n"), "pipelines")]),
     GlFunction(GLboolean, "glIsProgramPipelineEXT", [(GLpipeline, "pipeline")], sideeffects=False),
     GlFunction(Void, "glProgramParameteriEXT", [(GLprogram, "program"), (GLenum, "pname"), (GLint, "value")]),
@@ -667,7 +668,7 @@ gles_functions = [
 
     # GL_EXT_disjoint_timer_query
     # (functions not already in GL_EXT_occlusion_query_boolean)
-    GlFunction(Void, "glQueryCounterEXT", [(GLuint, "id"), (GLenum, "target")]),
+    GlFunction(Void, "glQueryCounterEXT", [(GLquery, "id"), (GLenum, "target")]),
     GlFunction(Void, "glGetQueryObjectivEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLint, "_gl_param_size(pname)"), "params")]),
     GlFunction(Void, "glGetQueryObjecti64vEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLint64, "_gl_param_size(pname)"), "params")]),
     GlFunction(Void, "glGetQueryObjectui64vEXT", [(GLquery, "id"), (GLenum, "pname"), Out(Array(GLuint64, "_gl_param_size(pname)"), "params")]),
@@ -727,12 +728,12 @@ gles_functions = [
     GlFunction(Void, "glCopyBufferSubData", [(GLenum, "readTarget"), (GLenum, "writeTarget"), (GLintptr, "readOffset"), (GLintptr, "writeOffset"), (GLsizeiptr, "size")]),
     GlFunction(Void, "glCopyTexSubImage3D", [(GLenum, "target"), (GLint, "level"), (GLint, "xoffset"), (GLint, "yoffset"), (GLint, "zoffset"), (GLint, "x"), (GLint, "y"), (GLsizei, "width"), (GLsizei, "height")]),
     GlFunction(GLprogram, "glCreateShaderProgramv", [(GLenum, "type"), (GLsizei, "count"), (Const(Array(Const(GLstring), "count")), "strings")]),
-    GlFunction(Void, "glDeleteProgramPipelines", [(GLsizei, "n"), (Array(Const(GLuint), "n"), "pipelines")]),
-    GlFunction(Void, "glDeleteQueries", [(GLsizei, "n"), (Array(Const(GLuint), "n"), "ids")]),
-    GlFunction(Void, "glDeleteSamplers", [(GLsizei, "count"), (Array(Const(GLuint), "count"), "samplers")]),
+    GlFunction(Void, "glDeleteProgramPipelines", [(GLsizei, "n"), (Array(Const(GLpipeline), "n"), "pipelines")]),
+    GlFunction(Void, "glDeleteQueries", [(GLsizei, "n"), (Array(Const(GLquery), "n"), "ids")]),
+    GlFunction(Void, "glDeleteSamplers", [(GLsizei, "count"), (Array(Const(GLsampler), "count"), "samplers")]),
     GlFunction(Void, "glDeleteSync", [(GLsync, "sync")]),
-    GlFunction(Void, "glDeleteTransformFeedbacks", [(GLsizei, "n"), (Array(Const(GLuint), "n"), "ids")]),
-    GlFunction(Void, "glDeleteVertexArrays", [(GLsizei, "n"), (Array(Const(GLuint), "n"), "arrays")]),
+    GlFunction(Void, "glDeleteTransformFeedbacks", [(GLsizei, "n"), (Array(Const(GLfeedback), "n"), "ids")]),
+    GlFunction(Void, "glDeleteVertexArrays", [(GLsizei, "n"), (Array(Const(GLarray), "n"), "arrays")]),
     GlFunction(Void, "glDispatchCompute", [(GLuint, "num_groups_x"), (GLuint, "num_groups_y"), (GLuint, "num_groups_z")]),
     GlFunction(Void, "glDispatchComputeIndirect", [(GLintptr, "indirect")]),
     GlFunction(Void, "glDrawArraysIndirect", [(GLenum, "mode"), (GLpointerConst, "indirect")]),
@@ -752,9 +753,9 @@ gles_functions = [
     GlFunction(Void, "glGenSamplers", [(GLsizei, "count"), Out(Array(GLsampler, "count"), "samplers")]),
     GlFunction(Void, "glGenTransformFeedbacks", [(GLsizei, "n"), Out(Array(GLfeedback, "n"), "ids")]),
     GlFunction(Void, "glGenVertexArrays", [(GLsizei, "n"), Out(Array(GLarray, "n"), "arrays")]),
-    GlFunction(Void, "glGetActiveUniformBlockName", [(GLprogram, "program"), (GLuint, "uniformBlockIndex"), (GLsizei, "bufSize"), (Pointer(GLsizei), "length"), (GLstring, "uniformBlockName")], sideeffects=False),
-    GlFunction(Void, "glGetActiveUniformBlockiv", [(GLprogram, "program"), (GLuint, "uniformBlockIndex"), (GLenum, "pname"), (Array(GLint, "paramSizeGlGetActiveUniformBlockiv(program, uniformBlockIndex, pname)"), "params")], sideeffects=False),
-    GlFunction(Void, "glGetActiveUniformsiv", [(GLprogram, "program"), (GLsizei, "uniformCount"), (Array(Const(GLuint), "uniformCount"), "uniformIndices"), (GLenum, "pname"), (Array(GLint, "uniformCount"), "params")], sideeffects=False),
+    GlFunction(Void, "glGetActiveUniformBlockName", [(GLprogram, "program"), (GLuniformBlock, "uniformBlockIndex"), (GLsizei, "bufSize"), (Pointer(GLsizei), "length"), (GLstring, "uniformBlockName")], sideeffects=False),
+    GlFunction(Void, "glGetActiveUniformBlockiv", [(GLprogram, "program"), (GLuniformBlock, "uniformBlockIndex"), (GLenum, "pname"), (Array(GLint, "paramSizeGlGetActiveUniformBlockiv(program, uniformBlockIndex, pname)"), "params")], sideeffects=False),
+    GlFunction(Void, "glGetActiveUniformsiv", [(GLprogram, "program"), (GLsizei, "uniformCount"), (Array(Const(GLuniformBlock), "uniformCount"), "uniformIndices"), (GLenum, "pname"), (Array(GLint, "uniformCount"), "params")], sideeffects=False),
     GlFunction(Void, "glGetBooleani_v", [(GLenum, "target"), (GLuint, "index"), (Array(GLboolean, "_gl_param_size(target)"), "data")], sideeffects=False),
     GlFunction(Void, "glGetBufferParameteri64v", [(GLenum, "target"), (GLenum, "pname"), (Array(GLint64, "_gl_param_size(pname)"), "params")], sideeffects=False),
     GlFunction(Void, "glGetBufferPointerv", [(GLenum, "target"), (GLenum, "pname"), Out(Pointer(GLpointer), "params")], sideeffects=False),
@@ -783,7 +784,7 @@ gles_functions = [
     GlFunction(Void, "glGetTexLevelParameteriv", [(GLenum, "target"), (GLint, "level"), (GLenum, "pname"), (Array(GLint, "_gl_param_size(pname)"), "params")], sideeffects=False),
     GlFunction(Void, "glGetTransformFeedbackVarying", [(GLprogram, "program"), (GLuint, "index"), (GLsizei, "bufSize"), (Pointer(GLsizei), "length"), (Pointer(GLsizei), "size"), (Pointer(GLenum), "type"), (GLstring, "name")], sideeffects=False),
     GlFunction(GLuniformBlock, "glGetUniformBlockIndex", [(GLprogram, "program"), (Const(GLstring), "uniformBlockName")]),
-    GlFunction(Void, "glGetUniformIndices", [(GLprogram, "program"), (GLsizei, "uniformCount"), (Const(Array(Const(GLstring), "uniformCount")), "uniformNames"), (Array(GLuint, "uniformCount"), "uniformIndices")], sideeffects=False),
+    GlFunction(Void, "glGetUniformIndices", [(GLprogram, "program"), (GLsizei, "uniformCount"), (Const(Array(Const(GLstring), "uniformCount")), "uniformNames"), (Array(GLuniformBlock, "uniformCount"), "uniformIndices")], sideeffects=False),
     GlFunction(Void, "glGetUniformuiv", [(GLprogram, "program"), (GLuniformLocation, "location"), Out(OpaquePointer(GLuint), "params")], sideeffects=False),
     GlFunction(Void, "glGetVertexAttribIiv", [(GLuint, "index"), (GLenum, "pname"), Out(Array(GLint, "_gl_param_size(pname)"), "params")], sideeffects=False),
     GlFunction(Void, "glGetVertexAttribIuiv", [(GLuint, "index"), (GLenum, "pname"), Out(Array(GLuint, "_gl_param_size(pname)"), "params")], sideeffects=False),
@@ -935,8 +936,8 @@ gles_functions = [
     GlFunction(Void, "glBufferStorageEXT", [ (GLenum, "target"), (GLsizeiptr, "size"), (Blob(Const(GLvoid), "size"), "data"), (GLbitfield_storage, "flags")]),
 
     # GL_EXT_draw_transform_feedback
-    GlFunction(Void, "glDrawTransformFeedbackEXT", [(GLenum, "mode"), (GLuint, "id")]),
-    GlFunction(Void, "glDrawTransformFeedbackInstancedEXT", [(GLenum, "mode"), (GLuint, "id"), (GLsizei, "instancecount")]),
+    GlFunction(Void, "glDrawTransformFeedbackEXT", [(GLenum, "mode"), (GLfeedback, "id")]),
+    GlFunction(Void, "glDrawTransformFeedbackInstancedEXT", [(GLenum, "mode"), (GLfeedback, "id"), (GLsizei, "instancecount")]),
 
     # GL_OES_draw_elements_base_vertex
     GlFunction(Void, "glDrawElementsBaseVertexOES", [(GLenum_mode, "mode"), (GLsizei, "count"), (GLenum, "type"), (GLpointerConst, "indices"), (GLint, "basevertex")]),
@@ -1026,22 +1027,22 @@ gles_functions = [
     # GL_ARM_fragment_shading_rate
     GlFunction(Void, "glShadingRateARM", [(GLenum, "rate")]),
     GlFunction(Void, "glShadingRateCombinerOpsARM", [(GLenum, "combinerOp0"), (GLenum, "combinerOp1")]),
-    GlFunction(Void, "glFramebufferShadingRateARM", [(GLenum, "target"), (GLenum, "attachment"), (GLuint, "texture"), (GLint, "baseLayer"), (GLsizei, "numLayers"), (GLsizei, "texelWidth"), (GLsizei, "texelHeight")]),
+    GlFunction(Void, "glFramebufferShadingRateARM", [(GLenum, "target"), (GLenum, "attachment"), (GLtexture, "texture"), (GLint, "baseLayer"), (GLsizei, "numLayers"), (GLsizei, "texelWidth"), (GLsizei, "texelHeight")]),
 
     # GL_EXT_fragment_shading_rate
     GlFunction(Void, "glGetFragmentShadingRatesEXT", [(GLsizei, "samples"), (GLsizei, "maxCount"), Out(Pointer(GLsizei), "count"), Out(Pointer(GLenum), "shadingRates")], sideeffects=False),
     GlFunction(Void, "glShadingRateEXT", [(GLenum, "rate")]),
     GlFunction(Void, "glShadingRateCombinerOpsEXT", [(GLenum, "combinerOp0"), (GLenum, "combinerOp1")]),
-    GlFunction(Void, "glFramebufferShadingRateEXT", [(GLenum, "target"), (GLenum, "attachment"), (GLuint, "texture"), (GLint, "baseLayer"), (GLsizei, "numLayers"), (GLsizei, "texelWidth"), (GLsizei, "texelHeight")]),
+    GlFunction(Void, "glFramebufferShadingRateEXT", [(GLenum, "target"), (GLenum, "attachment"), (GLtexture, "texture"), (GLint, "baseLayer"), (GLsizei, "numLayers"), (GLsizei, "texelWidth"), (GLsizei, "texelHeight")]),
 
     # GL_EXT_EGL_image_storage
     # see eglapi.py
 
     # GL_EXT_blend_func_extended
-    GlFunction(Void, "glBindFragDataLocationIndexedEXT", [(GLuint, "program"), (GLuint, "colorNumber"), (GLuint, "index"), (Const(GLstring), "name")]),
-    GlFunction(GLint, "glGetFragDataIndexEXT", [(GLuint, "program"), (Const(GLstring), "name")], sideeffects=False),
-    GlFunction(Void, "glBindFragDataLocationEXT", [(GLuint, "program"), (GLuint, "colorNumber"), (Const(GLstring), "name")]),
-    GlFunction(GLint, "glGetProgramResourceLocationIndexEXT", [(GLuint, "program"), (GLenum, "programInterface"), (Const(GLstring), "name")], sideeffects=False),
+    GlFunction(Void, "glBindFragDataLocationIndexedEXT", [(GLprogram, "program"), (GLuint, "colorNumber"), (GLuint, "index"), (Const(GLstring), "name")]),
+    GlFunction(GLint, "glGetFragDataIndexEXT", [(GLprogram, "program"), (Const(GLstring), "name")], sideeffects=False),
+    GlFunction(Void, "glBindFragDataLocationEXT", [(GLprogram, "program"), (GLuint, "colorNumber"), (Const(GLstring), "name")]),
+    GlFunction(GLint, "glGetProgramResourceLocationIndexEXT", [(GLprogram, "program"), (GLenum, "programInterface"), (Const(GLstring), "name")], sideeffects=False),
 
     # GL_EXT_memory_object
     #GlFunction(Void, "glGetUnsignedBytevEXT", [(GLenum, "pname"), Out(Pointer(GLubyte), "data")], sideeffects=False),
@@ -1064,17 +1065,17 @@ gles_functions = [
     GlFunction(Void, "glFramebufferFetchBarrierEXT", []),
 
     # GL_OES_texture_view
-    GlFunction(Void, "glTextureViewOES", [(GLuint, "texture"), (GLenum, "target"), (GLuint, "origtexture"), (GLenum, "internalformat"), (GLuint, "minlevel"), (GLuint, "numlevels"), (GLuint, "minlayer"), (GLuint, "numlayers")]),
+    GlFunction(Void, "glTextureViewOES", [(GLtexture, "texture"), (GLenum, "target"), (GLtexture, "origtexture"), (GLenum, "internalformat"), (GLuint, "minlevel"), (GLuint, "numlevels"), (GLuint, "minlayer"), (GLuint, "numlayers")]),
 
     # GL_QCOM_motion_estimation
-    GlFunction(Void, "glTexEstimateMotionQCOM", [(GLuint, "ref"), (GLuint, "target"), (GLuint, "output")]),
-    GlFunction(Void, "glTexEstimateMotionRegionsQCOM", [(GLuint, "ref"), (GLuint, "target"), (GLuint, "output"), (GLuint, "mask")]),
+    GlFunction(Void, "glTexEstimateMotionQCOM", [(GLtexture, "ref"), (GLtexture, "target"), (GLtexture, "output")]),
+    GlFunction(Void, "glTexEstimateMotionRegionsQCOM", [(GLtexture, "ref"), (GLtexture, "target"), (GLtexture, "output"), (GLuint, "mask")]),
 
     # GL_QCOM_frame_extrapolation
-    GlFunction(Void, "glExtrapolateTex2DQCOM", [(GLuint, "src1"), (GLuint, "src2"), (GLuint, "output"), (GLfloat, "scaleFactor")]),
+    GlFunction(Void, "glExtrapolateTex2DQCOM", [(GLtexture, "src1"), (GLtexture, "src2"), (GLtexture, "output"), (GLfloat, "scaleFactor")]),
 
     # GL_QCOM_texture_foveated
-    GlFunction(Void, "glTextureFoveationParametersQCOM", [(GLuint, "texture"), (GLuint, "layer"), (GLuint, "focalPoint"), (GLfloat, "focalX"), (GLfloat, "focalY"), (GLfloat, "gainX"), (GLfloat, "gainY"), (GLfloat, "foveaArea")]),
+    GlFunction(Void, "glTextureFoveationParametersQCOM", [(GLtexture, "texture"), (GLuint, "layer"), (GLuint, "focalPoint"), (GLfloat, "focalX"), (GLfloat, "focalY"), (GLfloat, "gainX"), (GLfloat, "gainY"), (GLfloat, "foveaArea")]),
 
     # GL_QCOM_shader_framebuffer_fetch_noncoherent
     # nothing

@@ -8,6 +8,7 @@
 
 #include <snappy.h>
 #include <deque>
+#include <set>
 
 namespace common {
 
@@ -47,6 +48,8 @@ private:
     /// We cannot immediately free the previous chunk since pointers may still be pointing
     /// into its memory area which are consumed by calls in the next.
     std::vector<char> *mPrevChunk = nullptr;
+    // record created pbuffer surfaces
+    std::set<int> mPbufferSurfaces;
 
     /// Offset into first packet that we should start a rollback at
     intptr_t mCheckpointOffset = -1;

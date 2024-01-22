@@ -107,7 +107,6 @@ public:
     unsigned mVBODataSize = 0;
     unsigned mTextureDataSize = 0;
     unsigned mCompressedTextureDataSize = 0;
-    unsigned mClientSideMemoryDataSize = 0;
     std::unordered_map<std::string, int> mCallCounter;
 
     Collection *mCollectors = nullptr;

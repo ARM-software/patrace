@@ -431,6 +431,8 @@ eglapi.addFunctions([
     # GL_OES_EGL_image
     GlFunction(Void, "glEGLImageTargetTexture2DOES", [(GLenum, "target"), (EGLImageKHR, "image")]),
     GlFunction(Void, "glEGLImageTargetRenderbufferStorageOES", [(GLenum, "target"), (EGLImageKHR, "image")]),
+
+    # GL_EXT_EGL_image_storage
     GlFunction(Void, "glEGLImageTargetTexStorageEXT", [(GLenum, "target"), (EGLImageKHR, "image"), (EGLAttribList, "attrib_list")]),
     GlFunction(EGLBoolean, "eglQuerySupportedCompressionRatesEXT", [(EGLDisplay, "dpy"), (EGLConfig, "config"), (EGLAttribList2, "attrib_list"), Out(Pointer(EGLint), "rates"), (EGLint, "rate_size"), Out(Pointer(EGLint), "num_rates")]),
 
@@ -447,4 +449,7 @@ eglapi.addFunctions([
 
     # EGL_ANGLE_sync_control_rate
     GlFunction(EGLBoolean, "eglGetMscRateANGLE", [(EGLDisplay, "dpy"), (EGLSurface, "surface"), Out(Pointer(EGLint), "numerator"), Out(Pointer(EGLint), "denominator")], sideeffects=False),
+
+    # Timestamp metadata: paTimestamp must at the end of all FUNCs and have max sigID
+    GlFunction(Void, "paTimestamp", [(GLuint64, "timestamp")], sideeffects=False),
 ])

@@ -103,23 +103,23 @@ static void _eglCreateImageKHR_get_image_size(EGLImageKHR image, image_info *inf
 static void get_texture_external_image(image_info *info)
 {
     GLuint fbo = 0;
-    GLint texture;
+    GLuint texture;
 
-    _glGetIntegerv(GL_TEXTURE_BINDING_EXTERNAL_OES, &texture);
+    _glGetIntegerv(GL_TEXTURE_BINDING_EXTERNAL_OES, (GLint *)&texture);
     if (!texture)
         return;
 
-    GLint prev_read_fbo = 0, prev_draw_fbo = 0;
-    _glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prev_read_fbo);
-    _glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prev_draw_fbo);
+    GLuint prev_read_fbo = 0, prev_draw_fbo = 0;
+    _glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, (GLint *)&prev_read_fbo);
+    _glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, (GLint *)&prev_draw_fbo);
     _glGenFramebuffers(1, &fbo);
     _glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 
     // pixel
-    GLint pre_pixel_pack = 0;
-    GLint pre_pixel_unpack = 0;
-    _glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &pre_pixel_pack);
-    _glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &pre_pixel_unpack);
+    GLuint pre_pixel_pack = 0;
+    GLuint pre_pixel_unpack = 0;
+    _glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, (GLint *)&pre_pixel_pack);
+    _glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, (GLint *)&pre_pixel_unpack);
 
     GLint pack_row_len = 0;
     GLint pack_skip_pixels = 0;
@@ -156,10 +156,10 @@ static void get_texture_external_image(image_info *info)
     _glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
     // tex 2d
-    GLint pre_active_tex;
-    _glGetIntegerv(GL_ACTIVE_TEXTURE, &pre_active_tex);
-    GLint prev_texture_2d;
-    _glGetIntegerv(GL_TEXTURE_BINDING_2D, &prev_texture_2d);
+    GLuint pre_active_tex;
+    _glGetIntegerv(GL_ACTIVE_TEXTURE, (GLint *)&pre_active_tex);
+    GLuint prev_texture_2d;
+    _glGetIntegerv(GL_TEXTURE_BINDING_2D, (GLint *)&prev_texture_2d);
     GLuint texture_2d;
     _glGenTextures(1, &texture_2d);
     _glBindTexture(GL_TEXTURE_2D, texture_2d);
@@ -175,10 +175,10 @@ static void get_texture_external_image(image_info *info)
     _glViewport(0, 0, info->width, info->height);
     GLboolean pre_color_mask[4] = {false, false, false, false};
     GLboolean pre_depth_mask = false;
-    GLfloat pre_color[4];
-    GLfloat pre_depth;
+    GLclampf pre_color[4];
+    GLclampf pre_depth;
     GLint pre_stencil;
-    GLint pre_sampler;
+    GLuint pre_sampler;
     _glGetBooleanv(GL_COLOR_WRITEMASK, pre_color_mask);
     _glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     _glGetBooleanv(GL_DEPTH_WRITEMASK, &pre_depth_mask);
@@ -186,7 +186,7 @@ static void get_texture_external_image(image_info *info)
     _glGetFloatv(GL_COLOR_CLEAR_VALUE, pre_color);
     _glGetFloatv(GL_DEPTH_CLEAR_VALUE, &pre_depth);
     _glGetIntegerv(GL_STENCIL_CLEAR_VALUE, &pre_stencil);
-    _glGetIntegerv(GL_SAMPLER_BINDING, &pre_sampler);
+    _glGetIntegerv(GL_SAMPLER_BINDING, (GLint *)&pre_sampler);
 
     GLboolean pre_use_scissor_test = false;
     _glGetBooleanv(GL_SCISSOR_TEST, &pre_use_scissor_test);
@@ -197,8 +197,8 @@ static void get_texture_external_image(image_info *info)
     GLboolean pre_depth_test = false;
     _glGetBooleanv(GL_DEPTH_TEST, &pre_depth_test);
     _glDisable(GL_DEPTH_TEST);
-    GLint pre_frontface;
-    _glGetIntegerv(GL_FRONT_FACE, &pre_frontface);
+    GLenum pre_frontface;
+    _glGetIntegerv(GL_FRONT_FACE, (GLint *)&pre_frontface);
     _glFrontFace(GL_CCW);
     GLboolean pre_cull_test = false;
     _glGetBooleanv(GL_CULL_FACE, &pre_cull_test);
@@ -208,9 +208,11 @@ static void get_texture_external_image(image_info *info)
     _glDisable(GL_STENCIL_TEST);
 
     // vao
-    GLint pre_va = 0;
-    _glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &pre_va);
-    _glBindVertexArray(0);
+    GLuint pre_va = 0;
+    _glGetIntegerv(GL_VERTEX_ARRAY_BINDING, (GLint *)&pre_va);
+    GLuint va = 0;
+    _glGenVertexArrays(1, &va);
+    _glBindVertexArray(va);
 
     // vertex shader
     GLuint vertex_shader_id = _glCreateShader(GL_VERTEX_SHADER);
@@ -236,7 +238,7 @@ static void get_texture_external_image(image_info *info)
     GLuint fragment_shader_id = _glCreateShader(GL_FRAGMENT_SHADER);
     const GLchar *fragment_shader =
    "#version 300 es\n\
-    #extension GL_OES_EGL_image_external : require\n\
+    #extension GL_OES_EGL_image_external_essl3 : require\n\
     uniform samplerExternalOES u_Texture;\n\
     in highp vec2 v_TexCoordinate;\n\
     layout(location = 0) out highp vec4 fragColor;\n\
@@ -253,8 +255,8 @@ static void get_texture_external_image(image_info *info)
     //////////////////////////////////////////////////////////////////////////////////////
 
     // program
-    GLint prev_program_id;
-    _glGetIntegerv(GL_CURRENT_PROGRAM, &prev_program_id);
+    GLuint prev_program_id;
+    _glGetIntegerv(GL_CURRENT_PROGRAM, (GLint *)&prev_program_id);
     GLuint program_id = _glCreateProgram();
     _glAttachShader(program_id, vertex_shader_id);
     _glAttachShader(program_id, fragment_shader_id);
@@ -274,8 +276,8 @@ static void get_texture_external_image(image_info *info)
     //////////////////////////////////////////////////////////////////////////////////////
 
     // vertex buffer
-    GLint prev_vertex_buffer_id;
-    _glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &prev_vertex_buffer_id);
+    GLuint prev_vertex_buffer_id;
+    _glGetIntegerv(GL_ARRAY_BUFFER_BINDING, (GLint *)&prev_vertex_buffer_id);
     GLuint vertex_buffer_id;
     _glGenBuffers(1, &vertex_buffer_id);
     _glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_id);
@@ -285,8 +287,8 @@ static void get_texture_external_image(image_info *info)
     //////////////////////////////////////////////////////////////////////////////////////
 
     // index buffer
-    GLint prev_index_buffer_id;
-    _glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &prev_index_buffer_id);
+    GLuint prev_index_buffer_id;
+    _glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, (GLint *)&prev_index_buffer_id);
     GLuint index_buffer_id;
     _glGenBuffers(1, &index_buffer_id);
     _glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, index_buffer_id);
@@ -359,6 +361,7 @@ static void get_texture_external_image(image_info *info)
     _glClearStencil(pre_stencil);
 
     _glBindVertexArray(pre_va);
+    _glDeleteVertexArrays(1, &va);
 }
 
 static void get_texture_2d_image(image_info *info)

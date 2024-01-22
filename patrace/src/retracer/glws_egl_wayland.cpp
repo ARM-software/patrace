@@ -11,34 +11,30 @@
 namespace retracer
 {
 
-static void shsurf_handle_ping(void *data, struct wl_shell_surface *shell_surface, uint32_t serial)
+static void shsurf_handle_ping(void *data, struct xdg_wm_base *shell_surface, uint32_t serial)
 {
     struct wl_display *display = (struct wl_display *)data;
-
-    wl_shell_surface_pong(shell_surface, serial);
+    xdg_wm_base_pong(shell_surface, serial);
     wl_display_flush(display);
 }
 
-static void shsurf_handle_configure(void *data, struct wl_shell_surface *shell_surface, uint32_t edges, int32_t width,
-	int32_t height)
-{
+static const struct xdg_wm_base_listener shell_listener = {
+   shsurf_handle_ping
+};
+
+static void handle_configure(void *data, struct xdg_surface *surface, uint32_t serial) {
+    xdg_surface_ack_configure(surface, serial);
 }
 
-static void shsurf_handle_popup_done(void *data, struct wl_shell_surface *shell_surface)
-{
-}
-
-static const struct wl_shell_surface_listener shellListener = {
-	shsurf_handle_ping,
-	shsurf_handle_configure,
-	shsurf_handle_popup_done
+static const struct xdg_surface_listener surface_listener = {
+    .configure = handle_configure
 };
 
 class WaylandWindow : public NativeWindow
 {
     public:
         WaylandWindow(int width, int height, const std::string& title, struct wl_display *display,
-                struct wl_compositor *compositor, struct wl_shell *shell, struct wl_output *output,
+                struct wl_compositor *compositor, struct xdg_wm_base *shell, struct wl_output *output,
                 int fs_width, int fs_height)
             : NativeWindow(width, height, title)
                 , mDisplay(display), mOutput(output), mFSWidth(fs_width), mFSHeight(fs_height)
@@ -49,13 +45,16 @@ class WaylandWindow : public NativeWindow
                 return;
             }
 
-            mShellSurface = wl_shell_get_shell_surface(shell, mSurface);
+            mShellSurface = xdg_wm_base_get_xdg_surface(shell,mSurface);
+
             if (!mShellSurface) {
                 DBG_LOG("Failed to initialize wayland shell surface\n");
                 return;
             }
+            mXdg_toplevel = xdg_surface_get_toplevel(mShellSurface);
 
-            wl_shell_surface_add_listener(mShellSurface, &shellListener, mDisplay);
+            xdg_wm_base_add_listener(shell, &shell_listener, mDisplay);
+            xdg_surface_add_listener(mShellSurface,&surface_listener,NULL);
             /* TODO we set the shell surface listener, so it responds to compositor
              * pings. However the retracer doesn't regularly dispatch events
              * from the Wayland default queue, so some compositors might think
@@ -73,7 +72,8 @@ class WaylandWindow : public NativeWindow
         ~WaylandWindow()
         {
             wl_egl_window_destroy((wl_egl_window*)mHandle);
-            wl_shell_surface_destroy(mShellSurface);
+            xdg_toplevel_destroy(mXdg_toplevel);
+            xdg_surface_destroy(mShellSurface);
             wl_surface_destroy(mSurface);
         }
 
@@ -89,10 +89,9 @@ class WaylandWindow : public NativeWindow
             if (getWidth() == mFSWidth && getHeight() == mFSHeight) {
                 /* We assume that if the desired size is the size of the
                  * framebuffer then we want it fullscreen */
-                wl_shell_surface_set_fullscreen(mShellSurface, WL_SHELL_SURFACE_FULLSCREEN_METHOD_DEFAULT,
-                                            0, mOutput);
+                xdg_toplevel_set_fullscreen(mXdg_toplevel,mOutput);
             } else{
-                wl_shell_surface_set_toplevel(mShellSurface);
+                xdg_toplevel_unset_fullscreen(mXdg_toplevel);
             }
             wl_display_roundtrip(mDisplay);
             mVisible = true;
@@ -111,10 +110,9 @@ class WaylandWindow : public NativeWindow
                     if (getWidth() == mFSWidth && getHeight() == mFSHeight) {
                         /* We assume that if the desired size is the size of the
                          * framebuffer then we want it fullscreen */
-                        wl_shell_surface_set_fullscreen(mShellSurface, WL_SHELL_SURFACE_FULLSCREEN_METHOD_DEFAULT,
-                                                    0, mOutput);
+                        xdg_toplevel_set_fullscreen(mXdg_toplevel,mOutput);
                     } else{
-                        wl_shell_surface_set_toplevel(mShellSurface);
+                        xdg_toplevel_unset_fullscreen(mXdg_toplevel);
                     }
                     wl_display_roundtrip(mDisplay);
                 }
@@ -130,7 +128,9 @@ class WaylandWindow : public NativeWindow
         int mFSWidth;
         int mFSHeight;
         struct wl_surface* mSurface;
-        struct wl_shell_surface* mShellSurface;
+        struct xdg_surface *mShellSurface;
+        struct xdg_toplevel *mXdg_toplevel;
+        int configured;
         bool mVisible;
 };
 
@@ -186,7 +186,7 @@ void GlwsEglWayland::processStepEvent()
  * Could be done by making these class functions instead I suppose */
 struct registry_data {
     struct wl_compositor** compositor;
-    struct wl_shell**      shell;
+    struct xdg_wm_base**     shell;
     struct wl_output**     output;
     struct wl_seat**       seat;
 };
@@ -200,9 +200,9 @@ static void registry_handler(void *data, struct wl_registry *wl_registry, uint32
     if (!strcmp(interface, "wl_compositor")) {
         uint32_t bind_ver = std::min(version, 3u);
         *(ptrs_out->compositor) = (wl_compositor*)wl_registry_bind(wl_registry, name, &wl_compositor_interface, bind_ver);
-    } else if (!strcmp(interface, "wl_shell")) {
+    }else if (!strcmp(interface, xdg_wm_base_interface.name)){
         uint32_t bind_ver = std::min(version, 1u);
-        *(ptrs_out->shell) = (wl_shell*)wl_registry_bind(wl_registry, name, &wl_shell_interface, bind_ver);
+        *(ptrs_out->shell) = (xdg_wm_base*)wl_registry_bind(wl_registry, name, &xdg_wm_base_interface, bind_ver);
     } else if (!strcmp(interface, "wl_output") && !(*ptrs_out->output)) {
         uint32_t bind_ver = std::min(version, 2u);
         *(ptrs_out->output) = (wl_output*)wl_registry_bind(wl_registry, name, &wl_output_interface, bind_ver);
@@ -356,7 +356,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
         if (mOutputProps.output)
             wl_output_destroy(mOutputProps.output);
         if (mShell)
-            wl_shell_destroy(mShell);
+            xdg_wm_base_destroy(mShell);
         if (mSeat)
             wl_seat_destroy(mSeat);
 
@@ -381,7 +381,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
         gRetracer.reportAndAbort("Unable to add output listener");
         wl_compositor_destroy(mCompositor);
         wl_output_destroy(mOutputProps.output);
-        wl_shell_destroy(mShell);
+        xdg_wm_base_destroy(mShell);
         if (mSeat) {
             wl_seat_destroy(mSeat);
         }
@@ -393,7 +393,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
         gRetracer.reportAndAbort("Unable to roundtrip to the compositor after adding the output listener");
         wl_compositor_destroy(mCompositor);
         wl_output_destroy(mOutputProps.output);
-        wl_shell_destroy(mShell);
+        xdg_wm_base_destroy(mShell);
         if (mSeat) {
             wl_seat_destroy(mSeat);
         }
@@ -405,7 +405,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
         gRetracer.reportAndAbort("Unable to create a queue for keyboard events");
         wl_compositor_destroy(mCompositor);
         wl_output_destroy(mOutputProps.output);
-        wl_shell_destroy(mShell);
+        xdg_wm_base_destroy(mShell);
         wl_seat_destroy(mSeat);
         wl_display_disconnect(display);
         return 0;
@@ -428,7 +428,7 @@ EGLNativeDisplayType GlwsEglWayland::getNativeDisplay()
             wl_event_queue_destroy(mKBQueue);
             wl_compositor_destroy(mCompositor);
             wl_output_destroy(mOutputProps.output);
-            wl_shell_destroy(mShell);
+            xdg_wm_base_destroy(mShell);
             wl_seat_destroy(mSeat);
             wl_display_disconnect(display);
             return 0;
@@ -461,7 +461,7 @@ void GlwsEglWayland::releaseNativeDisplay(EGLNativeDisplayType display)
     }
     wl_compositor_destroy(mCompositor);
     wl_output_destroy(mOutputProps.output);
-    wl_shell_destroy(mShell);
+    xdg_wm_base_destroy(mShell);
 
     wl_display_disconnect((struct wl_display *)mEglNativeDisplay);
     mEglNativeDisplay = 0;

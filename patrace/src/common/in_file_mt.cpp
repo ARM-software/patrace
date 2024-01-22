@@ -32,6 +32,7 @@ void InFile::rollback()
     mPreloadedChunks.pop_front();
     mPtr = mCurrentChunk->data() + mCheckpointOffset;
     mFrameNo = mBeginFrame;
+    mChunkEnd = mCurrentChunk->data() + mCurrentChunk->size();
 }
 
 // Read another uncompressed memory chunk from the memory mapped file
@@ -169,7 +170,27 @@ void InFile::PreloadFrames(int frames_to_read, int tid)
         while (ptr < newchunk->data() + newchunk->size())
         {
             const common::BCall& call = *(common::BCall*)ptr;
-            if ((call.tid == tid || tid == -1) && (call.funcId == eglSwapBuffers_id || call.funcId == eglSwapBuffersWithDamage_id)) frames_read++;
+            if (call.funcId == eglCreatePbufferSurface_id)
+            {
+                mPbufferSurfaces.insert(getCreatePbufferSurfaceRet(ptr + sizeof(common::BCall_vlen)));
+            }
+            if ((call.tid == tid || tid == -1) && (call.funcId == eglSwapBuffers_id || call.funcId == eglSwapBuffersWithDamageKHR_id || call.funcId == eglSwapBuffersWithDamageEXT_id))
+            {
+                char *src;
+                const unsigned callLen = mExIdToLen[call.funcId];
+                if (callLen == 0)
+                {
+                    src = ptr + sizeof(common::BCall_vlen);
+                }
+                else
+                {
+                    src = ptr + sizeof(common::BCall);
+                }
+                if (mPbufferSurfaces.count(getDpySurface(src))==0)
+                {
+                    frames_read++;
+                }
+            }
             unsigned int callLen = mExIdToLen[call.funcId];
             if (callLen == 0)
             {
@@ -241,16 +262,30 @@ bool InFile::GetNextCall(void*& fptr, common::BCall_vlen& call, char*& src)
     fptr = mExIdToFunc[call.funcId];
 
     // Count frames and check if we are done or need to start preloading
-    if ((tmp.tid == mTraceTid || mTraceTid == -1) && (tmp.funcId == eglSwapBuffers_id || tmp.funcId == eglSwapBuffersWithDamage_id))
+    if ((tmp.tid == mTraceTid || mTraceTid == -1) && (tmp.funcId == eglSwapBuffers_id || call.funcId == eglSwapBuffersWithDamageKHR_id || call.funcId == eglSwapBuffersWithDamageEXT_id))
     {
-        mFrameNo++;
-        if (mFrameNo >= mBeginFrame && mPreload)
+        if (mPbufferSurfaces.count(getDpySurface(src))==0)
         {
-            // The below count does not include frames still remaining to be read in the current chunk, so we might possibly
-            // be reading more chunks than we need here. Still room to optimize more.
-            PreloadFrames(mEndFrame - mBeginFrame, mTraceTid);
+            mFrameNo++;
+            if (mFrameNo >= mBeginFrame && mPreload)
+            {
+                // The below count does not include frames still remaining to be read in the current chunk, so we might possibly
+                // be reading more chunks than we need here. Still room to optimize more.
+                PreloadFrames(mEndFrame - mBeginFrame, mTraceTid);
+            }
         }
     }
+
+    if (tmp.funcId == eglCreatePbufferSurface_id)
+    {
+        mPbufferSurfaces.insert(getCreatePbufferSurfaceRet(src));
+    }
+
+    if (tmp.funcId == eglDestroySurface_id)
+    {
+        mPbufferSurfaces.erase(getDpySurface(src));
+    }
+
     curCallNo++;
     return true;
 }
@@ -284,10 +319,20 @@ void InFile::ReadSigBook()
     for (int id = 1; id <= mMaxSigId; ++id)
     {
         unsigned int id_notused;
-        mPtr = ReadFixed<unsigned int>(mPtr, id_notused);
-        char *str;
-        mPtr = ReadString(mPtr, str);
-        mExIdToName[id] = str ? str : "";
+        char *mPtr_tmp = nullptr;
+        mPtr_tmp = ReadFixed<unsigned int>(mPtr, id_notused);
+        if(id == (int)id_notused)
+        {
+            mPtr = mPtr_tmp;
+            char *str;
+            mPtr = ReadString(mPtr, str);
+            mExIdToName[id] = str ? str : "";
+        }
+        else
+        {
+            mExIdToName[id] = "";
+            continue;
+        }
     }
 
     mExIdToLen = new int[mMaxSigId + 1];
@@ -300,7 +345,7 @@ void InFile::ReadSigBook()
         const char* name = mExIdToName.at(id).c_str();
         // glTexStorageAttribs*DARM was a short-lived experiment that nonetheless lives on in some sigbooks, just not in use anywhere.
         // GetObjectLabel was a function typo introduced in version r1p0, fixed in r2p0.
-        if (id > 4 && gApiInfo.NameToId(name) == 0 && strcmp(name, "glTexStorageAttribs2DARM") != 0 && strcmp(name, "glTexStorageAttribs3DARM") != 0
+        if (id > 4 && gApiInfo.NameToId(name) == 0 && strcmp(name, "") != 0 && strcmp(name, "glTexStorageAttribs2DARM") != 0 && strcmp(name, "glTexStorageAttribs3DARM") != 0
             && strcmp(name, "GetObjectLabel") != 0)
         {
             DBG_LOG("We have no implementation of function %s (id %d) - replayer likely too old to play this trace file!\n", name, id);

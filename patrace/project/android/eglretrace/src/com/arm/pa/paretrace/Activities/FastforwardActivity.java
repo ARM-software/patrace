@@ -50,6 +50,7 @@ public class FastforwardActivity extends Activity {
             boolean version = receivedIntent.getBooleanExtra("version", false);
             int restorefbo0 = receivedIntent.getIntExtra("restorefbo0", -1);
             boolean txu = receivedIntent.getBooleanExtra("txu", false);
+            boolean shu = receivedIntent.getBooleanExtra("shu", false);
 
             // init with json parameters
             if (receivedIntent.hasExtra("jsonParam")) {
@@ -101,6 +102,9 @@ public class FastforwardActivity extends Activity {
                         if (!receivedIntent.hasExtra("txu") && json_Param.has("txu")) {
                             txu = json_Param.getBoolean("txu");
                         }
+                        if (!receivedIntent.hasExtra("shu") && json_Param.has("shu")) {
+                            shu = json_Param.getBoolean("shu");
+                        }
                     } catch (Exception e) {
                         json_data = ""; // shut up the compiler
                         e.printStackTrace();
@@ -143,6 +147,9 @@ public class FastforwardActivity extends Activity {
             }
             if (txu == true) {
                 args += "--txu ";
+            }
+            if (shu == true) {
+                args += "--shu ";
             }
             Log.i(TAG, "forward args: " + args);
 

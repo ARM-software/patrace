@@ -232,6 +232,7 @@ void after_glLinkProgram(unsigned int program);
 
 void after_eglInitialize(EGLDisplay dpy);
 void after_eglCreateWindowSurface(EGLDisplay dpy, EGLConfig config, EGLSurface surf, EGLint x, EGLint y, EGLint width, EGLint height);
+void after_eglCreatePbufferSurface(EGLDisplay dpy, EGLConfig config, EGLSurface surf);
 void after_eglCreateContext(EGLContext ctx, EGLDisplay dpy, EGLConfig config, const EGLint * attrib_list);
 void after_eglMakeCurrent(EGLDisplay dpy, EGLSurface drawSurf, EGLContext ctx);
 void after_eglDestroyContext(EGLContext ctx);

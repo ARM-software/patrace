@@ -5,6 +5,7 @@
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
+#include <limits>
 #include "eglstate/common.hpp"
 #include "base/base.hpp"
 #include "commonData.hpp"
@@ -406,25 +407,28 @@ int merge_to_pat(const string &source_name_, const string &target_name, bool mul
             if (reader.parse(&s[0], &s[s.length()] , json_value, false)) {
                 int tid = json_value["1 tid"].asInt();
                 string func_name = json_value["2 func_name"].asString();
-                string return_type = json_value["3 return_type"].asString();
+                bool injected = json_value["3 injected"].asBool();
+                string return_type = json_value["4 return_type"].asString();
 
                 common::CallTM func(func_name.c_str());
                 func.mTid = tid;
+                func.mInjected = injected;
 
                 common::ValueTM *ret_value;
-                setValueTM(ret_value, return_type, json_value["4 return_value"], func_name);
+                setValueTM(ret_value, return_type, json_value["5 return_value"], func_name);
                 func.mRet = *ret_value;
 
-                auto vi = json_value["6 arg_value"].begin();
-                for (unsigned int j = 0; j < json_value["5 arg_type"].size(); ++j)
+                auto vi = json_value["7 arg_value"].begin();
+                for (unsigned int j = 0; j < json_value["6 arg_type"].size(); ++j)
                 {
                     common::ValueTM *pValueTM;
-                    setValueTM(pValueTM, json_value["5 arg_type"][j].asString(), *vi, func_name);
+                    setValueTM(pValueTM, json_value["6 arg_type"][j].asString(), *vi, func_name);
                     func.mArgs.push_back(pValueTM);
                     ++vi;
                 }
 
-                writeout(target_file, &func);
+                if(func_name.substr(0,2) != "//")
+                    writeout(target_file, &func);
                 delete ret_value;
             }
             else {

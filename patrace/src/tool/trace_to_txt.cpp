@@ -169,7 +169,8 @@ int main(int argc, const char* argv[])
         {
             fprintf(fp, " [d:%d]", drawCallNum++);
         }
-        fprintf(fp, " %d : %s\n", curCall->mCallNo, curCall->ToStr(false).c_str());
+        const char *injected = curCall->mInjected ? "INJECTED " : "";
+        fprintf(fp, " %d : %s%s\n", curCall->mCallNo, injected, curCall->ToStr(false).c_str());
     }
 
     fclose(fp);

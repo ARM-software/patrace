@@ -51,6 +51,7 @@ enum FastForwardOptionFlags
     FASTFORWARD_RESTORE_TEXTURES      = 1 << 0,
     FASTFORWARD_RESTORE_DEFAUTL_FBO   = 1 << 1,
     FASTFORWARD_REMOVE_UNUSED_TEXTURE = 1 << 2,
+    FASTFORWARD_REMOVE_UNUSED_SHADER  = 1 << 3
 };
 
 struct FastForwardOptions
@@ -76,34 +77,71 @@ struct FastForwardOptions
     {}
 };
 
-class GlobalTextureIdTracer
+struct GlobalTextureIdTracer
 {
-public:
-    std::vector<unsigned int> map; // map global id to trace id
-    std::map<unsigned int, unsigned int> remap; // remap of the mapping above
+    GlobalTextureIdTracer* share;
+    std::vector<unsigned int> store; // map global id to trace id
+    std::map<unsigned int, unsigned int> remapping; // remap of the mapping above
+    inline std::map<unsigned int, unsigned int> remap() const { return share->remapping; }
+    inline std::vector<unsigned int> map() const { return share->store; }
+
+    GlobalTextureIdTracer(GlobalTextureIdTracer* _share = nullptr) : share(_share)
+    {
+        if (_share == nullptr)
+        {
+            share = this;
+        }
+    }
 
     void add(unsigned int traceId)
     {
-        unsigned int globalId = map.size();
-        map.emplace_back(traceId); // use vector index as global id
-        remap[traceId] = globalId;
+        unsigned int globalId = share->store.size();
+        share->store.emplace_back(traceId); // use vector index as global id
+        share->remapping[traceId] = globalId;
     }
 
     void remove(unsigned int traceId)
     {
-        remap.erase(traceId);
+        share->remapping.erase(traceId);
     }
 };
 
-GlobalTextureIdTracer gTextureIdTracer;
-GlobalTextureIdTracer gShaderIdTracer;
-std::unordered_set<unsigned int> gUnusedMipgen; // call id of redundant glGenerateMipmap()
-std::unordered_set<unsigned int> gUnusedTexture; // global id of redundant textures
-std::unordered_set<unsigned int> gUnusedShader;
+struct context
+{
+    int id;
+    int index;
+    int share_context;
+    GlobalTextureIdTracer gTextureIdTracer;
+    GlobalTextureIdTracer gShaderIdTracer;
+    GlobalTextureIdTracer gBufferIdTracer;
+
+    context(int _id, int _index, int _share_context, context* _share)
+            : id(_id), index(_index), share_context(_share_context), gTextureIdTracer(&_share->gTextureIdTracer), gShaderIdTracer(&_share->gShaderIdTracer),gBufferIdTracer(&_share->gBufferIdTracer)
+    {
+        if(!_share)
+            gBufferIdTracer.add(0);
+    }
+
+    context(int _id, int _index)
+            : id(_id), index(_index), share_context(0), gTextureIdTracer(), gShaderIdTracer()
+    {
+        gBufferIdTracer.add(0);
+    }
+
+};
+
+std::deque<context> contexts;
+std::map<int, int> context_remapping; //context id<->idx
+std::map<int, int> current_context; // map threads to contexts
 unsigned int gRemovedMipgen  = 0;
 unsigned int gRemovedTexFunc = 0;
 unsigned int gRemovedTexture = 0;
+unsigned int gRemovedBuffer = 0;
 unsigned int gRemovedShaderFunc = 0;
+std::map<int, std::unordered_set<unsigned int>> map_unusedTexture;
+std::map<int, std::unordered_set<unsigned int>> map_unusedShader;
+std::map<int, std::unordered_set<unsigned int>> map_unusedBuffer;
+std::unordered_set<unsigned int> gUnusedMipgen; // call id of redundant glGenerateMipmap()
 
 namespace RetraceAndTrim
 {
@@ -979,7 +1017,7 @@ private:
 class BufferSaver
 {
 public:
-    static void run(retracer::Context& retracerContext, common::OutFile& outFile, int threadId)
+    static void run(retracer::Context& retracerContext, common::OutFile& outFile, int threadId, unsigned int flags)
     {
         const auto buffers = retracerContext.getBufferMap().GetCopy();
         const auto revBuffers = retracerContext.getBufferRevMap().GetCopy();
@@ -999,10 +1037,37 @@ public:
         if (search != revBuffers.end())
             oldBoundBufferTrace = search->second;
 
+        std::unordered_set<unsigned int> CurrentBoundBuffer;
+        CurrentBoundBuffer.emplace(oldBoundBufferTrace);
+        std::unordered_set<GLenum> BoundBufferType = {GL_ELEMENT_ARRAY_BUFFER_BINDING, GL_PIXEL_PACK_BUFFER_BINDING, GL_PIXEL_UNPACK_BUFFER_BINDING, GL_TRANSFORM_FEEDBACK_BUFFER_BINDING, GL_UNIFORM_BUFFER_BINDING};
+        for (const auto type : BoundBufferType)
+        {
+            GLint oldBoundBufferi = 0;
+            _glGetIntegerv(type, &oldBoundBufferi);
+            auto search = revBuffers.find(oldBoundBufferi);
+            if (search != revBuffers.end())
+                CurrentBoundBuffer.emplace(search->second);
+        }
+
         for (const auto it : buffers)
         {
             const unsigned int traceBufferId = it.first;
             const unsigned int retraceBufferId = it.second;
+            if ((flags & FASTFORWARD_REMOVE_UNUSED_TEXTURE))
+            {
+                const unsigned int globalBufferId = contexts[current_context[threadId]].gBufferIdTracer.remap().at(traceBufferId);
+
+                if (contexts[current_context[threadId]].gBufferIdTracer.map().at(globalBufferId) != traceBufferId)
+                {
+                    DBG_LOG("WARNING: Reverse buffer lookup failed: global-ID %d's rev. was %d, but should be %d.\n", globalBufferId, contexts[current_context[threadId]].gBufferIdTracer.map().at(globalBufferId), traceBufferId);
+                }
+
+                if (map_unusedBuffer[current_context[threadId]].count(globalBufferId) != 0)
+                {
+                    gRemovedBuffer++;
+                    continue;
+                }
+            }
 
             DBG_LOG("Saving buffer %d\n", traceBufferId);
 
@@ -1028,6 +1093,20 @@ public:
                     continue;
                 }
 
+                GLint storage_bits;
+                _glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_STORAGE_FLAGS_EXT, &storage_bits);
+                GLint new_access = storage_bits & (GL_MAP_READ_BIT | GL_MAP_WRITE_BIT);
+                if (!new_access)
+                {
+                    // GL_INVALID_OPERATION is generated for any of the following conditions:
+                    // Any of GL_MAP_READ_BIT, GL_MAP_WRITE_BIT, GL_MAP_PERSISTENT_BIT, or GL_MAP_COHERENT_BIT are set, but the same bit is not included in the buffer's storage flags.
+                    // So we need to make sure that the new access are consistent with the previous GL_BUFFER_STORAGE_FLAGS
+                    // In some cases, there may be neither GL_MAP_READ_BIT nor GL_MAP_WRITE_BIT in GL_BUFFER_STORAGE_FLAGS, it can't be mapped into the client's address space.
+                    // For these buffers, we don't need and can't save them and continue to save the next buffer.
+                    DBG_LOG("Got 0 as new_access. Skip saving a buffer\n");
+                    continue;
+                }
+
                 GLint pre_mapped = 0;
                 GLint64 pre_offset = 0;
                 GLint64 pre_mapLen = 0;
@@ -1044,7 +1123,7 @@ public:
                 }
 
                 // Map and output to trace
-                void* data = _glMapBufferRange(GL_ARRAY_BUFFER, 0, buffLength, GL_MAP_READ_BIT);
+                void* data = _glMapBufferRange(GL_ARRAY_BUFFER, 0, buffLength, new_access);
                 {
                     if (!data)
                     {
@@ -1198,14 +1277,14 @@ public:
 
             if ((mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE))
             {
-                const unsigned int globalTextureId = gTextureIdTracer.remap.at(traceTextureId);
+                const unsigned int globalTextureId = contexts[current_context[mThreadId]].gTextureIdTracer.remap().at(traceTextureId);
 
-                if (gTextureIdTracer.map.at(globalTextureId) != traceTextureId)
+                if (contexts[current_context[mThreadId]].gTextureIdTracer.map().at(globalTextureId) != traceTextureId)
                 {
-                    DBG_LOG("WARNING: Reverse texture lookup failed: global-ID %d's rev. was %d, but should be %d.\n", globalTextureId, gTextureIdTracer.map.at(globalTextureId), traceTextureId);
+                    DBG_LOG("WARNING: Reverse texture lookup failed: global-ID %d's rev. was %d, but should be %d.\n", globalTextureId, contexts[current_context[mThreadId]].gTextureIdTracer.map().at(globalTextureId), traceTextureId);
                 }
 
-                if (gUnusedTexture.count(globalTextureId) != 0)
+                if (map_unusedTexture[current_context[mThreadId]].count(globalTextureId) != 0)
                 {
                     gRemovedTexture++;
                     continue;
@@ -1264,25 +1343,6 @@ public:
         checkError("TextureSaver::run end");
     }
 
-private:
-    struct TexTypeInfo
-    {
-        std::string name;
-        GLenum target;
-        GLenum bindTarget;
-        TraceCommandEmitter::TexDimension texDimension;
-        TexTypeInfo()
-        {}
-        TexTypeInfo(std::string _name, GLenum _target, GLenum _bindTarget, TraceCommandEmitter::TexDimension _texDimension):
-            name(_name),
-            target(_target),
-            bindTarget(_bindTarget),
-            texDimension(_texDimension)
-        {}
-    };
-
-    std::map<DepthDumper::TexType, TexTypeInfo> texTypeToInfo;
-
     bool isArrayTex(DepthDumper::TexType type)
     {
         return !(type == DepthDumper::Tex2D || type == DepthDumper::TexCubemap || type == DepthDumper::Tex3D);
@@ -1334,7 +1394,7 @@ private:
         if (target == GL_TEXTURE_CUBE_MAP)
             target = GL_TEXTURE_CUBE_MAP_POSITIVE_X;
         checkError("getTextureInfo begin");
-
+        
         TextureInfo info;
         ff_glGetTexLevelParameteriv(target, 0, GL_TEXTURE_INTERNAL_FORMAT, &info.mInternalFormat);
 
@@ -1666,6 +1726,11 @@ private:
                     readTexFormat = GL_DEPTH_STENCIL;
                     readTexType = GL_UNSIGNED_INT_24_8;
                 }
+                else if (texInfo.mInternalFormat == GL_DEPTH32F_STENCIL8)
+                {
+                    readTexFormat = GL_DEPTH_STENCIL;
+                    readTexType = GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
+                }
                 else if (texInfo.mInternalFormat == GL_RG32UI)
                 {
                     readTexFormat = GL_RG_INTEGER;
@@ -1898,6 +1963,23 @@ private:
         return retval;
     }
 private:
+    struct TexTypeInfo
+    {
+        std::string name;
+        GLenum target;
+        GLenum bindTarget;
+        TraceCommandEmitter::TexDimension texDimension;
+        TexTypeInfo()
+        {}
+        TexTypeInfo(std::string _name, GLenum _target, GLenum _bindTarget, TraceCommandEmitter::TexDimension _texDimension):
+            name(_name),
+            target(_target),
+            bindTarget(_bindTarget),
+            texDimension(_texDimension)
+        {}
+    };
+
+    std::map<DepthDumper::TexType, TexTypeInfo> texTypeToInfo;
     retracer::Context& mRetracerContext;
     common::OutFile& mOutFile;
     int mThreadId;
@@ -2581,11 +2663,6 @@ private:
         _glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &mElementBuffer);
         mElementBuffer = mRetracerContext.getBufferRevMap().RValue(mElementBuffer);
 
-        GLuint index[] = {0, 1, 2, 0, 2, 3};
-        mIB = mVB + 1;
-        mCmdEmitter.emitGenBuffers(1, &mIB);
-        mCmdEmitter.emitBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mIB);
-        mCmdEmitter.emitBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(index), index, GL_STATIC_DRAW);
 
         // vao
         _glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &mVAO);
@@ -2602,6 +2679,12 @@ private:
         _glGetVertexAttribPointerv(0, GL_VERTEX_ATTRIB_ARRAY_POINTER, &mVA0Pointer);
         mCmdEmitter.emitVertexAttibPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
         mCmdEmitter.emitEnableVertexAttribArray(0);
+
+        GLuint index[] = {0, 1, 2, 0, 2, 3};
+        mIB = mVB + 1;
+        mCmdEmitter.emitGenBuffers(1, &mIB);
+        mCmdEmitter.emitBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mIB);
+        mCmdEmitter.emitBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(index), index, GL_STATIC_DRAW);
     }
 
     void emitDraw()
@@ -2884,10 +2967,72 @@ static void injectClear(retracer::Context& retracerContext, common::OutFile& out
 
 using namespace retracer;
 
-bool checkUnusedTexture()
+bool checkUnusedTexture(unsigned int mfflag)
 {
     // this function is used for tracing global texture ids and determining if the current function call should be skipped
-    const char *funcName = gRetracer.mFile.ExIdToName(gRetracer.mCurCall.funcId);
+    const char *funcName = gRetracer.GetCurCallName();
+    int cur_thread = gRetracer.getCurTid();
+    if (strstr(funcName, "eglCreateContext"))
+    {
+        char* src = gRetracer.src;
+        int ret;
+        int dpy;
+        int config;
+        int share;
+        common::Array<int> attrib_list;
+
+        src = common::ReadFixed(src, dpy);
+        src = common::ReadFixed(src, config);
+        src = common::ReadFixed(src, share);
+        src = common::Read1DArray(src, attrib_list);
+        src = common::ReadFixed(src, ret);
+
+        context_remapping[ret] = contexts.size(); // generate id<->idx table
+        if (share && context_remapping.count(share) > 0)
+        {
+            int share_idx = UNBOUND;
+            int share_id = share;
+            // Find root context, since sharing can be transitive
+            do {
+                share_idx = context_remapping.at(share_id);
+                share_id = contexts.at(share_idx).share_context;
+            } while (share_id != 0);
+            contexts.emplace_back(ret, contexts.size(), share, &contexts.at(share_idx));
+        } else {
+            contexts.emplace_back(ret, contexts.size());
+        }
+    }
+    if (strstr(funcName, "eglMakeCurrent")) // find contexts that are used
+    {
+        char* src = gRetracer.src;
+        int ret;
+        int dpy;
+        int draw;
+        int read;
+        int ctx;
+
+        src = common::ReadFixed(src, dpy);
+        src = common::ReadFixed(src, draw);
+        src = common::ReadFixed(src, read);
+        src = common::ReadFixed(src, ctx);
+        src = common::ReadFixed(src, ret);
+
+        if (draw != read)
+        {
+            DBG_LOG("WARNING: Read surface != write surface not supported!\n");
+            abort();
+        }
+
+        if (ctx == (int64_t)EGL_NO_CONTEXT)
+        {
+            current_context[cur_thread] = UNBOUND;
+        }
+        else if (context_remapping.count(ctx) > 0)
+        {
+            current_context[cur_thread] = context_remapping.at(ctx);
+        }
+    }
+
     if (strstr(funcName, "glGenTexture"))
     {
         char* src = gRetracer.src;
@@ -2897,7 +3042,8 @@ bool checkUnusedTexture()
         src = common::Read1DArray(src, textures);
         for (unsigned int i = 0; i < textures.cnt; ++i)
         {
-            if (gTextureIdTracer.remap.count(textures[i]) == 0) gTextureIdTracer.add(textures[i]);
+            if (contexts[current_context[cur_thread]].gTextureIdTracer.remap().count(textures[i]) == 0)
+                contexts[current_context[cur_thread]].gTextureIdTracer.add(textures[i]);
         }
     }
 
@@ -2908,11 +3054,11 @@ bool checkUnusedTexture()
         src = common::ReadFixed<int>(src, target);
         unsigned int texture;
         src = common::ReadFixed<unsigned int>(src, texture);
-        Context& context = gRetracer.getCurrentContext();
-        unsigned int textureNew = context.getTextureMap().RValue(texture); // texture is traceId and textureNew is retraceId
+        Context& ctx = gRetracer.getCurrentContext();
+        unsigned int textureNew = ctx.getTextureMap().RValue(texture); // texture is traceId and textureNew is retraceId
         if (textureNew == 0 && texture != 0)
         {
-            gTextureIdTracer.add(texture);
+            contexts[current_context[cur_thread]].gTextureIdTracer.add(texture);
         }
     }
 
@@ -2925,16 +3071,53 @@ bool checkUnusedTexture()
         src = common::Read1DArray<unsigned int>(src, textures);
         for (unsigned int i = 0; i < textures.cnt; ++i)
         {
-            if (gTextureIdTracer.remap.count(textures[i]) != 0) gTextureIdTracer.remove(textures[i]);
+            if (contexts[current_context[cur_thread]].gTextureIdTracer.remap().count(textures[i]) != 0)
+                contexts[current_context[cur_thread]].gTextureIdTracer.remove(textures[i]);
         }
     }
 
-    else if (strstr(funcName, "glGenerateMipmap"))
+    else if (strstr(funcName, "glGenBuffer"))
     {
-        if (gUnusedMipgen.count(gRetracer.mFile.curCallNo) != 0)
+        char* src = gRetracer.src;
+        int n;
+        src = common::ReadFixed<int>(src, n);
+        common::Array<unsigned int> buffers;
+        src = common::Read1DArray(src, buffers);
+        for (unsigned int i = 0; i < buffers.cnt; ++i)
         {
-            gRemovedMipgen++;
-            return true;
+            if (contexts[current_context[cur_thread]].gBufferIdTracer.remap().count(buffers[i]) == 0)
+            {
+                contexts[current_context[cur_thread]].gBufferIdTracer.add(buffers[i]);
+            }
+        }
+    }
+
+    else if (strstr(funcName, "glBindBuffer"))
+    {
+        char* src = gRetracer.src;
+        int target;
+        src = common::ReadFixed<int>(src, target);
+        unsigned int buffer;
+        src = common::ReadFixed<unsigned int>(src, buffer);
+        Context& ctx = gRetracer.getCurrentContext();
+        unsigned int bufferNew = ctx.getBufferMap().RValue(buffer);
+        if (bufferNew == 0 && buffer != 0)
+        {
+            contexts[current_context[cur_thread]].gBufferIdTracer.add(buffer);
+        }
+    }
+
+    else if (strstr(funcName, "glDeleteBuffers"))
+    {
+        char* src = gRetracer.src;
+        int target;
+        src = common::ReadFixed<int>(src, target);
+        common::Array<unsigned int> buffers;
+        src = common::Read1DArray<unsigned int>(src, buffers);
+        for (unsigned int i = 0; i < buffers.cnt; ++i)
+        {
+            if (contexts[current_context[cur_thread]].gBufferIdTracer.remap().count(buffers[i]) != 0)
+                contexts[current_context[cur_thread]].gBufferIdTracer.remove(buffers[i]);
         }
     }
 
@@ -2945,8 +3128,8 @@ bool checkUnusedTexture()
         src = common::ReadFixed(src, type);
         unsigned int ret;
         src = common::ReadFixed<unsigned int>(src, ret);
-        if (gShaderIdTracer.remap.count(ret) == 0) gShaderIdTracer.add(ret);
-        
+        if (contexts[current_context[cur_thread]].gShaderIdTracer.remap().count(ret) == 0)
+            contexts[current_context[cur_thread]].gShaderIdTracer.add(ret);
     }
 
     else if (strstr(funcName, "glDeleteShader"))
@@ -2954,67 +3137,207 @@ bool checkUnusedTexture()
         char* src = gRetracer.src;
         unsigned int shader;
         src = common::ReadFixed<unsigned int>(src, shader);
-        if (gShaderIdTracer.remap.count(shader) != 0) gShaderIdTracer.remove(shader);
+        if (contexts[current_context[cur_thread]].gShaderIdTracer.remap().count(shader) != 0)
+            contexts[current_context[cur_thread]].gShaderIdTracer.remove(shader);
     }
 
-    if (strstr(funcName, "glTexImage")
-        || strstr(funcName, "glTexStorage")
-        || strstr(funcName, "glTexSubImage")
-        || strstr(funcName, "glCompressedTexImage")
-        || strstr(funcName, "glCompressedTexSubImage"))
+    if ((mfflag & FASTFORWARD_REMOVE_UNUSED_TEXTURE))
     {
-        char* src = gRetracer.src;
-        GLenum target;
-        src = common::ReadFixed<GLenum>(src, target);
-        GLenum target_binding = Texture::_targetToBinding(target);
-        GLint retraceTextureId;
-        glGetIntegerv(target_binding, &retraceTextureId);
-        Context& context = gRetracer.getCurrentContext();
-        unsigned int traceTextureId = context.getTextureRevMap().RValue((unsigned int)retraceTextureId);
-        unsigned int globalTextureId = gTextureIdTracer.remap.at(traceTextureId);
-        if (gUnusedTexture.count(globalTextureId) && traceTextureId != 0)
+        if (strstr(funcName, "glGenerateMipmap"))
         {
-            gRemovedTexFunc++;
-            return true;
+            if (gUnusedMipgen.count(gRetracer.mFile.curCallNo) != 0)
+            {
+                gRemovedMipgen++;
+                return true;
+            }
+        }
+
+        if (strstr(funcName, "glTexImage")
+            || strstr(funcName, "glTexStorage")
+            || strstr(funcName, "glTexSubImage")
+            || strstr(funcName, "glCompressedTexImage")
+            || strstr(funcName, "glCompressedTexSubImage"))
+        {
+            char* src = gRetracer.src;
+            GLenum target;
+            src = common::ReadFixed<GLenum>(src, target);
+            GLenum target_binding = Texture::_targetToBinding(target);
+            GLint retraceTextureId;
+            glGetIntegerv(target_binding, &retraceTextureId);
+            Context& context = gRetracer.getCurrentContext();
+            unsigned int traceTextureId = context.getTextureRevMap().RValue((unsigned int)retraceTextureId);
+            unsigned int globalTextureId = contexts[current_context[cur_thread]].gTextureIdTracer.remap().at(traceTextureId);
+            if (map_unusedTexture[current_context[cur_thread]].count(globalTextureId) && traceTextureId != 0)
+            {
+                gRemovedTexFunc++;
+                return true;
+            }
         }
     }
-
-    if (strcmp(funcName, "glShaderSource") == 0
-        || strcmp(funcName, "glCompileShader") == 0
-        || strcmp(funcName, "glAttachShader") == 0)
+    if ((mfflag & FASTFORWARD_REMOVE_UNUSED_SHADER))
     {
-        char* src = gRetracer.src;
-        GLuint shader;
-        src = common::ReadFixed<GLenum>(src, shader);
-        if (strcmp(funcName, "glAttachShader") == 0)
+        if (strcmp(funcName, "glShaderSource") == 0
+            || strcmp(funcName, "glCompileShader") == 0
+            || strcmp(funcName, "glAttachShader") == 0)
         {
+            char* src = gRetracer.src;
+            GLuint shader;
             src = common::ReadFixed<GLenum>(src, shader);
+            if (strcmp(funcName, "glAttachShader") == 0)
+            {
+                src = common::ReadFixed<GLenum>(src, shader);
+            }
+            unsigned int globalShaderId = contexts[current_context[cur_thread]].gShaderIdTracer.remap().at(shader);
+            if (map_unusedShader[current_context[cur_thread]].count(globalShaderId) && shader != 0)
+            {
+                gRemovedShaderFunc++;
+                return true;
+            }
         }
-        unsigned int globalShaderId = gShaderIdTracer.remap.at(shader);
-        if (gUnusedShader.count(globalShaderId) && shader != 0)
+        if (strstr(funcName, "glLinkProgram"))
         {
-            gRemovedShaderFunc++;
-            return true;
+            char* src = gRetracer.src;
+            GLuint p;
+            src = common::ReadFixed<GLenum>(src, p);
+            Context& context = gRetracer.getCurrentContext();
+            unsigned int retracePId = context.getProgramMap().RValue((unsigned int)p);
+            for (const GLuint retraceShId : gRetracer.getCurrentContext().getShaderIDs(retracePId))
+            {
+                unsigned int traceShId = context.getShaderRevMap().RValue((unsigned int)retraceShId);
+                unsigned int globalShaderId = contexts[current_context[cur_thread]].gShaderIdTracer.remap().at(traceShId);
+                if (map_unusedShader[current_context[cur_thread]].count(globalShaderId))
+                {
+                    gRemovedShaderFunc++;
+                    return true;
+                }
+            }
+            return false;
         }
     }
-    if (strstr(funcName, "glLinkProgram"))
+    return false;
+}
+
+bool checkTexSubImage()
+{
+    char* src = gRetracer.src;
+    GLenum target;
+    src = common::ReadFixed<GLenum>(src, target);
+    RetraceAndTrim::TextureSaver::TextureInfo texInfo = RetraceAndTrim::TextureSaver::getTextureInfo(target);
+
+    GLint level;
+    src = common::ReadFixed<GLint>(src, level);
+
+    GLint readTexFormat = texInfo.mInternalFormat;
+    if (texInfo.mIsCompressed || texInfo.mInternalFormat == GL_RGB9_E5)
     {
-        char* src = gRetracer.src;
-        GLuint p;
-        src = common::ReadFixed<GLenum>(src, p);
-        Context& context = gRetracer.getCurrentContext();
-        unsigned int retracePId = context.getProgramMap().RValue((unsigned int)p);
-        for (const GLuint retraceShId : gRetracer.getCurrentContext().getShaderIDs(retracePId))
-        {
-            unsigned int traceShId = context.getShaderRevMap().RValue((unsigned int)retraceShId);
-            unsigned int globalShaderId = gShaderIdTracer.remap.at(traceShId);
-            if (!gUnusedShader.count(globalShaderId)) return false;
-        }
-        gRemovedShaderFunc++;
-        return true;
+        return false;
+    }
+    else if (texInfo.mInternalFormat == GL_LUMINANCE ||
+            texInfo.mInternalFormat == GL_LUMINANCE_ALPHA ||
+            texInfo.mInternalFormat == GL_LUMINANCE8_OES ||
+            texInfo.mInternalFormat == GL_LUMINANCE4_ALPHA4_OES ||
+            texInfo.mInternalFormat == GL_LUMINANCE8_ALPHA8_OES ||
+            texInfo.mInternalFormat == GL_LUMINANCE32F_EXT ||
+            texInfo.mInternalFormat == GL_LUMINANCE_ALPHA32F_EXT ||
+            texInfo.mInternalFormat == GL_LUMINANCE16F_EXT ||
+            texInfo.mInternalFormat == GL_LUMINANCE_ALPHA16F_EXT)
+    {
+        return false;
     }
 
-    return false;
+    else if (texInfo.mRedType && texInfo.mGreenType && texInfo.mBlueType)
+    {
+        if (texInfo.mAlphaType)
+            if (texInfo.mInternalFormat == GL_RGBA16UI)
+                readTexFormat = GL_RGBA_INTEGER;
+            else
+                readTexFormat = GL_RGBA;
+        else if (texInfo.mInternalFormat == GL_RGB16UI)
+            readTexFormat = GL_RGB_INTEGER;
+        else
+            readTexFormat = GL_RGB;
+    }
+    else
+    {
+        if (texInfo.mInternalFormat == GL_R16F)
+        {
+            readTexFormat = GL_RED_EXT;
+        }
+        else if (texInfo.mInternalFormat == GL_R32F ||
+                texInfo.mInternalFormat == GL_R8)
+        {
+            readTexFormat = GL_RED;
+        }
+        else if (texInfo.mInternalFormat == GL_RG16F ||
+                texInfo.mInternalFormat == GL_RG32F ||
+                texInfo.mInternalFormat == GL_RG8)
+        {
+            readTexFormat = GL_RG_EXT;
+        }
+        else if (texInfo.mInternalFormat == GL_DEPTH_COMPONENT16 ||
+                texInfo.mInternalFormat == GL_DEPTH_COMPONENT24 ||
+                texInfo.mInternalFormat == GL_DEPTH_COMPONENT32F ||
+                texInfo.mInternalFormat == GL_DEPTH24_STENCIL8 || texInfo.mInternalFormat == GL_DEPTH_STENCIL)
+        {
+            return true;
+        }
+        else if (texInfo.mInternalFormat == GL_RG32UI)
+        {
+            readTexFormat = GL_RG_INTEGER;
+        }
+        else if (texInfo.mInternalFormat == GL_R16UI)
+        {
+            readTexFormat = GL_RED_INTEGER;
+        }
+        else if (texInfo.mInternalFormat == GL_ALPHA)
+        {
+            readTexFormat = GL_ALPHA;
+        }
+    }
+    GLenum target_binding = Texture::_targetToBinding(target);
+    GLint retraceTextureId;
+    _glGetIntegerv(target_binding, &retraceTextureId);
+    _glGetError();
+
+    GLuint fbo = 0;
+    GLint prev_fbo = 0;
+    GLint prev_readBuff = 0;
+    GLint prev_pixelPackBuffer = 0;
+    GLenum status = 0;
+
+    // Remember old bindings
+    _glGetIntegerv(GL_READ_BUFFER, &prev_readBuff);
+    _glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &prev_pixelPackBuffer);
+    _glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prev_fbo);
+
+    _glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    _glGenFramebuffers(1, &fbo);
+    _glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+    _glReadBuffer(GL_COLOR_ATTACHMENT0);
+    // supports GL_TEXTURE_2D, GL_TEXTURE_2D_ARRAY, GL_TEXTURE_CUBE_MAP, GL_TEXTURE_CUBE_MAP_ARRAY textures for now
+    // add support for GL_TEXTURE_3D
+    if (target == GL_TEXTURE_3D || target == GL_TEXTURE_2D_ARRAY ) {
+        _glFramebufferTextureLayer(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, retraceTextureId, level, 0);
+    }
+    else if (target == GL_TEXTURE_2D || (target >= GL_TEXTURE_CUBE_MAP_POSITIVE_X && target <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z))
+    {
+        _glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, target, retraceTextureId, level);
+    }
+    else return false;
+    status = _glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        DBG_LOG("glCheckFramebufferStatus error: 0x%x\n", status);
+    }
+    GLint supported_readformat = 0;
+    _glGetIntegerv(GL_IMPLEMENTATION_COLOR_READ_FORMAT, &supported_readformat);
+    _glBindBuffer(GL_PIXEL_PACK_BUFFER, prev_pixelPackBuffer);
+    _glBindFramebuffer(GL_READ_FRAMEBUFFER, prev_fbo);
+    _glReadBuffer(prev_readBuff);
+    _glDeleteFramebuffers(1, &fbo);
+    _glGetError();
+    if (readTexFormat != supported_readformat) return false;
+    gRemovedTexFunc++;
+    return true;
 }
 
 static void saveData(common::OutFile &out, unsigned int flags, unsigned int repeat, Json::Value& ffJson, GLint dpy, GLint surface)
@@ -3035,7 +3358,7 @@ static void saveData(common::OutFile &out, unsigned int flags, unsigned int repe
 
     // Save buffers
     {
-    RetraceAndTrim::BufferSaver::run(retracer.getCurrentContext(), out, retracer.getCurTid());
+    RetraceAndTrim::BufferSaver::run(retracer.getCurrentContext(), out, retracer.getCurTid(), flags);
     }
 
     // Save texture
@@ -3088,8 +3411,18 @@ static void replay_thread(common::OutFile &out, const int threadidx, const int o
     while (!retracer.mFinish.load(std::memory_order_consume))
     {
         const char *funcName = retracer.mFile.ExIdToName(retracer.mCurCall.funcId);
-        const bool isSwapBuffers = (retracer.mCurCall.funcId == retracer.mFile.NameToExId("eglSwapBuffers") ||
-                                    retracer.mCurCall.funcId == retracer.mFile.NameToExId("eglSwapBuffersWithDamageKHR"));
+        bool isSwapBuffers = (retracer.mCurCall.funcId == retracer.mFile.NameToExId("eglSwapBuffers") ||
+                                    retracer.mCurCall.funcId == retracer.mFile.NameToExId("eglSwapBuffersWithDamageKHR") ||
+                                    retracer.mCurCall.funcId == retracer.mFile.NameToExId("eglSwapBuffersWithDamageEXT"));
+        if (isSwapBuffers)
+        {
+            if (retracer.mState.pDrawableSet.count(retracer.mState.mThreadArr[our_tid].getDrawable())>0)
+            {
+                isSwapBuffers = false;
+                DBG_LOG("Ignore PbufferSurface SwapBuffers in fastforwarder\n");
+            }
+        }
+
         const bool isDrawCall = (common::FREQUENCY_RENDER == common::GetCallFlags(funcName));
 
         const bool shouldSaveData = isFrameTarget ? (retracer.GetCurFrameId() == ffOptions.mTargetFrame - 1) && isSwapBuffers : curDrawCallNo == ffOptions.mTargetDrawCallNo;
@@ -3120,9 +3453,11 @@ static void replay_thread(common::OutFile &out, const int threadidx, const int o
                 || (strstr(funcName, "glClearBuffer")) // Matches glClearBuffer*
                 || (strcmp(funcName, "glBlitFramebuffer") == 0) // NOTE: strCMP == 0
                 || (strcmp(funcName, "eglSetDamageRegionKHR") == 0)  // NOTE: strCMP == 0
-                || (strcmp(funcName, "glClear") == 0); // NOTE: strCMP == 0
+                || (strcmp(funcName, "glClear") == 0) // NOTE: strCMP == 0
+                || (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE && strcmp(funcName, "glBufferSubData") == 0)
+                || (strstr(funcName, "glTexSubImage")?checkTexSubImage():false);
 
-            if (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE) shouldSkip |= checkUnusedTexture();
+            if (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE || ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_SHADER) shouldSkip |= checkUnusedTexture(ffOptions.mFlags);
 
             if (isFrameTarget)
             {
@@ -3294,7 +3629,8 @@ usage(const char *argv0)
         "  --norestoretex When generating a fastforward trace, don't inject commands to restore the contents of textures to what the would've been when retracing the original. (NOTE: NOT RECOMMEND)\n"
         "  --version Output the version of this program\n"
         "  --restorefbo0 <repeat_times> Repeat to inject a draw call commands and swapbuffer the given number of times to restore the last default FBO. Suggest repeating 3~4 times if setDamageRegionKHR, else repeating 1 time.\n"
-        "  --txu Remove the unused textures and related function calls.\n"
+        "  --txu Remove the unused textures,buffers and related function calls.\n"
+        "  --shu Remove the unused shaders and related function calls.\n"
         "  --restartframenum Set the flag restartFrameNumbering to true.\n"
         "\n"
         , argv0);
@@ -3404,6 +3740,10 @@ static bool ParseCommandLine(int argc, char** argv, FastForwardOptions& ffOption
         {
             ffOptions.mFlags |= FASTFORWARD_REMOVE_UNUSED_TEXTURE;
         }
+        else if (!strcmp(arg, "--shu"))
+        {
+            ffOptions.mFlags |= FASTFORWARD_REMOVE_UNUSED_SHADER;
+        }
         else if(!strcmp(arg, "--restartframenum"))
         {
             ffOptions.mResetFrameNumber = true;
@@ -3464,7 +3804,7 @@ int main(int argc, char** argv)
     common::gApiInfo.RegisterEntries(gles_callbacks);
     common::gApiInfo.RegisterEntries(egl_callbacks);
 
-    if (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE)
+    if (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE || ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_SHADER)
     {
         // Initialize texture usage parser
         ParseInterfaceRetracing parser;
@@ -3477,7 +3817,7 @@ int main(int argc, char** argv)
         parser.ff_endframe = (ffOptions.mEndFrame > INT32_MAX) ? INT32_MAX : ffOptions.mEndFrame; // incase mEndFrame(uint) is out of int range
 
         parser.loop([](ParseInterfaceBase& input, common::CallTM *call, void *data) {return (input.frames <= input.ff_endframe);}, nullptr);
-        parser.outputTexUsage(gUnusedMipgen, gUnusedTexture, gUnusedShader);
+        parser.outputTexUsage(gUnusedMipgen, map_unusedTexture, map_unusedBuffer, map_unusedShader);
         std::string fileName = gRetracer.mOptions.mFileName;
         parser.cleanup();
         gRetracer.~Retracer();
@@ -3547,8 +3887,9 @@ int main(int argc, char** argv)
     retraceAndTrim(out, ffOptions, ffJson);
 
     if (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_TEXTURE)
-        DBG_LOG("%d mipmap generation calls are removed, %d textures are removed, %d texture calls are removed, %d shader calls are removed.\n", gRemovedMipgen, gRemovedTexture, gRemovedTexFunc, gRemovedShaderFunc);
-
+        DBG_LOG("%d mipmap generation calls are removed, %d textures are removed, %d texture calls are removed, %d buffers are removed.\n", gRemovedMipgen, gRemovedTexture, gRemovedTexFunc, gRemovedBuffer);
+    if (ffOptions.mFlags & FASTFORWARD_REMOVE_UNUSED_SHADER)
+        DBG_LOG("%d shader calls are removed.\n", gRemovedShaderFunc);
     // Add our conversion to the list
     addConversionEntry(jsonRoot, "fastforward", gRetracer.mOptions.mFileName, ffJson);
 

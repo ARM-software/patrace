@@ -172,7 +172,7 @@ class ParseVisitor(stdapi.Visitor):
         self.visit(alias.type, arg, name, func)
     def visitOpaque(self, opaque, arg, name, func):
         if func.name in texture_function_names:
-            print('    if (infile.getHeaderVersion() <= HEADER_VERSION_3)')
+            print('    if (headerVersion <= HEADER_VERSION_3)')
             print('    {')
             print('        pValueTM->mType = Opaque_Type;')
             print('        pValueTM->mOpaqueType = BlobType;')
@@ -191,7 +191,7 @@ class ParseVisitor(stdapi.Visitor):
             self.visitOpaqueSpecial(opaque, arg, name, func)
             print('    }')
         elif func.name == "glReadPixels":
-            print('    if (infile.getHeaderVersion() <= HEADER_VERSION_3)')
+            print('    if (headerVersion <= HEADER_VERSION_3)')
             print('    {')
             print('        pValueTM->mType = Opaque_Type;')
             print('        pValueTM->mOpaqueType = NoopType;')
@@ -257,7 +257,7 @@ class CallParser(object):
     def parseFunction(self, func):
         if func.name in notSupportedFuncs:
             return
-        print('static void parse_%s(char* _src, CallTM& callTM, const InFileBase &infile) {' % func.name)
+        print('static void parse_%s(char* _src, CallTM& callTM, common::HeaderVersion headerVersion) {' % func.name)
         print('    callTM.mCallId = %d;' % func.id)
         print('    callTM.mCallName = "%s";' % func.name)
         print()

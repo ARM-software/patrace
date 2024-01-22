@@ -97,7 +97,41 @@ void addConversionEntry(Json::Value& header, const std::string& type, const std:
     conversion["author"] = getUserName();
     conversions.append(conversion);
     header["conversions"] = conversions;
+}
 
+void addConversionEntry2(Json::Value& header, const std::string& type, const std::vector<std::string> sources, const Json::Value& info)
+{
+    Json::Value conversions = Json::arrayValue;
+    if (header.isMember("conversions"))
+    {
+        conversions = header["conversions"];
+    }
+    Json::Value conversion;
+    conversion["version"] = PATRACE_VERSION;
+    conversion["tool"] = type;
+    if (!info.empty())
+    {
+        conversion["info"] = info;
+    }
+
+    Json::Value inputs = Json::Value(Json::arrayValue);
+    for (uint32_t i=0; i<sources.size(); i++)
+    {
+        Json::Value input;
+        std::string source = sources[i];
+        input["file"] = source;
+        std::pair<bool, std::string> md5Result = fileMD5(source);
+        if (md5Result.first)
+        {
+            input["md5"] = md5Result.second;
+        }
+        inputs.append(input);
+    }
+    conversion["input"] = inputs;
+    conversion["timestamp"] = getTimeStamp();
+    conversion["author"] = getUserName();
+    conversions.append(conversion);
+    header["conversions"] = conversions;
 }
 
 bool callNeedsContext(const std::string &name)

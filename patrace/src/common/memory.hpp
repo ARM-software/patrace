@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <map>
 #include <set>
+#include <stdint.h>
 #include "md5/md5.h"
 
 #include <common/os.hpp>
@@ -552,12 +553,21 @@ public:
 
     size_t total_size(unsigned int tid) const
     {
-        PerThreadMap::const_iterator citer =
-            _per_threads.find(tid);
+        PerThreadMap::const_iterator citer = _per_threads.find(tid);
         if (citer == _per_threads.end())
             return 0;
         else
             return citer->second.total_size();
+    }
+
+    uint64_t total_size() const
+    {
+        uint64_t ret = 0;
+        for (const auto& pair : _per_threads)
+        {
+             ret += pair.second.total_size();
+        }
+        return ret;
     }
 
     void clear()

@@ -29,12 +29,12 @@ static unsigned _curCallIndexInFrame = 0;
 std::map<unsigned int, unsigned int> curBufferIdx;
 std::map<unsigned int, unsigned int> bufferLength;
 
-static void writeout(common::OutFile &outputFile, common::CallTM *call)
+static void writeout(common::OutFile &outputFile, common::CallTM *call, bool injected = false)
 {
     const unsigned int WRITE_BUF_LEN = 150*1024*1024;
     static char buffer[WRITE_BUF_LEN];
     char *dest = buffer;
-    dest = call->Serialize(dest);
+    dest = call->Serialize(dest, -1, injected);
     outputFile.Write(buffer, dest-buffer);
 }
 
@@ -184,7 +184,7 @@ int main(int argc, char **argv)
             glMapBufferRange.mArgs.push_back(new common::ValueTM(2));//access= GL_MAP_WRITE_BIT
             glMapBufferRange.mRet = common::ValueTM(call->mRet.mOpaqueIns->GetAsUInt());
             glMapBufferRange.mTid = call->mTid;
-            writeout(outputFile, &glMapBufferRange);
+            writeout(outputFile, &glMapBufferRange, true);
 
             skip = true;
         }
@@ -195,7 +195,7 @@ int main(int argc, char **argv)
             glUnmapBuffer.mArgs.push_back(new common::ValueTM(call->mArgs[0]->GetAsUInt()));
             glUnmapBuffer.mRet = common::ValueTM(call->mRet.GetAsUByte());
             glUnmapBuffer.mTid = call->mTid;
-            writeout(outputFile, &glUnmapBuffer);
+            writeout(outputFile, &glUnmapBuffer, true);
 
             skip = true;
         }

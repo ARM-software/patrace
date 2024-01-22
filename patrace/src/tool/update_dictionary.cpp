@@ -3,9 +3,6 @@
 //
 // Makes trace files look like they have been created with a very old tracer by optimizing their sigbooks.
 //
-// To compile:
-// gcc -o update_dictionary patrace/src/tool/update_dictionary.cpp patrace/src/common/out_file.cpp -Wall -g -O3 -I thirdparty/snappy -std=c++11 builds/patrace/x11_x64/debug/snappy/libsnappy_bundled.a -lstdc++ -I patrace/src
-//
 
 #include <assert.h>
 #include <stdio.h>
@@ -19,8 +16,7 @@
 #include <snappy.h>
 
 #include "common/out_file.hpp"
-
-#include "common/api_info_auto.cpp"
+#include "common/api_info.hpp"
 
 #define SNAPPY_CHUNK_SIZE (1*1024*1024)
 
@@ -118,7 +114,7 @@ int main(int argc, char **argv)
 	}
 	else if (version < common::HEADER_VERSION_4)
 	{
-		printf("Error: Trace file too bad - must be at least version 4\n");
+		printf("Error: Trace file too old - must be at least version 4\n");
 		exit(1);
 	}
 	myread(&jsonLength, sizeof(jsonLength), in, "jsonlength");
@@ -220,7 +216,7 @@ int main(int argc, char **argv)
 	}
 
 	// Create file Id to code Id mapping (should usually be identity)
-	for (const auto pair : stored_sigbook)
+	for (const auto& pair : stored_sigbook)
 	{
 		for (unsigned i = 0; i <= common::ApiInfo::MaxSigId; i++)
 		{

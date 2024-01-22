@@ -38,7 +38,7 @@ public:
     virtual common::CallTM* next_call() override;
     virtual void loop(Callback c, void *data) override;
     virtual void cleanup() override;
-    void outputTexUsage(std::unordered_set<unsigned int>& unusedMipgen, std::unordered_set<unsigned int>& unusedTexture, std::unordered_set<unsigned int>& unusedShader);
+    void outputTexUsage(std::unordered_set<unsigned int>& unusedMipgen, std::map<int, std::unordered_set<unsigned int>> & map_unusedTexture, std::map<int, std::unordered_set<unsigned int>> & map_unusedBuffer, std::map<int, std::unordered_set<unsigned int>> & map_unusedShader);
 
     virtual int64_t getCpuCycles() { return mCpuCycles; }
 

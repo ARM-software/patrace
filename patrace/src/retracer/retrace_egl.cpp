@@ -504,6 +504,8 @@ PUBLIC void retrace_eglCreatePbufferSurface(char* src)
 
     retracer::Drawable* pbufferDrawable = GLWS::instance().CreatePbufferDrawable(attrib_list);
     gRetracer.mState.InsertDrawableMap(ret, pbufferDrawable);
+    gRetracer.mState.pDrawableSet.insert(pbufferDrawable);
+
 }
 
 PUBLIC void retrace_eglDestroySurface(char* src)
@@ -537,6 +539,7 @@ PUBLIC void retrace_eglDestroySurface(char* src)
     }
 
     s.RemoveDrawableMap(surface);
+    gRetracer.mState.pDrawableSet.erase(toBeDel);
 
     if (toBeDel != NULL && toBeDel != s.mThreadArr[gRetracer.getCurTid()].getDrawable()
         && !s.IsInDrawableMap(toBeDel))
@@ -1180,7 +1183,7 @@ PUBLIC void swapBuffersCommon(char* src, bool withDamage)
             gRetracer.mMosaicNeedToBeFlushed = true;
         }
 
-        gRetracer.OnNewFrame();
+        if (gRetracer.mState.pDrawableSet.count(pDrawable)==0) gRetracer.OnNewFrame();
         if (gRetracer.getCurrentContext()._current_framebuffer != ON_SCREEN_FBO)
         {
             glBindFramebuffer(GL_FRAMEBUFFER, gRetracer.getCurrentContext()._current_framebuffer);
@@ -1201,7 +1204,7 @@ PUBLIC void swapBuffersCommon(char* src, bool withDamage)
         {
             pDrawable->swapBuffers();
         }
-        gRetracer.OnNewFrame();
+        if (gRetracer.mState.pDrawableSet.count(pDrawable)==0) gRetracer.OnNewFrame();
     }
 }
 

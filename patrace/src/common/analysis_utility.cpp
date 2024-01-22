@@ -78,6 +78,12 @@ long get_num_output_vertices(GLenum mode, long vertices)
     return 0;
 }
 
+bool isImageSamplerType(GLenum type)
+{
+    return (type == GL_IMAGE_2D || type == GL_IMAGE_3D || type == GL_IMAGE_CUBE || type == GL_IMAGE_2D_ARRAY
+            || type == GL_INT_IMAGE_2D || type == GL_INT_IMAGE_3D || type == GL_INT_IMAGE_CUBE || type == GL_INT_IMAGE_2D_ARRAY);
+}
+
 bool isUniformSamplerType(GLenum type)
 {
     return (type == GL_SAMPLER_2D || type == GL_SAMPLER_3D || type == GL_SAMPLER_CUBE || type == GL_SAMPLER_2D_SHADOW

@@ -38,6 +38,7 @@ TracerParams::TracerParams()
     if (m_file.is_open())
     {
         LoadParams();
+        DBG_LOG("Timestamping: %s\n", Timestamping ? "true" : "false");
         DBG_LOG("ErrorOutOnBinaryShaders: %s\n", ErrorOutOnBinaryShaders ? "true" : "false");
         DBG_LOG("MaximumAnisotropicFiltering: %d\n", MaximumAnisotropicFiltering);
         DBG_LOG("EnableErrorCheck: %s\n", EnableErrorCheck ? "true" : "false");
@@ -151,6 +152,8 @@ void TracerParams::LoadParams()
             CloseTraceFileByTerminate = (strParamValue.compare("true") == 0);
         } else if(strParamName.compare("Support2xMSAA") == 0) {
             Support2xMSAA = (strParamValue.compare("true") == 0);
+        } else if(strParamName.compare("Timestamping") == 0) {
+            Timestamping = (strParamValue.compare("true") == 0);
         } else if (strParamName.compare("SupportedExtension") == 0) {
             SupportedExtensions.push_back(strParamValue);
             if (SupportedExtensionsString.length() != 0)

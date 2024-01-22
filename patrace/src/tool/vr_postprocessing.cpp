@@ -96,12 +96,12 @@ common::TraceFileTM inputFile;
 common::OutFile tmpFile;
 
 
-static void writeout(common::OutFile &outputFile, common::CallTM *call)
+static void writeout(common::OutFile &outputFile, common::CallTM *call, bool injected = false)
 {
     const unsigned int WRITE_BUF_LEN = 150*1024*1024;
     static char buffer[WRITE_BUF_LEN];
 
-    char *dest = call->Serialize(buffer);
+    char *dest = call->Serialize(buffer, -1, injected);
     outputFile.Write(buffer, dest-buffer);
 }
 
@@ -226,7 +226,7 @@ uint32_t create_blit_fbo(common::CallTM *call, bool is_multiview, uint32_t fbo_t
     genFrameBuffers.mArgs.push_back(fbosArray);
     genFrameBuffers.mRet = common::ValueTM();
     genFrameBuffers.mTid = call->mTid;
-    writeout(tmpFile, &genFrameBuffers);
+    writeout(tmpFile, &genFrameBuffers, true);
 
     // Bind it
     common::CallTM callBindFramebuffer("glBindFramebuffer");
@@ -234,7 +234,7 @@ uint32_t create_blit_fbo(common::CallTM *call, bool is_multiview, uint32_t fbo_t
     callBindFramebuffer.mArgs.push_back(new common::ValueTM(fbo_to_blit_from));
     callBindFramebuffer.mRet = common::ValueTM();
     callBindFramebuffer.mTid = call->mTid;
-    writeout(tmpFile, &callBindFramebuffer);
+    writeout(tmpFile, &callBindFramebuffer, true);
 
     // Attach texture to it
     const char* call_name =  is_multiview ? "glFramebufferTextureLayer" : "glFramebufferTexture2D";
@@ -251,7 +251,7 @@ uint32_t create_blit_fbo(common::CallTM *call, bool is_multiview, uint32_t fbo_t
     }
     callFBOTexture2D.mRet = common::ValueTM();
     callFBOTexture2D.mTid = call->mTid;
-    writeout(tmpFile, &callFBOTexture2D);
+    writeout(tmpFile, &callFBOTexture2D, true);
 
     // Bind old FBO
     common::CallTM callBindFramebuffer1("glBindFramebuffer");
@@ -259,7 +259,7 @@ uint32_t create_blit_fbo(common::CallTM *call, bool is_multiview, uint32_t fbo_t
     callBindFramebuffer1.mArgs.push_back(new common::ValueTM(current_framebuffer));
     callBindFramebuffer1.mRet = common::ValueTM();
     callBindFramebuffer1.mTid = call->mTid;
-    writeout(tmpFile, &callBindFramebuffer1);
+    writeout(tmpFile, &callBindFramebuffer1, true);
 
     return fbo_to_blit_from;
 }
@@ -398,7 +398,7 @@ void eglCreatePbufferSurface_common(common::CallTM *call, common::OutFile &outFi
     eglCreateWindowSurface2.mRet = common::ValueTM(ret);
     eglCreateWindowSurface2.mTid = call->mTid;
 
-    writeout(outFile, &eglCreateWindowSurface2);
+    writeout(outFile, &eglCreateWindowSurface2, true);
 }
 
 void glBindTexture_gearvr(common::CallTM *call) {
@@ -485,21 +485,21 @@ void end_of_frame_common(common::CallTM *call) {
         callBindFramebuffer0.mArgs.push_back(new common::ValueTM(0));
         callBindFramebuffer0.mRet = common::ValueTM();
         callBindFramebuffer0.mTid = call->mTid;
-        writeout(tmpFile, &callBindFramebuffer0);
+        writeout(tmpFile, &callBindFramebuffer0, true);
 
         // Disable scissor-test since this affects glBlitFramebuffer
         common::CallTM disableScissor("glDisable");
         disableScissor.mArgs.push_back(new common::ValueTM(GL_SCISSOR_TEST));
         disableScissor.mRet = common::ValueTM();
         disableScissor.mTid = call->mTid;
-        writeout(tmpFile, &disableScissor);
+        writeout(tmpFile, &disableScissor, true);
 
         // Clear
         common::CallTM clear("glClear");
         clear.mArgs.push_back(new common::ValueTM(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT));
         clear.mRet = common::ValueTM();
         clear.mTid = call->mTid;
-        writeout(tmpFile, &clear);
+        writeout(tmpFile, &clear, true);
 
         // Inject glBlitFramebuffers for each layer
         unsigned i = 0;
@@ -538,7 +538,7 @@ void end_of_frame_common(common::CallTM *call) {
                 }
 
                 if(is_gearvr) {
-                    writeout(tmpFile, &bindReadFBO);
+                    writeout(tmpFile, &bindReadFBO, true);
                     common::CallTM callBlitFramebuffer("glBlitFramebuffer");
                     callBlitFramebuffer.mArgs.push_back(new common::ValueTM(0));
                     callBlitFramebuffer.mArgs.push_back(new common::ValueTM(0));
@@ -552,7 +552,7 @@ void end_of_frame_common(common::CallTM *call) {
                     callBlitFramebuffer.mArgs.push_back(new common::ValueTM(GL_NEAREST));
                     callBlitFramebuffer.mRet = common::ValueTM();
                     callBlitFramebuffer.mTid = call->mTid;
-                    writeout(tmpFile, &callBlitFramebuffer);
+                    writeout(tmpFile, &callBlitFramebuffer, true);
 
                     DBG_LOG("Blit FBO %d with size (%ux%u)\n", fbo, tex_w, tex_h);
                     i++;
@@ -563,7 +563,7 @@ void end_of_frame_common(common::CallTM *call) {
 
                     uint32_t blit_x = 0;
                     for (auto viewport : framebuffer_viewports[fbo]) {
-                        writeout(tmpFile, &bindReadFBO);
+                        writeout(tmpFile, &bindReadFBO, true);
                         uint32_t viewport_x = viewport[0];
                         uint32_t viewport_y = viewport[1];
                         uint32_t viewport_w = viewport[2];
@@ -596,7 +596,7 @@ void end_of_frame_common(common::CallTM *call) {
                         callBlitFramebuffer.mArgs.push_back(new common::ValueTM(GL_NEAREST));
                         callBlitFramebuffer.mRet = common::ValueTM();
                         callBlitFramebuffer.mTid = call->mTid;
-                        writeout(tmpFile, &callBlitFramebuffer);
+                        writeout(tmpFile, &callBlitFramebuffer, true);
 
                         DBG_LOG("Blit FBO %d from (%u %u %u %u) to (%u %u %u %u)\n", fbo, viewport_x, viewport_y, viewport_x+viewport_w, viewport_y+viewport_h, blit_x, 0, blit_x + blit_w, blit_h);
                         blit_x += blit_w;
@@ -616,7 +616,7 @@ void end_of_frame_common(common::CallTM *call) {
             enableScissor.mRet = common::ValueTM();
             enableScissor.mTid = call->mTid;
 
-            writeout(tmpFile, &enableScissor);
+            writeout(tmpFile, &enableScissor, true);
         }
 
         // Inject an eglSwapBuffers if trace doesn't already have one after timewarp
@@ -635,7 +635,7 @@ void end_of_frame_common(common::CallTM *call) {
             }
 
             if (callSwapBuffers.mTid >= 0) {
-                writeout(tmpFile, &callSwapBuffers);
+                writeout(tmpFile, &callSwapBuffers, true);
                 DBG_LOG("Injected eglSwapBuffers in calls[%lu]\n", (long unsigned)call->mCallNo);
             }
         }

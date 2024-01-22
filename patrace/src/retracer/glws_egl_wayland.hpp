@@ -9,6 +9,10 @@
 #include <wayland-client.h>
 #include <wayland-egl.h>
 
+#include <xdg-shell-client-protocol.h>
+#include <xdg-shell-server-protocol.h>
+#include <xdg-shell-protocol.c> //for Weston 10
+
 #include <wayland-server-protocol.h> // for enum wl_output_transform
 // in case the above include does not include it
 #ifndef WL_OUTPUT_TRANSFORM_ENUM
@@ -65,7 +69,8 @@ public:
 
 protected:
     struct wl_compositor*     mCompositor = nullptr;
-    struct wl_shell*          mShell = nullptr;
+    struct xdg_wm_base*       mShell = nullptr;
+
     struct wl_output*         mOutput = nullptr;
     struct wl_seat*           mSeat = nullptr;
     struct wl_keyboard*       mKeyboard = nullptr;

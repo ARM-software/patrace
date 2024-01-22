@@ -6,7 +6,7 @@ set (PYTHON_EXECUTABLE python)
 message(STATUS "main ar: ${CMAKE_AR}")
 
 set (PATRACE_VERSION_MAJOR 5)
-set (PATRACE_VERSION_MINOR 1)
+set (PATRACE_VERSION_MINOR 2)
 set (PATRACE_VERSION_PATCH 0)
 
 IF(DEFINED ENV{SVN_REVISION})
@@ -38,6 +38,16 @@ if (FFI7)
             set(ENV{PKG_CONFIG_PATH} "/usr/lib/aarch64-linux-gnu/pkgconfig/ffi7")
         elseif (ARCH MATCHES "armhf")
             set(ENV{PKG_CONFIG_PATH} "/usr/lib/arm-linux-gnueabihf/pkgconfig/ffi7")
+        endif()
+    endif()
+endif()
+
+if (FFI8)
+    if (WINDOWSYSTEM MATCHES "wayland")
+        if (ARCH MATCHES "aarch64")
+            set(ENV{PKG_CONFIG_PATH} "/usr/lib/aarch64-linux-gnu/pkgconfig/ffi8")
+        elseif (ARCH MATCHES "armhf")
+            set(ENV{PKG_CONFIG_PATH} "/usr/lib/arm-linux-gnueabihf/pkgconfig/ffi8")
         endif()
     endif()
 endif()
@@ -114,6 +124,7 @@ include_directories(BEFORE
     ${THIRDPARTY_INCLUDE_DIRS}/opengl-registry/api
     ${THIRDPARTY_INCLUDE_DIRS}/opencl-headers
     ${THIRDPARTY_INCLUDE_DIRS}/libcollector/external/jsoncpp/include
+    ${THIRDPARTY_INCLUDE_DIRS}/wayland/xdg-shell
 )
 include_directories(${THIRDPARTY_INCLUDE_DIRS})
 include_directories(${SRC_INCLUDE_DIRS})

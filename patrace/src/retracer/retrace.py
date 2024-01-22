@@ -57,6 +57,7 @@ broken_funcs = [ # these fail to compile and should be fixed
     'glGetUniformuiv',
     'glGetUniformiv',
     'glGetUniformfv',
+    'paTimestamp', # don't want to replay this, ever
 ]
 
 check_ret_funcs = [
@@ -671,7 +672,8 @@ class Retracer(object):
                          'glDeleteTransformFeedbacks',
                          'glDeleteQueries',
                          'glDeleteSamplers',
-                         'glDeleteVertexArrays']:
+                         'glDeleteVertexArrays',
+                         'glDeleteVertexArraysOES']:
             print('    // hardcode in retrace!')
             return
 
@@ -688,6 +690,9 @@ class Retracer(object):
             print('    Context& context = gRetracer.getCurrentContext();')
             # Piggy-back information that we declared a context
             func.has_context = True
+
+        if 'Delete' in func.name:
+            print('    if (!gRetracer.hasCurrentContext()) return;')
 
         args = [a for a in func.args if not a.output]
         for arg in args:
@@ -913,7 +918,7 @@ class Retracer(object):
         if func.name == 'glDeleteSamplers':
             print('    hardcode_glDeleteSamplers(count, samplers);')
             return
-        if func.name == 'glDeleteVertexArrays':
+        if func.name in ['glDeleteVertexArrays', 'glDeleteVertexArraysOES']:
             print('    hardcode_glDeleteVertexArrays(n, arrays);')
             return
         if func.name == 'glCreateClientSideBuffer':

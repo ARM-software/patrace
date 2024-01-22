@@ -38,7 +38,7 @@ OutFile::~OutFile()
     Close();
 }
 
-bool OutFile::Open(const char* name, bool writeSigBook, const std::vector<std::string> *sigbook)
+bool OutFile::Open(const char* name, bool writeSigBook, const std::vector<std::string> *sigbook, bool write_timestamp)
 {
     os::String autogenFileName;
     if (name == NULL) {
@@ -83,7 +83,7 @@ bool OutFile::Open(const char* name, bool writeSigBook, const std::vector<std::s
         if (sigbook)
             WriteSigBook(sigbook);
         else
-            WriteSigBook(NULL);
+            WriteSigBook(NULL,write_timestamp);
     }
 
     return true;
@@ -176,7 +176,7 @@ void OutFile::CreateCache(int len)
     mCompressedCache = new char[mCompressedCacheLen];
 }
 
-void OutFile::WriteSigBook(const std::vector<std::string> *sigbook)
+void OutFile::WriteSigBook(const std::vector<std::string> *sigbook, bool write_timestamp)
 {
     char* buf = new char[1024*1024];
     char* dest = buf;
@@ -192,7 +192,7 @@ void OutFile::WriteSigBook(const std::vector<std::string> *sigbook)
             dest = WriteString(dest, sigbook->at(id).c_str());
         }
     }
-    else
+    else if(write_timestamp)
     {
         dest = WriteFixed<unsigned int>(dest, ApiInfo::MaxSigId);   // cnt
         for (unsigned short id = 1; id <= ApiInfo::MaxSigId; ++id)
@@ -201,7 +201,16 @@ void OutFile::WriteSigBook(const std::vector<std::string> *sigbook)
             dest = WriteString(dest, ApiInfo::IdToNameArr[id]);
         }
     }
-
+    else
+    {
+        dest = WriteFixed<unsigned int>(dest, ApiInfo::MaxSigId-1);   // cnt
+        if (strcmp(ApiInfo::IdToNameArr[ApiInfo::MaxSigId], "paTimestamp") != 0) DBG_LOG("Error: paTimestamp must have the Max sigID instead of: %s",ApiInfo::IdToNameArr[ApiInfo::MaxSigId]);
+        for (unsigned short id = 1; id <= ApiInfo::MaxSigId-1; ++id)
+        {
+            dest = WriteFixed<unsigned int>(dest, id);
+            dest = WriteString(dest, ApiInfo::IdToNameArr[id]);
+        }
+    }
     *toNext = dest-buf;
 
     Write(buf, dest-buf);

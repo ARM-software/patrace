@@ -74,12 +74,12 @@ static void printVersion()
     cout << PATRACE_VERSION << endl;
 }
 
-static void writeout(common::OutFile &outputFile, common::CallTM *call)
+static void writeout(common::OutFile &outputFile, common::CallTM *call, bool injected = false)
 {
     const unsigned int WRITE_BUF_LEN = 150*1024*1024;
     static char buffer[WRITE_BUF_LEN];
 
-    char *dest = call->Serialize(buffer);
+    char *dest = call->Serialize(buffer, -1, injected);
     outputFile.Write(buffer, dest-buffer);
 }
 
@@ -481,7 +481,7 @@ int convert(const string &source_name, const string &target_name, PixelFormat fo
                         genGraphicBuffer.mArgs.push_back(new common::ValueTM(format));      // format
                         genGraphicBuffer.mArgs.push_back(new common::ValueTM(usage));       // usage
                         genGraphicBuffer.mRet = common::ValueTM(image_id_map[tid]);         // id
-                        writeout(target_file, &genGraphicBuffer);
+                        writeout(target_file, &genGraphicBuffer, true);
                         needToGenGraphicBuffer = false;
                     }
 
@@ -491,14 +491,14 @@ int convert(const string &source_name, const string &target_name, PixelFormat fo
                     graphicBufferData.mArgs.push_back(new common::ValueTM(yuv_size));   // size
                     graphicBufferData.mArgs.push_back(new common::ValueTM(reinterpret_cast<char *>(yuv_data), yuv_size));    // data
                     graphicBufferData.mRet = common::ValueTM();          // void
-                    writeout(target_file, &graphicBufferData);
+                    writeout(target_file, &graphicBufferData, true);
 
                     if (inject_delete && last_call_id_map.at(tid) == call->mCallNo) {
                         common::CallTM deleteGraphicBuffer("glDeleteGraphicBuffer_ARM");
                         deleteGraphicBuffer.mTid = tid;
                         deleteGraphicBuffer.mArgs.push_back(new common::ValueTM(image_id_map[tid]));       // name
                         deleteGraphicBuffer.mRet = common::ValueTM();          // void
-                        writeout(target_file, &deleteGraphicBuffer);
+                        writeout(target_file, &deleteGraphicBuffer, true);
                     }
                 }
                 else if (call->mCallName == "eglCreateImageKHR") {
@@ -507,7 +507,7 @@ int convert(const string &source_name, const string &target_name, PixelFormat fo
                         deleteGraphicBuffer.mTid = tid;
                         deleteGraphicBuffer.mArgs.push_back(new common::ValueTM(image_id_map[tid]));       // name
                         deleteGraphicBuffer.mRet = common::ValueTM();          // void
-                        writeout(target_file, &deleteGraphicBuffer);
+                        writeout(target_file, &deleteGraphicBuffer, true);
                     }
                 }
             }
@@ -523,7 +523,7 @@ int convert(const string &source_name, const string &target_name, PixelFormat fo
                     deleteGraphicBuffer.mTid = tid;
                     deleteGraphicBuffer.mArgs.push_back(new common::ValueTM(image_id_map[tid]));       // name
                     deleteGraphicBuffer.mRet = common::ValueTM();          // void
-                    writeout(target_file, &deleteGraphicBuffer);
+                    writeout(target_file, &deleteGraphicBuffer, true);
                 }
             }
             else {

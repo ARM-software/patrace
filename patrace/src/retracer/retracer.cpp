@@ -460,7 +460,7 @@ Retracer::~Retracer()
     if (mVBODataSize) DBG_LOG("VBO data size : %u\n", mVBODataSize);
     if (mTextureDataSize) DBG_LOG("Uncompressed texture data size : %u\n", mTextureDataSize);
     if (mCompressedTextureDataSize) DBG_LOG("Compressed texture data size : %u\n", mCompressedTextureDataSize);
-    if (mClientSideMemoryDataSize) DBG_LOG("Client-side memory data size : %u\n", mClientSideMemoryDataSize);
+    if (mCSBuffers.total_size()) DBG_LOG("Client-side memory data size : %lu\n", (unsigned long)mCSBuffers.total_size());
 #endif
 }
 
@@ -491,6 +491,42 @@ void Retracer::CloseTraceFile()
     mState.Reset();
     mCSBuffers.clear();
     mSnapshotPaths.clear();
+    results.clear();
+    mVBODataSize = 0;
+    mTextureDataSize = 0;
+    mCompressedTextureDataSize = 0;
+    mSurfaceCount = 0;
+    mpOffscrMgr = nullptr;
+    mpQuad = nullptr;
+    frameBudget = INT64_MAX;
+    drawBudget = INT64_MAX;
+    mMosaicNeedToBeFlushed = false;
+    delayedPerfmonInit = false;
+    shaderCacheFile = NULL;
+    shaderCacheIndex.clear();
+    shaderCache.clear();
+    conditions.clear();
+    threads.clear();
+    thread_remapping.clear();
+    swapvals.clear();
+    cachevals.clear();
+    syncvals.clear();
+    mInitTime = 0;
+    mInitTimeMono = 0;
+    mInitTimeMonoRaw = 0;
+    mInitTimeBoot = 0;
+    mEndFrameTime = 0;
+    mTimerBeginTime = 0;
+    mTimerBeginTimeMono = 0;
+    mTimerBeginTimeMonoRaw = 0;
+    mTimerBeginTimeBoot = 0;
+    mFinishSwapTime = 0;
+    child = 0;
+    mLoopTimes = 0;
+    mLoopBeginTime = 0;
+    mCurFrameNo = 0;
+    mCurDrawNo = 0;
+    mRollbackCallNo = 0;
 
     if (shaderCacheFile)
     {
@@ -1208,7 +1244,15 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
 
     while (!mFinish.load(std::memory_order_consume))
     {
-        const bool isSwapBuffers = swapvals[mCurCall.funcId];
+        bool isSwapBuffers = swapvals.at(mCurCall.funcId);
+        if (isSwapBuffers)
+        {
+            if (mState.pDrawableSet.count(mState.mThreadArr[our_tid].getDrawable())>0)
+            {
+                DBG_LOG("Skip PbufferSurface SwapBuffers\n");
+                isSwapBuffers = false;
+            }
+        }
 
         if (mOptions.mSnapshotCallSet && (mOptions.mSnapshotCallSet->contains(mCurFrameNo, mFile.ExIdToName(mCurCall.funcId))) && isSwapBuffers)
         {
@@ -1307,8 +1351,8 @@ void Retracer::RetraceThread(const int threadidx, const int our_tid)
                     fclose(fp);
                 }
                 const double f = 1024.0 * 1024.0;
-                DBG_LOG("Frame %d memory (mb): %.02f max RSS, %.02f current RSS, %.02f available, %u client side memory, %.02f loaded file data\n",
-                        mCurFrameNo, (double)usage.ru_maxrss / 1024.0, (double)curr_rss / f, (double)available / f, mClientSideMemoryDataSize, (double)mFile.memoryUsed() / f);
+                DBG_LOG("Frame %d memory (mb): %.02f max RSS, %.02f current RSS, %.02f available, %lu client side memory, %.02f loaded file data\n",
+                        mCurFrameNo, (double)usage.ru_maxrss / 1024.0, (double)curr_rss / f, (double)available / f, (unsigned long)mCSBuffers.total_size(), (double)mFile.memoryUsed() / f);
             }
 
             const int secs = (os::getTime() - mTimerBeginTime) / os::timeFrequency;
@@ -1407,10 +1451,11 @@ void Retracer::Retrace()
     mInitTimeMonoRaw = os::getTimeType(CLOCK_MONOTONIC_RAW);
     mInitTimeBoot = os::getTimeType(CLOCK_BOOTTIME);
 
-    swapvals.resize(mFile.getMaxSigId());
+    swapvals.resize(mFile.getMaxSigId() + 1);
     swapvals[mFile.NameToExId("eglSwapBuffers")] = true;
     swapvals[mFile.NameToExId("eglSwapBuffersWithDamageKHR")] = true;
-    cachevals.resize(mFile.getMaxSigId());
+    swapvals[mFile.NameToExId("eglSwapBuffersWithDamageEXT")] = true;
+    cachevals.resize(mFile.getMaxSigId() + 1);
     for (const auto& s : mFile.getFuncNames())
     {
         if (s.find("Uniform") != string::npos || s.find("Attrib") != string::npos || s.find("Shader") != string::npos || s.find("Program") != string::npos || (s[0] == 'e' && s[1] == 'g' && s[2] == 'l')
@@ -1419,7 +1464,7 @@ void Retracer::Retrace()
             cachevals[mFile.NameToExId(s.c_str())] = true;
         }
     }
-    syncvals.resize(mFile.getMaxSigId());
+    syncvals.resize(mFile.getMaxSigId() + 1);
     syncvals[mFile.NameToExId("eglClientWaitSync")] = true;
     syncvals[mFile.NameToExId("eglClientWaitSyncKHR")] = true;
     syncvals[mFile.NameToExId("eglWaitSync")] = true;
@@ -2267,6 +2312,8 @@ void hardcode_glBindFramebuffer(int target, unsigned int framebuffer)
 
 void hardcode_glDeleteBuffers(int n, unsigned int* oldIds)
 {
+    if (!gRetracer.hasCurrentContext()) return;
+
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context.getBufferMap();
@@ -2283,6 +2330,8 @@ void hardcode_glDeleteBuffers(int n, unsigned int* oldIds)
 
 void hardcode_glDeleteFramebuffers(int n, unsigned int* oldIds)
 {
+    if (!gRetracer.hasCurrentContext()) return;
+
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context._framebuffer_map;
@@ -2314,6 +2363,8 @@ void hardcode_glDeleteFramebuffers(int n, unsigned int* oldIds)
 
 void hardcode_glDeleteRenderbuffers(int n, unsigned int* oldIds)
 {
+    if (!gRetracer.hasCurrentContext()) return;
+
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context.getRenderbufferMap();
@@ -2330,6 +2381,8 @@ void hardcode_glDeleteRenderbuffers(int n, unsigned int* oldIds)
 
 void hardcode_glDeleteTextures(int n, unsigned int* oldIds)
 {
+    if (!gRetracer.hasCurrentContext()) return;
+
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context.getTextureMap();
@@ -2346,6 +2399,8 @@ void hardcode_glDeleteTextures(int n, unsigned int* oldIds)
 
 void hardcode_glDeleteTransformFeedbacks(int n, unsigned int* oldIds)
 {
+    if (!gRetracer.hasCurrentContext()) return;
+
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context._feedback_map;
@@ -2360,6 +2415,8 @@ void hardcode_glDeleteTransformFeedbacks(int n, unsigned int* oldIds)
 
 void hardcode_glDeleteQueries(int n, unsigned int* oldIds)
 {
+    if (!gRetracer.hasCurrentContext()) return;
+
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context._query_map;
@@ -2374,6 +2431,8 @@ void hardcode_glDeleteQueries(int n, unsigned int* oldIds)
 
 void hardcode_glDeleteSamplers(int n, unsigned int* oldIds)
 {
+    if (!gRetracer.hasCurrentContext()) return;
+
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context.getSamplerMap();
@@ -2390,6 +2449,8 @@ void hardcode_glDeleteSamplers(int n, unsigned int* oldIds)
 
 void hardcode_glDeleteVertexArrays(int n, unsigned int* oldIds)
 {
+    if (!gRetracer.hasCurrentContext()) return;
+
     Context& context = gRetracer.getCurrentContext();
 
     hmap<unsigned int>& idMap = context._array_map;

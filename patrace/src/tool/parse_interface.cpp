@@ -599,8 +599,11 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
     {
         // "surface is destroyed when it becomes not current to any thread"
         int surface = call->mArgs[1]->GetAsInt();
-        int target_surface_index = surface_remapping.at(surface);
-        surfaces[target_surface_index].destroyed = current_pos;
+        if (surface_remapping.count(surface) > 0)
+        {
+            int target_surface_index = surface_remapping.at(surface);
+            surfaces[target_surface_index].destroyed = current_pos;
+        }
     }
     else if (call->mCallName == "eglDestroyContext")
     {
@@ -1315,6 +1318,8 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             const int index = contexts[context_index].buffers.remap(id);
             const GLsizeiptr size = call->mArgs[1]->GetAsUInt();
             StateTracker::Buffer &buffer = contexts[context_index].buffers[index];
+            if (frames >= ff_startframe && frames <= ff_endframe)
+                buffer.used = true;
             buffer.usages.insert(call->mArgs[3]->GetAsUInt());
             buffer.size = size;
             buffer.updated();
@@ -1416,7 +1421,9 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             const int buffer_index = contexts[context_index].buffers.remap(id);
             StateTracker::Buffer& buf = contexts[context_index].buffers.at(buffer_index);
             buf.bindings.insert(target);
-            if (!buf.used && buf.initialized) buf.used = true; // a very approximate assumption
+            if (frames >= ff_startframe && frames <= ff_endframe)
+                if (!buf.used && buf.initialized)
+                    buf.used = true; // a very approximate assumption
         }
         else
         {
@@ -1447,7 +1454,9 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
             const int buffer_index = contexts[context_index].buffers.remap(id);
             StateTracker::Buffer& buf = contexts[context_index].buffers.at(buffer_index);
             buf.bindings.insert(target);
-            if (!buf.used && buf.initialized) buf.used = true; // a very approximate assumption
+            if (frames >= ff_startframe && frames <= ff_endframe)
+                if (!buf.used && buf.initialized)
+                    buf.used = true; // a very approximate assumption
         }
         else
         {
@@ -1482,6 +1491,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         {
             const int buffer_index = contexts[context_index].buffers.remap(id);
             contexts[context_index].buffers[buffer_index].bindings.insert(target);
+            contexts[context_index].buffers[buffer_index].used = true;
             vao.boundBufferIds[target][index] = { id, offset, size };
         }
         else
@@ -2848,7 +2858,7 @@ void ParseInterfaceBase::interpret_call(common::CallTM *call)
         }
         if (vao.boundVertexAttribs.count(GL_ARRAY_BUFFER) > 0)
         {
-            for (const auto pair : vao.boundVertexAttribs) // assume any enabled arrays are accessed
+            for (const auto& pair : vao.boundVertexAttribs) // assume any enabled arrays are accessed
             {
                 if (vao.array_enabled.count(pair.first))
                 {

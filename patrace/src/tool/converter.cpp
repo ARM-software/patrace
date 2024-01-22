@@ -33,12 +33,15 @@ static bool verbose = false;
 static int endframe = -1;
 static bool waitsync = false;
 static bool removesync = false;
+static bool removeTS = false;
 static std::set<int> unused_mipmaps; // call numbers
 static std::set<std::pair<int, int>> unused_textures; // context index + texture index
 static std::set<std::pair<int, int>> unused_buffers; // context index + buffer index
 static std::set<std::pair<int, int>> uninit_textures; // context index + texture index
 static int lastframe = -1;
 static bool cull_error = false;
+static std::set<std::pair<int, int>> used_shaders; // context index + shader index
+static bool remove_unused_shaders = false;
 
 static void printHelp()
 {
@@ -48,9 +51,11 @@ static void printHelp()
         "  --waitsync    Add a non-zero timeout to glClientWaitSync and glWaitSync calls\n"
         "  --removesync  Remove all sync calls\n"
         "  --mipmap FILE Remove unused glGenerateMipmap calls. Need a usage CSV file from analyze_trace as input\n"
-        "  --tex FILE    Remove unused texture calls. Need an uninitialized CSV file from analyze_trace as input\n"
-        "  --buf FILE    Remove unused buffer calls. Need an uninitialized CSV file from analyze_trace as input\n"
-        "  --utex FILE   Fix uninitialized texture storage calls. Need a usage CSV file as input\n"
+        "  --tex FILE    Remove unused texture calls. Need a usage CSV file from analyze_trace as input\n"
+        "  --buf FILE    Remove unused buffer calls. Need a usage CSV file from analyze_trace as input\n"
+        "  --utex FILE   Fix uninitialized texture storage calls. Need an uninitialized CSV file as input\n"
+        "  --removeTS    Remove all timestamp calls\n"
+        "  --shaders     Remove unused shaders\n"
         "  --end FRAME   End frame (terminates trace here)\n"
         "  --last FRAME  Stop doing changes at this frame (copies the remaining trace without changes)\n"
         "  --verbose     Print more information while running\n"
@@ -67,20 +72,57 @@ static void printVersion()
     std::cout << PATRACE_VERSION << std::endl;
 }
 
-static void writeout(common::OutFile &outputFile, common::CallTM *call)
+static void writeout(common::OutFile &outputFile, common::CallTM *call, bool injected = false)
 {
     if (onlycount) return;
     const unsigned int WRITE_BUF_LEN = 150*1024*1024;
     static char buffer[WRITE_BUF_LEN];
     char *dest = buffer;
-    dest = call->Serialize(dest);
+    dest = call->Serialize(dest, -1, injected);
     outputFile.Write(buffer, dest-buffer);
 }
 
-int converter(ParseInterface& input, common::OutFile& outputFile)
+static void prepass(const std::string& source_trace_filename)
+{
+    ParseInterface input(true);
+    input.setQuickMode(true);
+    input.setScreenshots(false);
+
+    if (!input.open(source_trace_filename))
+    {
+        std::cerr << "Failed to open for reading: " << source_trace_filename << std::endl;
+        exit(-1);
+    }
+
+    common::CallTM *call = nullptr;
+    while ((call = input.next_call()))
+    {
+
+        if (call->mCallName == "glAttachShader")
+        {
+            const GLenum program_id = call->mArgs[0]->GetAsUInt();
+            const GLenum shader_id = call->mArgs[1]->GetAsUInt();
+            const int program_index = input.contexts[input.context_index].programs.remap(program_id);
+            const int shader_index = input.contexts[input.context_index].shaders.remap(shader_id);
+            used_shaders.insert(std::make_pair(input.context_index, shader_index));
+        }
+    }
+}
+
+static void converter(const std::string& source_trace_filename, common::OutFile& outputFile)
 {
     common::CallTM *call = nullptr;
     int count = 0;
+
+    ParseInterface input(true);
+    input.setQuickMode(true);
+    input.setScreenshots(false);
+    if (!input.open(source_trace_filename))
+    {
+        std::cerr << "Failed to open for reading: " << source_trace_filename << std::endl;
+        exit(-2);
+    }
+    Json::Value header = input.header;
 
     // Go through entire trace file
     while ((call = input.next_call()))
@@ -89,6 +131,28 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
         {
             writeout(outputFile, call);
             continue;
+        }
+
+        if (remove_unused_shaders && (call->mCallName == "glShaderSource" || call->mCallName == "glCompileShader" || call->mCallName == "glGetShaderiv"
+            || call->mCallName == "glDeleteShader" || call->mCallName == "glIsShader" || call->mCallName == "glGetShaderSource" || call->mCallName == "glGetShaderInfoLog"))
+        {
+            const GLuint shader_id = call->mArgs[0]->GetAsUInt();
+            int shader_index = UNBOUND;
+            if (call->mCallName == "glDeleteShader") // a bit more complicated since we've already removed it from the remapping table by now
+            {
+                for (const auto& s : input.contexts[input.context_index].shaders.all()) if (s.id == shader_id) shader_index = s.index;
+            }
+            else
+            {
+                shader_index = input.contexts[input.context_index].shaders.remap(shader_id);
+            }
+            if (used_shaders.count(std::make_pair(input.context_index, shader_index)) == 0) { count++; continue; }
+        }
+        else if (remove_unused_shaders && call->mCallName == "glCreateShader")
+        {
+            const GLuint shader_id = call->mRet.GetAsUInt();
+            const int shader_index = input.contexts[input.context_index].shaders.remap(shader_id);
+            if (used_shaders.count(std::make_pair(input.context_index, shader_index)) == 0) { count++; continue; }
         }
 
         if (call->mCallName == "glClientWaitSync")
@@ -147,6 +211,10 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
             // don't output it
             count++;
         }
+        else if (removeTS && call->mCallName == "paTimestamp")
+        {
+            count++; // don't output it
+        }
         else if (call->mCallName == "glTexStorage3D" || call->mCallName == "glTexStorage2D" || call->mCallName == "glTexStorage1D"
              || call->mCallName == "glTexStorage3DEXT" || call->mCallName == "glTexStorage2DEXT" || call->mCallName == "glTexStorage1DEXT"
              || call->mCallName == "glTexImage3D" || call->mCallName == "glTexImage2D" || call->mCallName == "glTexImage1D" || call->mCallName == "glTexImage3DOES"
@@ -190,7 +258,7 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
                 std::vector<char> zeroes(tsize);
                 c.mArgs.push_back(common::CreateBlobOpaqueValue(tsize, zeroes.data()));
                 c.mTid = call->mTid;
-                writeout(outputFile, &c);
+                writeout(outputFile, &c, true);
                 count++;
             }
             else if ((call->mCallName == "glTexStorage3D" || call->mCallName == "glTexImage3D") && uninit_textures.count(std::make_pair(input.context_index, target_texture_index)) > 0)
@@ -223,7 +291,7 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
                         std::vector<char> zeroes(tsize);
                         c.mArgs.push_back(common::CreateBlobOpaqueValue(tsize, zeroes.data()));
                         c.mTid = call->mTid;
-                        writeout(outputFile, &c);
+                        writeout(outputFile, &c, true);
                     }
                 }
                 else // uncompressed
@@ -245,7 +313,7 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
                         std::vector<char> zeroes(tsize);
                         c.mArgs.push_back(common::CreateBlobOpaqueValue(tsize, zeroes.data()));
                         c.mTid = call->mTid;
-                        writeout(outputFile, &c);
+                        writeout(outputFile, &c, true);
                     }
                 }
                 count++;
@@ -256,13 +324,37 @@ int converter(ParseInterface& input, common::OutFile& outputFile)
             writeout(outputFile, call);
         }
     }
+    input.close();
     printf("Calls changed: %d\n", count);
-    return count;
+    if (!onlycount)
+    {
+        Json::Value info;
+        info["count"] = count;
+        if (waitsync) info["waitsync"] = true;
+        if (removesync) info["removesync"] = true;
+        if (unused_mipmaps.size() > 0) info["remove_unused_mipmaps"] = true;
+        if (unused_textures.size() > 0) info["remove_unused_textures"] = true;
+        if (uninit_textures.size() > 0) info["remove_uninitialized_textures"] = true;
+        if (endframe != -1) info["endframe"] = endframe;
+        if (lastframe != -1) info["lastframe"] = lastframe;
+        if (removeTS)
+        {
+            header.removeMember("timestamping");
+            header.removeMember("first_timestamp");
+            info["remove_timestamps"] = true;
+        }
+        addConversionEntry(header, "converter", source_trace_filename, info);
+        Json::FastWriter writer;
+        const std::string json_header = writer.write(header);
+        outputFile.mHeader.jsonLength = json_header.size();
+        outputFile.WriteHeader(json_header.c_str(), json_header.size());
+    }
 }
 
 int main(int argc, char **argv)
 {
     int argIndex = 1;
+    bool do_prepass = false;
     for (; argIndex < argc; ++argIndex)
     {
         std::string arg = argv[argIndex];
@@ -298,6 +390,11 @@ int main(int argc, char **argv)
         {
             removesync = true;
         }
+        else if (arg == "--shaders")
+        {
+            remove_unused_shaders = true;
+            do_prepass = true;
+        }
         else if (arg == "-c")
         {
             onlycount = true;
@@ -309,6 +406,10 @@ int main(int argc, char **argv)
         else if (arg == "-d")
         {
             debug = true;
+        }
+        else if (arg == "--removeTS")
+        {
+            removeTS = true;
         }
         else if (arg == "--mipmap")
         {
@@ -380,16 +481,7 @@ int main(int argc, char **argv)
         return 1;
     }
     std::string source_trace_filename = argv[argIndex++];
-    ParseInterface inputFile(true);
-    inputFile.setQuickMode(true);
-    inputFile.setScreenshots(false);
-    if (!inputFile.open(source_trace_filename))
-    {
-        std::cerr << "Failed to open for reading: " << source_trace_filename << std::endl;
-        return 1;
-    }
-
-    Json::Value header = inputFile.header;
+    if (do_prepass) prepass(source_trace_filename);
     common::OutFile outputFile;
     if (!onlycount)
     {
@@ -400,25 +492,7 @@ int main(int argc, char **argv)
             return 1;
         }
     }
-    int count = converter(inputFile, outputFile);
-    if (!onlycount)
-    {
-        Json::Value info;
-        info["count"] = count;
-        if (waitsync) info["waitsync"] = true;
-        if (removesync) info["removesync"] = true;
-        if (unused_mipmaps.size() > 0) info["remove_unused_mipmaps"] = true;
-        if (unused_textures.size() > 0) info["remove_unused_textures"] = true;
-        if (uninit_textures.size() > 0) info["remove_uninitialized_textures"] = true;
-        if (endframe != -1) info["endframe"] = endframe;
-        if (lastframe != -1) info["lastframe"] = lastframe;
-        addConversionEntry(header, "converter", source_trace_filename, info);
-        Json::FastWriter writer;
-        const std::string json_header = writer.write(header);
-        outputFile.mHeader.jsonLength = json_header.size();
-        outputFile.WriteHeader(json_header.c_str(), json_header.size());
-    }
-    inputFile.close();
+    converter(source_trace_filename, outputFile);
     outputFile.Close();
     return 0;
 }

@@ -44,12 +44,12 @@ static void printVersion()
     std::cout << PATRACE_VERSION << std::endl;
 }
 
-static void writeout(common::OutFile &outputFile, common::CallTM *call)
+static void writeout(common::OutFile &outputFile, common::CallTM *call, bool injected = false)
 {
     const unsigned int WRITE_BUF_LEN = 150*1024*1024;
     static char buffer[WRITE_BUF_LEN];
     char *dest = buffer;
-    dest = call->Serialize(dest);
+    dest = call->Serialize(dest, -1, injected);
     outputFile.Write(buffer, dest-buffer);
 }
 
@@ -156,7 +156,7 @@ int main(int argc, char **argv)
             common::CallTM deletion("glDeleteClientSideBuffer");
             deletion.mArgs.push_back(new common::ValueTM(callno_to_client_side_last_use[call->mCallNo]));
             deletion.mTid = call->mTid;
-            writeout(outputFile, &deletion);
+            writeout(outputFile, &deletion, true);
             count++;
         }
         if (inputFile->context_index != UNBOUND && texture_deletes.count(inputFile->context_index) && texture_deletes.at(inputFile->context_index).count(call->mCallNo)
@@ -167,7 +167,7 @@ int main(int argc, char **argv)
             deletion.mArgs.push_back(new common::ValueTM(1));
             deletion.mArgs.push_back(common::CreateUInt32ArrayValue({ tx_id }));
             deletion.mTid = call->mTid;
-            writeout(outputFile, &deletion);
+            writeout(outputFile, &deletion, true);
             texture_deletes_injected++;
             if (debug) DBG_LOG("\tinjecting glDeleteTextures(1, %u) after %s context=%d call=%d\n", tx_id, call->mCallName.c_str(), inputFile->context_index, (int)call->mCallNo);
         }
