@@ -36,4 +36,4 @@ add_dependencies(newfastforwarder
     glxml_header
 )
 
-install(TARGETS newfastforwarder RUNTIME DESTINATION bin)
+install(TARGETS newfastforwarder RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

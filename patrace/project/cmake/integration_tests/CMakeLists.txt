@@ -75,7 +75,7 @@ add_custom_command(
 )
 add_custom_target(glxml_to_gles2_stubs DEPENDS ${SRC_ROOT}/specs/stub_gles2.cpp)
 add_library(gles2_stub SHARED ${SRC_ROOT}/specs/stub_gles2.cpp)
-install(TARGETS gles2_stub DESTINATION lib)
+install(TARGETS gles2_stub DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 add_custom_command(
     OUTPUT ${SRC_ROOT}/specs/stub_gles1.cpp
@@ -87,7 +87,7 @@ add_custom_command(
 )
 add_custom_target(glxml_to_gles1_stubs DEPENDS ${SRC_ROOT}/specs/stub_gles1.cpp)
 add_library(gles1_stub SHARED ${SRC_ROOT}/specs/stub_gles1.cpp)
-install(TARGETS gles1_stub DESTINATION lib)
+install(TARGETS gles1_stub DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 add_custom_command(
     OUTPUT ${SRC_ROOT}/specs/stub_egl.cpp
@@ -99,5 +99,5 @@ add_custom_command(
 )
 add_custom_target(glxml_to_egl_stubs DEPENDS ${SRC_ROOT}/specs/stub_egl.cpp)
 add_library(egl_stub SHARED ${SRC_ROOT}/specs/stub_egl.cpp)
-install(TARGETS egl_stub DESTINATION lib)
+install(TARGETS egl_stub DESTINATION ${CMAKE_INSTALL_LIBDIR})
 

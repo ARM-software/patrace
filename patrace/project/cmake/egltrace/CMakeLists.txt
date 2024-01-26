@@ -23,4 +23,4 @@ target_link_libraries (egltrace
 )
 add_dependencies(egltrace eglproc_auto_src_generation glxml_header)
 set_target_properties(egltrace PROPERTIES LINK_FLAGS "-pthread" COMPILE_FLAGS "-pthread")
-install(TARGETS egltrace LIBRARY DESTINATION lib)
+install(TARGETS egltrace LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
