@@ -1,9 +1,19 @@
 SET(CMAKE_SYSTEM_NAME Linux)
 
-SET(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
-SET(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
+if (NOT DEFINED ENV{CROSS_COMPILE})
+    SET(ENV{CROSS_COMPILE} aarch64-linux-gnu-)
+endif()
+
+SET(CMAKE_C_COMPILER $ENV{CROSS_COMPILE}gcc)
+SET(CMAKE_CXX_COMPILER $ENV{CROSS_COMPILE}g++)
 SET(WINDOWSYSTEM wayland)
 SET(ARCH aarch64)
 
-set(CC_HOST "aarch64-linux-gnu")
-set(ENV{PKG_CONFIG_PATH} "/usr/lib/aarch64-linux-gnu/pkgconfig")
+if (DEFINED ENV{SDKTARGETSYSROOT})
+    SET(CMAKE_C_FLAGS "--sysroot=$ENV{SDKTARGETSYSROOT} ")
+    SET(CMAKE_CXX_FLAGS "--sysroot=$ENV{SDKTARGETSYSROOT} ")
+    message(STATUS "ENV{SDKTARGETSYSROOT}=" $ENV{SDKTARGETSYSROOT})
+else()
+    set(CC_HOST "aarch64-linux-gnu")
+    set(ENV{PKG_CONFIG_PATH} "/usr/lib/aarch64-linux-gnu/pkgconfig")
+endif()
