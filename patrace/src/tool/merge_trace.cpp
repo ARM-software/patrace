@@ -299,7 +299,7 @@ int main(int argc, char **argv)
             parseNormalCalls(surfaceMapRev, early_call, early_trace_index, 2);
             parseNormalCalls(contextMapRev, early_call, early_trace_index, 3);
         }
-        if (threadIdMap.count({early_trace_index, early_call->mTid}) == 0) threadIdMap.insert({{early_trace_index, early_call->mTid}, threadIdMap.size()});
+        if (threadIdMap.count({early_trace_index, early_call->mTid}) == 0) threadIdMap.insert({{early_trace_index, early_call->mTid}, (int)threadIdMap.size()});
         early_call->mTid = threadIdMap[{early_trace_index, early_call->mTid}];
 
         writeout(outputFile, early_call, false);
@@ -322,7 +322,7 @@ int main(int argc, char **argv)
             callMap[early_trace_index] = next_call(*inputFiles[early_trace_index], curFrames[early_trace_index]);
             early_call = early_it->second;
         }
-        if (threadIdMap.count({early_trace_index, early_call->mTid}) == 0) threadIdMap.insert({{early_trace_index, early_call->mTid}, threadIdMap.size()});
+        if (threadIdMap.count({early_trace_index, early_call->mTid}) == 0) threadIdMap.insert({{early_trace_index, early_call->mTid}, (int)threadIdMap.size()});
         early_call->mTid = threadIdMap[{early_trace_index, early_call->mTid}];
         writeout(outputFile, early_call, false);
         call_count++;

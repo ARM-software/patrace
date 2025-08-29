@@ -829,11 +829,6 @@ public:
     common::InFile inputFile;
     common::OutFile outputFile = "trace";
     common::CallTM *mCall = nullptr;
-
-private:
-    unsigned _curFrameIndex = 0;
-    common::FrameTM* _curFrame = nullptr;
-    unsigned _curCallIndexInFrame = 0;
 };
 
 #endif

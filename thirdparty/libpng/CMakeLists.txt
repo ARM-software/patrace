@@ -19,6 +19,5 @@ add_library(png_bundled STATIC
     pngwtran.c
     pngwutil.c
 )
-set_target_properties(png_bundled PROPERTIES
-    COMPILE_FLAGS "${CMAKE_STATIC_LIBRARY_C_FLAGS} -DPNG_PREFIX=pa_"
-)
+target_link_libraries(png_bundled zlibstatic)
+set_target_properties(png_bundled PROPERTIES COMPILE_FLAGS "${CMAKE_STATIC_LIBRARY_C_FLAGS} -DPNG_PREFIX=pa_")

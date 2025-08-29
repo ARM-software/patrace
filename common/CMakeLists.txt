@@ -25,7 +25,7 @@ set (APP_LIBS
     common_system
     tiff
     pthread
-    z_bundled
+    zlibstatic
 )
 
 add_subdirectory (tool/imageconv)

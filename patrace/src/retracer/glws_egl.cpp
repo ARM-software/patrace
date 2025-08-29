@@ -407,7 +407,7 @@ void GlwsEgl::Init(Profile /*profile*/)
         EGL_NONE
     };
 
-    EGLint configCnt = 1024;
+    const EGLint configCnt = 1024;
     EGLConfig configs[configCnt];
     EGLint numConfigs = 1024;
 

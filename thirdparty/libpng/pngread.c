@@ -3295,8 +3295,6 @@ png_image_read_background(png_voidp argument)
 
             for (pass = 0; pass < passes; ++pass)
             {
-               png_bytep        row = png_voidcast(png_bytep,
-                                                   display->first_row);
                unsigned int     startx, stepx, stepy;
                png_uint_32      y;
 
@@ -3401,8 +3399,6 @@ png_image_read_background(png_voidp argument)
 
                         inrow += 2; /* gray and alpha channel */
                      }
-
-                     row += display->row_bytes;
                   }
                }
             }

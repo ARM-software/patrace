@@ -124,8 +124,7 @@ bool modHeader(const std::string& mFileName, const std::string& fileNameJson)
         return false;
     }
 
-
-    if (bHeader.version >= HEADER_VERSION_3 || bHeader.version <= HEADER_VERSION_4) {
+    if (bHeader.version >= HEADER_VERSION_3) {
         DBG_LOG("### .pat file format Version %d ###\n", bHeader.version - HEADER_VERSION_1 + 1);
     } else {
         DBG_LOG("Unsupported file version: %d\n", bHeader.version - HEADER_VERSION_1 + 1);

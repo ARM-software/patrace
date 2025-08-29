@@ -2038,8 +2038,6 @@ class DefaultFboSaver
 public:
     DefaultFboSaver(retracer::Context& retracerContext, common::OutFile& outFile, int threadId, unsigned int repeat, int dpy, int surface)
         : mRetracerContext(retracerContext),
-          mOutFile(outFile),
-          mThreadId(threadId),
           mDisplay(dpy),
           mSurface(surface),
           mRepeat(repeat),
@@ -2949,8 +2947,6 @@ private:
     GLint mSampler;
 
     retracer::Context &mRetracerContext;
-    common::OutFile &mOutFile;
-    int mThreadId;
     int mDisplay;
     int mSurface;
     unsigned int mRepeat;

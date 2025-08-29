@@ -21,13 +21,13 @@ set (APP_LIBS
     common_system
     tiff
     pthread
-    z_bundled
+    zlibstatic
 )
 
 target_link_libraries(testharness
     ${CPPUNITLIB}
     ${APP_LIBS}
-    common 
+    common
     md5
     ${PNG_LIBRARIES}
     ${ZLIB_LIBRARIES}
