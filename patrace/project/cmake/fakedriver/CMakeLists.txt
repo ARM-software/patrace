@@ -6,7 +6,7 @@ include_directories(
 add_library(EGL SHARED
 	${SRC_FAKEDRIVER_EGL}
 )
-add_dependencies(EGL ${SRC_ROOT}/fakedriver/egl/auto.cpp)
+add_dependencies(EGL egl_auto_src_generation)
 
 target_link_libraries (EGL
     dl
@@ -16,7 +16,7 @@ set_target_properties(EGL PROPERTIES LINK_FLAGS "-z max-page-size=16384")
 add_library(GLESv1_CM SHARED
 	${SRC_FAKEDRIVER_GLES1}
 )
-add_dependencies(GLESv1_CM ${SRC_ROOT}/fakedriver/gles1/auto.cpp)
+add_dependencies(GLESv1_CM gles1_auto_src_generation)
 
 target_link_libraries (GLESv1_CM
     dl
@@ -26,7 +26,7 @@ set_target_properties(GLESv1_CM PROPERTIES LINK_FLAGS "-z max-page-size=16384")
 add_library(GLESv2 SHARED
 	${SRC_FAKEDRIVER_GLES2_GLES3}
 )
-add_dependencies(GLESv2 ${SRC_ROOT}/fakedriver/gles2/auto.cpp)
+add_dependencies(GLESv2 gles2_auto_src_generation)
 
 target_link_libraries (GLESv2
     dl

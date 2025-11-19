@@ -58,12 +58,18 @@ target_link_libraries (fastforward
     jsoncpp
     hwcpipe
 )
-add_dependencies(fastforward
+
+set(FASTFORWARD_DEPENDENCIES
     retrace_gles_auto_src_generation
     eglproc_auto_src_generation
-    call_parser_src_generation
     glxml_header
 )
+if(TARGET call_parser_src_generation)
+    list(APPEND FASTFORWARD_DEPENDENCIES call_parser_src_generation)
+endif()
+
+add_dependencies(fastforward ${FASTFORWARD_DEPENDENCIES})
+
 set_target_properties(fastforward PROPERTIES LINK_FLAGS "-pthread -z max-page-size=16384" COMPILE_FLAGS "-pthread")
 install(TARGETS fastforward
     RUNTIME DESTINATION bin)
